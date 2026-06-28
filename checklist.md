@@ -61,7 +61,7 @@
 - [x] context-notes에 workflow 결정 사항을 기록한다.
 - [x] workflow YAML 문법과 Terraform 검증을 실행한다.
 - [x] 변경 내용을 커밋한다.
-- [ ] `main`을 `origin/main`으로 push한다.
+- [x] `main`을 `origin/main`으로 push한다.
 
 ## 아키텍처 결정 전 질문
 

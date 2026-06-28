@@ -75,7 +75,18 @@
 - [x] AGENTS.md에 issue number와 `feat/{issue number}` 브랜치 규칙을 명시한다.
 - [x] workflow YAML 문법과 Terraform 검증을 실행한다.
 - [x] 변경 내용을 커밋한다.
-- [ ] `main`을 `origin/main`으로 push한다.
+- [x] `main`을 `origin/main`으로 push한다.
+
+## 2026-06-28 팀 공통 규칙 IaC 반영
+
+- [x] PR 템플릿은 이번 작업에서 추가하지 않는 것으로 정한다.
+- [x] 커밋 컨벤션을 BE 형식인 `{type}: 커밋 메시지`로 정한다.
+- [x] GitHub Actions와 설정 변경은 `ci`가 아니라 `chore`를 쓰도록 기록한다.
+- [x] 커밋 크기 기준을 변경 30줄 이내로 기록한다.
+- [x] 아키텍처 레벨 결정은 GitHub Wiki ADR로 남기도록 기록한다.
+- [x] 문서 변경도 사람 검토 대상임을 기록한다.
+- [ ] 기존 커밋 메시지를 새 컨벤션에 맞게 reword한다.
+- [ ] 변경 검증과 push를 완료한다.
 
 ## 아키텍처 결정 전 질문
 

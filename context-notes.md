@@ -148,3 +148,13 @@
 - `bootstrap/state-backend`, `environments/dev`, `environments/prod` 세 root의 `terraform validate`는 모두 성공했다.
 - `bootstrap/state-backend`, `environments/dev`, `environments/prod` 세 root의 `terraform plan`은 모두 `No changes`이다.
 - `actionlint`는 로컬에 설치되어 있지 않아 실행하지 못했다.
+
+## 2026-06-28 팀 공통 규칙 IaC 반영
+
+- 사용자는 PR 템플릿은 추후 추가하겠다고 명시했다. 이번 작업에서는 PR 템플릿 파일을 만들지 않는다.
+- Landit IaC 커밋 컨벤션은 BE 형식인 `{type}: 커밋 메시지`를 따른다.
+- GitHub Actions, Terraform bootstrap, 개발 환경, 설정 변경은 `ci`가 아니라 `chore` 타입을 사용한다.
+- 커밋 크기 기준은 기존 50줄 내외에서 변경 30줄 이내로 낮춘다.
+- 아키텍처 레벨 결정은 GitHub Wiki ADR로 남기고, PR에는 코드 레벨 변경과 검증 결과를 남긴다.
+- 문서 변경도 사람 검토를 전제로 작성한다.
+- 현재 히스토리에는 `ci:` 커밋 3개와 `Initial commit`이 남아 있어 커밋 메시지 reword가 필요하다.

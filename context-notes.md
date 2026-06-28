@@ -174,3 +174,9 @@
 - Terraform local 실행, GitHub Actions 실행, Git 작업 흐름, state와 secret 규칙을 독립 섹션으로 분리한다.
 - 디렉터리 구조는 길이가 길어서 하단으로 이동한다.
 - README 재구성은 한 파일 안의 단일 논리 변경이라 하나의 README 커밋으로 묶는다.
+
+## 2026-06-28 README와 개발자 문서 분리
+
+- README는 레포의 첫 화면이므로 현재 상태와 주요 문서 링크만 남긴다.
+- 개발자가 따라야 하는 Terraform 실행, GitHub Actions, Git 작업 흐름, state와 secret 규칙은 `docs/developer-guide.md`로 분리한다.
+- README에서 `docs/developer-guide.md`와 `docs/architecture-questions.md`로 연결한다.

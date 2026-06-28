@@ -114,6 +114,13 @@
 - [x] Git 작업 규칙, state와 secret, 결정 필요 항목을 독립 섹션으로 정리한다.
 - [x] 변경 검증과 push를 완료한다.
 
+## 2026-06-28 README와 개발자 문서 분리
+
+- [x] README에는 레포 상태, 문서 링크, 기본 값, 범위, 주요 경로만 남긴다.
+- [x] 개발자용 Terraform 실행, GitHub Actions, Git 작업 흐름은 별도 문서로 분리한다.
+- [x] README에서 개발자용 문서로 링크한다.
+- [x] 변경 검증과 push를 완료한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.

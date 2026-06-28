@@ -2,7 +2,7 @@
 
 Landit 서비스의 Infrastructure as Code 레포입니다.
 
-Landit은 기존 SayNow 이전 MVP를 대체할 새 서비스로 준비 중입니다. 이 레포는 현재 초기 세팅 단계이며, 최종 인프라 구성과 아키텍처는 아직 확정되지 않았습니다.
+Landit은 새 서비스로 준비 중입니다. 이 레포는 현재 초기 세팅 단계이며, 최종 인프라 구성과 아키텍처는 아직 확정되지 않았습니다.
 
 ## 현재 범위
 
@@ -181,7 +181,3 @@ OIDC IAM role은 아직 Terraform으로 만들지 않았습니다. role trust po
 - bootstrap state key는 `bootstrap/state-backend/terraform.tfstate`이다.
 - state bucket은 `landit-terraform-state-982529430654`이다.
 - state bucket은 versioning, 기본 AES256 암호화, public access block, HTTPS-only bucket policy를 사용한다.
-
-## SayNow 참고 범위
-
-SayNow IaC에서 가져올 수 있는 것은 작업 흐름과 문서 구조입니다. SayNow 전용 운영값, 런타임 역전환 구조, 도메인, repository 문자열, OS user, 배포 경로, 실제 state, tfvars, plan, IP, security group id, secret 값은 Landit 기본값으로 가져오지 않습니다.

@@ -4,7 +4,7 @@
 
 ### 이번 초기화의 목적
 
-- `landit-iac`는 SayNow 이전 MVP를 대체할 Landit 서비스의 IaC 레포 후보이다.
+- `landit-iac`는 Landit 서비스의 IaC 레포이다.
 - 이번 작업은 실제 인프라를 확정하거나 배포하는 작업이 아니다.
 - 목적은 앞으로 IaC 작업을 안전하게 시작할 수 있도록 문서, 작업 규칙, 최소 디렉터리 구조를 준비하는 것이다.
 - EC2, ECS, RDS, Vercel, S3, CloudFront, Route53 같은 인프라 선택은 아직 결정하지 않는다.
@@ -15,22 +15,15 @@
 - 작업 시작 시점의 `git status --short`는 출력이 없어 깨끗했다.
 - 현재 브랜치는 `main`이다.
 
-### SayNow에서 재사용할 패턴
+### 초기 세팅에 유지할 작업 패턴
 
 - `AGENTS.md`, `README.md`, `checklist.md`, `context-notes.md`로 작업 규칙과 의사결정을 남기는 문서 구조는 재사용한다.
 - Terraform 변경 전후에 `terraform fmt -recursive`, 가능한 validate/plan, `git diff`, `git status`로 검증하는 흐름은 재사용한다.
 - 실제 `*.tfvars`, `*.tfplan`, Terraform state, secret 값은 커밋하지 않는 규칙을 재사용한다.
 - dev와 prod를 별도 Terraform root로 분리할 수 있는 `environments/` 구조는 후보로 재사용한다.
 - provider `default_tags`로 공통 태그를 넣는 패턴은 최소 뼈대에 반영한다.
-- S3 backend와 S3 native lockfile 사용 경험은 참고하되, Landit bucket/key가 확정되기 전에는 backend block을 만들지 않는다.
-
-### SayNow에서 가져오지 않을 패턴
-
-- `resource_name_environment`로 Terraform root 이름과 AWS 콘솔 표시 이름을 분리하거나 뒤집는 구조는 Landit 기본값으로 가져오지 않는다.
-- `/saynow/*` SSM path는 Landit 후보인 `/landit/prod`, `/landit/develop`으로 바꾼다.
-- `saynow.p-e.kr`, `dev-saynow.p-e.kr` 도메인은 Landit 기본값으로 가져오지 않는다.
-- `Aragornnnnnn/saynow-be`, `Aragornnnnnn/saynow-fe`, `Aragornnnnnn/saynow-ai` repository 문자열은 Landit 후보 repo 이름으로 바꾼다.
-- `/opt/saynow`, `saynow` OS user, SayNow systemd service 이름은 Landit 기본값으로 가져오지 않는다.
+- S3 backend와 S3 native lockfile은 Landit bucket/key 기준으로만 사용한다.
+- 환경 이름은 Terraform root, state key, workflow target에서 일관되게 사용한다.
 - 실제 `*.tfvars`, `*.tfplan`, Terraform state, security group id, IP, secret 값은 복사하지 않는다.
 - `terraform apply`, `terraform destroy`, AWS 리소스 생성, 변경, 삭제는 실행하지 않는다.
 
@@ -158,3 +151,9 @@
 - 아키텍처 레벨 결정은 GitHub Wiki ADR로 남기고, PR에는 코드 레벨 변경과 검증 결과를 남긴다.
 - 문서 변경도 사람 검토를 전제로 작성한다.
 - `Initial commit`과 `ci:` 커밋 3개를 새 커밋 컨벤션에 맞게 reword했다.
+
+## 2026-06-28 외부 참고 레포 언급 제거
+
+- Landit IaC를 독립 레포로 보고 문서의 이전 서비스 전환 배경과 참고 범위를 제거한다.
+- 작업 규칙은 Landit 자체 운영 기준으로 표현한다.
+- 과거 참고 레포의 경로, 도메인, repository 문자열, OS user, 배포 경로는 문서에 남기지 않는다.

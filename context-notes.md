@@ -48,8 +48,7 @@
 - 도메인과 DNS provider.
 - GitHub Actions OIDC owner/repository/environment subject.
 - VPC, subnet, database, cache, object storage, CDN, logging 구성.
-- SSM Parameter Store path를 후보값 그대로 사용할지.
-- secret 주입 방식과 운영자 접근 절차.
+- secret rotation, 접근 권한, 감사 절차.
 
 ## 2026-06-28 S3 backend 구성
 
@@ -180,3 +179,17 @@
 - README는 레포의 첫 화면이므로 현재 상태와 주요 문서 링크만 남긴다.
 - 개발자가 따라야 하는 Terraform 실행, GitHub Actions, Git 작업 흐름, state와 secret 규칙은 `docs/developer-guide.md`로 분리한다.
 - README에서 `docs/developer-guide.md`와 `docs/architecture-questions.md`로 연결한다.
+
+## 2026-06-28 Landit SSM Parameter Store 초기 작성
+
+- 사용자 요청에 따라 Landit runtime parameter를 SSM Parameter Store에 작성했다.
+- AWS account는 `982529430654`, region은 `ap-northeast-2`, profile은 `landit`이다.
+- 기존 `/landit/develop`, `/landit/prod` path에는 parameter가 없었다.
+- development와 production에 각각 7개 parameter를 작성했다.
+- 전체 14개 parameter 중 8개는 `SecureString`, 6개는 `String`이다.
+- `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `OPENROUTER_API_KEY`는 `SecureString`으로 관리한다.
+- `LLM_PROVIDER`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`은 `String`으로 관리한다.
+- DB URL에는 `sslmode=require`와 `prepareThreshold=0` query parameter를 붙인다.
+- 현재 받은 Supabase pooler URL은 session pooler 형태로 취급한다.
+- secret 값은 출력하지 않았고 repo 파일에도 기록하지 않았다.
+- 검증은 `get-parameters-by-path`에서 parameter name, type, version만 조회하는 방식으로 수행했다.

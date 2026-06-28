@@ -121,17 +121,28 @@
 - [x] README에서 개발자용 문서로 링크한다.
 - [x] 변경 검증과 push를 완료한다.
 
+## 2026-06-28 Landit SSM Parameter Store 초기 작성
+
+- [x] `landit` AWS profile과 account를 확인한다.
+- [x] 기존 `/landit/develop`, `/landit/prod` parameter가 비어 있음을 확인한다.
+- [x] development runtime parameter 7개를 작성한다.
+- [x] production runtime parameter 7개를 작성한다.
+- [x] secret 값은 출력하거나 파일에 저장하지 않는다.
+- [x] parameter name, type, version만 조회해 반영 상태를 검증한다.
+- [x] SSM parameter registry 문서를 추가한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.
 - [x] Terraform state bucket 이름과 AWS account를 결정한다.
 - [x] Terraform state key를 `prod/landit-iac/terraform.tfstate`, `dev/landit-iac/terraform.tfstate` 후보로 둘지 결정한다.
 - [x] AWS profile 이름과 기본 region을 결정한다.
-- [ ] SSM Parameter Store path를 `/landit/prod`, `/landit/develop` 후보로 둘지 결정한다.
+- [x] SSM Parameter Store path를 `/landit/prod`, `/landit/develop`로 사용한다.
 - [ ] backend 배포 방식을 결정한다.
 - [ ] frontend 배포 방식을 결정한다.
 - [ ] AI 서비스가 별도 repo와 런타임을 가질지 결정한다.
 - [x] GitHub Actions OIDC 대상 repository와 environment subject를 결정한다.
 - [ ] 도메인, DNS provider, TLS 종료 위치를 결정한다.
 - [ ] VPC, DB, cache, object storage, CDN 사용 여부를 결정한다.
-- [ ] secret을 Terraform 밖에서 관리할 운영 절차를 결정한다.
+- [x] 초기 secret은 Terraform 밖에서 SSM에 작성한다.
+- [ ] secret rotation, 접근 권한, 감사 절차를 결정한다.

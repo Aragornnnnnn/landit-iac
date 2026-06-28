@@ -168,7 +168,7 @@ OIDC IAM role은 아직 Terraform으로 만들지 않았습니다. role trust po
 
 환경별 브랜치인 `develop` 또는 `production` 브랜치는 만들지 않습니다. 같은 IaC 코드가 target별 root와 state에 적용되는 구조를 유지합니다.
 
-커밋 메시지는 BE 컨벤션인 `{type}: 커밋 메시지` 형식을 사용합니다. 타입별 의미는 `AGENTS.md`의 커밋 타입 표를 따릅니다. GitHub Actions, Terraform bootstrap, 개발 환경, 설정 변경은 `ci`가 아니라 `chore` 타입을 사용합니다. 커밋은 원칙적으로 변경 30줄 이내로 끊습니다.
+커밋 메시지는 BE 컨벤션인 `{type}: 커밋 메시지` 형식을 사용합니다. 타입별 의미는 `AGENTS.md`의 커밋 타입 표를 따릅니다. GitHub Actions, Terraform bootstrap, 개발 환경, 설정 변경은 `ci`가 아니라 `chore` 타입을 사용합니다. 가능하면 커밋 1개는 변경 30줄 내외로 하고, PR은 리뷰 가능한 크기로 유지합니다.
 
 아키텍처 레벨 결정은 GitHub Wiki ADR로 남기고, PR에는 코드 레벨 변경과 검증 결과를 남깁니다. 문서 변경도 사람이 검토합니다.
 

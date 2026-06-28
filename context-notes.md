@@ -114,14 +114,15 @@
 - 현재 branch는 `main`이고 작업 시작 시점의 `git status --short`는 깨끗했다.
 - workflow는 `.github/workflows/terraform.yml`에 둔다.
 - workflow trigger는 자동 push apply를 피하기 위해 `workflow_dispatch`만 사용한다.
-- `target` input은 `bootstrap-state-backend`, `dev`, `prod` 중 하나를 고른다.
-- `apply=false`면 plan까지만 실행한다.
-- `apply=true`면 plan artifact를 만들고 `terraform-apply` GitHub environment 승인을 기다린 뒤 같은 plan 파일로 apply한다.
+- `target` input은 최종적으로 `develop`, `production` 중 하나를 고른다.
+- `operation=plan-only`면 plan까지만 실행한다.
+- `operation=plan-and-apply`면 plan artifact를 만들고 target별 apply GitHub environment 승인을 기다린 뒤 같은 plan 파일로 apply한다.
 - apply는 `refs/heads/main`에서만 허용한다.
-- plan job은 `terraform-plan` environment를 사용하고, apply job은 `terraform-apply` environment를 사용한다.
+- plan job은 `terraform-plan-develop` 또는 `terraform-plan-production` environment를 사용한다.
+- apply job은 `terraform-apply-develop` 또는 `terraform-apply-production` environment를 사용한다.
 - AWS 인증은 long-lived key를 workflow에 넣지 않고 GitHub OIDC를 사용한다.
 - workflow는 repository variable 또는 environment variable `AWS_ROLE_ARN`을 요구한다.
-- OIDC role trust policy는 `repo:Aragornnnnnn/landit-iac:environment:terraform-plan`과 `repo:Aragornnnnnn/landit-iac:environment:terraform-apply` subject를 허용해야 한다.
+- OIDC role trust policy는 target별 plan/apply environment subject를 허용해야 한다.
 - 아직 GitHub Actions용 AWS IAM role은 이 Terraform 코드로 만들지 않았다.
 - workflow YAML은 Ruby YAML parser로 로드에 성공했다.
 - `actionlint`는 로컬에 설치되어 있지 않아 실행하지 못했다.
@@ -130,3 +131,20 @@
 - `bootstrap/state-backend`, `environments/dev`, `environments/prod` 세 root의 `terraform plan`은 모두 `No changes`이다.
 - 민감정보 패턴 검색에서 AWS access key나 secret key 문자열은 발견되지 않았다.
 - `git fetch origin` 후 `origin/main...HEAD` 차이는 `0 5`였고, `git push origin main`으로 `1c6a35a..8eade66` 범위를 push했다.
+
+## 2026-06-28 Terraform workflow 환경 명확화
+
+- 사용자가 이번 작업은 issue number 없이 진행해도 된다고 명시했다.
+- 일반 작업 규칙으로는 issue number를 요구하고 `feat/{issue number}` 브랜치에서 작업하도록 `AGENTS.md`에 남긴다.
+- 환경별 브랜치는 만들지 않는다. 브랜치는 작업 단위이고, 환경은 Terraform root/state/workflow target으로 구분한다.
+- 일반 Terraform workflow target에서는 bootstrap을 제거한다.
+- bootstrap은 state bucket 자체를 다루는 관리자 절차이므로 일반 develop/production workflow와 섞지 않는다.
+- workflow target은 `develop`, `production`만 노출한다.
+- apply 실행 여부는 boolean이 아니라 `operation=plan-only` 또는 `operation=plan-and-apply`로 고른다.
+- production apply는 `confirm_environment=production`, `refs/heads/main`, `terraform-apply-production` environment 승인이 모두 있어야 가능하다.
+- workflow 실행 로그에는 target, operation, Terraform root, AWS account, AWS region, state bucket, state key, apply environment를 출력한다.
+- workflow YAML은 Ruby YAML parser로 로드에 성공했다.
+- `terraform fmt -recursive -check`는 성공했다.
+- `bootstrap/state-backend`, `environments/dev`, `environments/prod` 세 root의 `terraform validate`는 모두 성공했다.
+- `bootstrap/state-backend`, `environments/dev`, `environments/prod` 세 root의 `terraform plan`은 모두 `No changes`이다.
+- `actionlint`는 로컬에 설치되어 있지 않아 실행하지 못했다.

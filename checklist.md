@@ -63,6 +63,20 @@
 - [x] 변경 내용을 커밋한다.
 - [x] `main`을 `origin/main`으로 push한다.
 
+## 2026-06-28 Terraform workflow 환경 명확화
+
+- [x] 이번 작업은 사용자가 issue number 예외를 명시했음을 확인한다.
+- [x] 일반 workflow에서 bootstrap target을 제거한다.
+- [x] workflow target을 `develop`, `production`으로 명확히 바꾼다.
+- [x] apply boolean을 `plan-only`, `plan-and-apply` operation으로 바꾼다.
+- [x] production apply에 `confirm_environment=production` 입력을 요구한다.
+- [x] apply environment를 `terraform-apply-develop`, `terraform-apply-production`으로 분리한다.
+- [x] README와 architecture questions를 새 workflow 기준으로 갱신한다.
+- [x] AGENTS.md에 issue number와 `feat/{issue number}` 브랜치 규칙을 명시한다.
+- [x] workflow YAML 문법과 Terraform 검증을 실행한다.
+- [x] 변경 내용을 커밋한다.
+- [ ] `main`을 `origin/main`으로 push한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.

@@ -102,5 +102,6 @@ OIDC IAM role은 아직 Terraform으로 만들지 않았습니다. role trust po
 - 실제 `*.tfvars`, `*.tfplan`, Terraform state 파일은 커밋하지 않습니다.
 - secret 값은 Terraform state에 남기지 않는 방식을 우선 검토합니다.
 - 접근 키, IP, security group id, secret 값은 커밋하지 않습니다.
-- SSM path 후보는 `/landit/prod`, `/landit/develop`입니다.
+- SSM path는 `/landit/prod`, `/landit/develop`을 사용합니다.
+- runtime parameter 이름과 타입은 [SSM Parameters](ssm-parameters.md)를 따릅니다.
 - state key는 `prod/landit-iac/terraform.tfstate`, `dev/landit-iac/terraform.tfstate`입니다.

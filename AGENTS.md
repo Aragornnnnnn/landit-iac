@@ -33,7 +33,7 @@
 - state bucket은 `bootstrap/state-backend`에서 별도 bootstrap하고, bucket 생성 전 dev/prod 검증은 `terraform init -backend=false`로 제한한다.
 - 실제 `*.tfvars`, `*.tfplan`, Terraform state, secret 값, 접근 키, IP, security group id는 커밋하지 않는다.
 - secret 값은 Terraform state에 남기지 않는 방식을 우선 검토한다.
-- SSM Parameter Store path 후보는 `/landit/prod`, `/landit/develop`이며 확정 전까지 문서에 결정 필요로 표시한다.
+- SSM Parameter Store path는 `/landit/prod`, `/landit/develop`을 사용하고, 값은 Terraform 밖에서 관리한다.
 - `resource_name_environment`처럼 환경 표시 이름을 뒤집는 구조는 Landit 기본 패턴으로 사용하지 않는다.
 
 ## 파일 작성 규칙

@@ -14,6 +14,7 @@ Landit 서비스의 Infrastructure as Code 레포입니다.
 | GitHub Actions | 수동 `workflow_dispatch`로 plan 또는 승인 후 apply |
 | 일반 workflow target | `develop`, `production` |
 | Bootstrap | state bucket 관리자 절차로 분리 |
+| SSM Parameter Store | develop/prod 기본 runtime parameter 준비 완료 |
 | 실제 서비스 리소스 | 아직 만들지 않음 |
 | 아키텍처 | 확정 전 |
 
@@ -22,6 +23,7 @@ Landit 서비스의 Infrastructure as Code 레포입니다.
 - [AGENTS.md](AGENTS.md): 에이전트 작업 규칙.
 - [Developer Guide](docs/developer-guide.md): 개발자용 Terraform 실행, GitHub Actions, Git 작업 흐름.
 - [Architecture Questions](docs/architecture-questions.md): 아키텍처 확정 전 질문.
+- [SSM Parameters](docs/ssm-parameters.md): runtime parameter 이름, 타입, 운영 규칙.
 - [checklist.md](checklist.md): 작업 체크리스트.
 - [context-notes.md](context-notes.md): 작업 결정과 검증 기록.
 
@@ -47,7 +49,8 @@ Landit 서비스의 Infrastructure as Code 레포입니다.
 - IaC 작업 규칙과 문서 구조를 준비합니다.
 - dev/prod Terraform root를 나중에 확장할 수 있도록 최소 구조만 둡니다.
 - Terraform provider, version, 공통 태그, S3 backend 기준만 둡니다.
-- EC2, ECS, RDS, Vercel, CloudFront, Route53, SSM 같은 실제 서비스 리소스는 아직 만들지 않습니다.
+- EC2, ECS, RDS, Vercel, CloudFront, Route53 같은 실제 서비스 리소스는 아직 만들지 않습니다.
+- SSM Parameter Store에는 초기 runtime parameter만 Terraform 밖에서 준비했습니다.
 - `terraform apply`, `terraform destroy`, 실제 AWS 리소스 생성, 변경, 삭제는 사용자 확인 없이는 실행하지 않습니다.
 
 ## 주요 경로

@@ -41,9 +41,10 @@
 ## 데이터와 secret
 
 - RDS, DynamoDB, Redis, S3 같은 managed service 사용 여부 결정 필요.
-- secret 저장소를 AWS SSM Parameter Store, Secrets Manager, 외부 secret manager 중 무엇으로 할지 결정 필요.
-- SSM path 후보 `/landit/prod`, `/landit/develop`을 그대로 사용할지 결정 필요.
-- Terraform이 secret 값을 직접 관리하지 않도록 운영 절차 결정 필요.
+- 초기 runtime secret 저장소는 AWS SSM Parameter Store를 사용한다.
+- SSM path는 `/landit/prod`, `/landit/develop`을 사용한다.
+- Terraform은 secret 값을 직접 관리하지 않고 운영자가 SSM에 작성한다.
+- secret rotation, 접근 권한, 감사 절차는 결정 필요.
 
 ## 운영과 비용
 

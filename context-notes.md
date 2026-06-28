@@ -50,8 +50,6 @@
 
 ### 아직 결정하지 않은 사항
 
-- AWS account, AWS profile, region.
-- Terraform state bucket 이름과 bootstrap 방식.
 - dev/prod Terraform root를 완전히 분리할지, module을 공유할지.
 - backend, frontend, AI의 실제 배포 방식.
 - 도메인과 DNS provider.
@@ -59,3 +57,36 @@
 - VPC, subnet, database, cache, object storage, CDN, logging 구성.
 - SSM Parameter Store path를 후보값 그대로 사용할지.
 - secret 주입 방식과 운영자 접근 절차.
+
+## 2026-06-28 S3 backend 구성
+
+### 확인한 기준
+
+- `landit` AWS profile은 STS 기준 account `982529430654`, IAM user `arn:aws:iam::982529430654:user/sm-iac`이다.
+- 기본 AWS region은 `ap-northeast-2`로 둔다.
+- S3 backend bucket 이름은 account id를 포함해 `landit-terraform-state-982529430654`로 둔다.
+- production state key는 `prod/landit-iac/terraform.tfstate`로 둔다.
+- development state key는 `dev/landit-iac/terraform.tfstate`로 둔다.
+- S3 backend locking은 Terraform S3 backend의 `use_lockfile = true`를 사용한다.
+
+### 현재 AWS 상태
+
+- `aws s3api head-bucket --bucket landit-terraform-state-982529430654 --profile landit` 결과는 `404 Not Found`이다.
+- 따라서 backend block을 바로 활성화한 `terraform init`은 bucket 생성 전까지 성공할 수 없다.
+- 실제 S3 bucket 생성은 AWS 리소스 생성이므로 사용자 확인 전까지 실행하지 않는다.
+
+### 구현 방향
+
+- `bootstrap/state-backend`는 로컬 state로 실행해 S3 state bucket 자체를 만들기 위한 별도 root로 둔다.
+- dev/prod root에는 S3 backend block을 미리 추가한다.
+- bucket 생성 전 dev/prod 검증은 `terraform validate`까지만 가능하다.
+- bucket 생성 후에는 dev/prod root에서 `terraform init -reconfigure`로 S3 backend를 활성화한다.
+
+### 검증 결과
+
+- `bootstrap/state-backend` root의 `terraform init -backend=false`는 성공했다.
+- `bootstrap/state-backend` root의 `AWS_PROFILE=landit terraform plan`은 `5 to add, 0 to change, 0 to destroy`로 성공했다.
+- plan 생성 대상은 S3 bucket, public access block, versioning, AES256 기본 암호화, HTTPS-only bucket policy이다.
+- dev/prod root의 `terraform init -backend=false -reconfigure`와 `terraform validate`는 성공했다.
+- dev/prod root의 `terraform plan`은 S3 backend가 아직 초기화되지 않아 `Backend initialization required` 오류로 중단됐다.
+- 이 오류는 state bucket이 아직 생성되지 않은 현재 단계에서는 예상 가능한 제한이다.

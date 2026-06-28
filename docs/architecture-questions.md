@@ -6,11 +6,11 @@
 
 - dev/prod를 별도 Terraform root로 계속 분리할지 결정 필요.
 - 공통 module을 둘지, 초기에는 root별 단순 구성을 유지할지 결정 필요.
-- AWS account와 AWS profile 이름 결정 필요.
-- 기본 AWS region 결정 필요.
-- Terraform state bucket 이름과 bootstrap 절차 결정 필요.
-- state key 후보인 `prod/landit-iac/terraform.tfstate`, `dev/landit-iac/terraform.tfstate`를 그대로 사용할지 결정 필요.
-- S3 native lockfile, DynamoDB lock, Terraform Cloud 중 어떤 lock 방식을 사용할지 결정 필요.
+- AWS account는 `982529430654`, AWS profile은 `landit`, 기본 region은 `ap-northeast-2`로 둔다.
+- Terraform state bucket은 `landit-terraform-state-982529430654`로 둔다.
+- state key는 `prod/landit-iac/terraform.tfstate`, `dev/landit-iac/terraform.tfstate`로 둔다.
+- lock 방식은 S3 native lockfile을 사용한다.
+- state bucket 생성은 `bootstrap/state-backend` root로 별도 진행한다.
 
 ## 서비스 경계
 

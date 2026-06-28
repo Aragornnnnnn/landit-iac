@@ -16,14 +16,30 @@
 - [x] `environments/dev`와 `environments/prod`에 최소 Terraform root 후보 구조를 만든다.
 - [x] `terraform fmt -recursive`를 실행한다.
 - [x] `terraform fmt -recursive -check`를 실행한다.
-- [ ] `git diff`와 `git status --short`로 변경 범위를 확인한다.
+- [x] `git diff`와 `git status --short`로 변경 범위를 확인한다.
+
+## 2026-06-28 S3 backend 구성
+
+- [x] `landit` AWS profile의 계정과 IAM user를 확인한다.
+- [x] S3 backend bucket 후보 `landit-terraform-state-982529430654`의 존재 여부를 확인한다.
+- [x] bucket이 아직 없으므로 실제 생성 없이 bootstrap Terraform root로 준비한다.
+- [x] `bootstrap/state-backend`에 state bucket 리소스 뼈대를 추가한다.
+- [x] `environments/dev/backend.tf`에 S3 backend block을 추가한다.
+- [x] `environments/prod/backend.tf`에 S3 backend block을 추가한다.
+- [x] `README.md`, `AGENTS.md`, `docs/architecture-questions.md`에 S3 backend 기준을 반영한다.
+- [x] `terraform fmt -recursive`를 실행한다.
+- [x] bootstrap root `terraform init`과 `terraform plan`을 실행한다.
+- [x] dev/prod root `terraform validate`를 실행한다.
+- [x] dev/prod root `terraform plan`이 backend 초기화 전에는 실행되지 않는 것을 확인한다.
+- [x] 실제 S3 bucket 생성은 사용자 확인 전까지 실행하지 않는다.
+- [x] `git diff`와 `git status --short`로 변경 범위를 확인한다.
 
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.
-- [ ] Terraform state bucket 이름과 AWS account를 결정한다.
-- [ ] Terraform state key를 `prod/landit-iac/terraform.tfstate`, `dev/landit-iac/terraform.tfstate` 후보로 둘지 결정한다.
-- [ ] AWS profile 이름과 기본 region을 결정한다.
+- [x] Terraform state bucket 이름과 AWS account를 결정한다.
+- [x] Terraform state key를 `prod/landit-iac/terraform.tfstate`, `dev/landit-iac/terraform.tfstate` 후보로 둘지 결정한다.
+- [x] AWS profile 이름과 기본 region을 결정한다.
 - [ ] SSM Parameter Store path를 `/landit/prod`, `/landit/develop` 후보로 둘지 결정한다.
 - [ ] backend 배포 방식을 결정한다.
 - [ ] frontend 배포 방식을 결정한다.

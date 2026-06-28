@@ -1,7 +1,8 @@
 # 개발 Terraform root의 공통 입력값 후보를 정의한다.
 variable "aws_region" {
-  description = "AWS region for the Landit development infrastructure. 결정 필요."
+  description = "AWS region for the Landit development infrastructure."
   type        = string
+  default     = "ap-northeast-2"
 }
 
 variable "project_name" {

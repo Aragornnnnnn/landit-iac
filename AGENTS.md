@@ -22,7 +22,10 @@
 - 가능한 경우 `terraform validate`와 `terraform plan`으로 검증하되, backend, profile, tfvars가 미정이면 실행하지 않은 이유를 보고한다.
 - `terraform plan` 없이 `terraform apply`를 실행하지 않는다.
 - `terraform apply`, `terraform destroy`, 실제 AWS 리소스 생성, 변경, 삭제는 사용자 확인 후에만 실행한다.
-- backend bucket, state key, AWS account가 확정되기 전에는 동작하는 `backend` block을 성급하게 만들지 않는다.
+- AWS profile은 `landit`, 기본 region은 `ap-northeast-2`, AWS account는 `982529430654`를 기준으로 한다.
+- Terraform state bucket은 `landit-terraform-state-982529430654`를 사용한다.
+- production state key는 `prod/landit-iac/terraform.tfstate`, development state key는 `dev/landit-iac/terraform.tfstate`를 사용한다.
+- state bucket은 `bootstrap/state-backend`에서 별도 bootstrap하고, bucket 생성 전 dev/prod 검증은 `terraform init -backend=false`로 제한한다.
 - 실제 `*.tfvars`, `*.tfplan`, Terraform state, secret 값, 접근 키, IP, security group id는 커밋하지 않는다.
 - secret 값은 Terraform state에 남기지 않는 방식을 우선 검토한다.
 - SSM Parameter Store path 후보는 `/landit/prod`, `/landit/develop`이며 확정 전까지 문서에 결정 필요로 표시한다.

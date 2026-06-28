@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: Terraform root to run.
+        description: 실행할 Terraform root를 선택합니다.
         required: true
         type: choice
         default: develop
@@ -12,7 +12,7 @@ on:
           - develop
           - production
       operation:
-        description: Run plan only, or run apply after environment approval.
+        description: plan만 실행할지, 환경 승인 후 apply까지 실행할지 선택합니다.
         required: true
         type: choice
         default: plan-only
@@ -20,7 +20,7 @@ on:
           - plan-only
           - plan-and-apply
       confirm_environment:
-        description: Type production to allow production apply. Leave empty otherwise.
+        description: production apply를 허용하려면 production을 입력합니다. 그 외에는 비워 둡니다.
         required: false
         type: string
         default: ""

@@ -34,6 +34,22 @@
 - [x] 실제 S3 bucket 생성은 사용자 확인 전까지 실행하지 않는다.
 - [x] `git diff`와 `git status --short`로 변경 범위를 확인한다.
 
+## 2026-06-28 S3 backend apply
+
+- [x] bootstrap root plan 파일을 생성한다.
+- [x] bootstrap root plan 파일을 apply한다.
+- [x] S3 bucket 생성 상태를 확인한다.
+- [x] bucket versioning을 확인한다.
+- [x] bucket public access block을 확인한다.
+- [x] bucket 기본 암호화 설정을 확인한다.
+- [x] bootstrap root no-change plan을 확인한다.
+- [x] dev/prod root S3 backend init을 실행한다.
+- [x] dev/prod root validate를 실행한다.
+- [x] dev/prod root plan이 `No changes`임을 확인한다.
+- [x] bootstrap root state를 S3 backend로 마이그레이션한다.
+- [x] 작업 기록 문서를 갱신한다.
+- [x] `git diff`와 `git status --short`로 변경 범위를 확인한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.

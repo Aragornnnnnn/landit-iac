@@ -65,6 +65,7 @@
 - `landit` AWS profile은 STS 기준 account `982529430654`, IAM user `arn:aws:iam::982529430654:user/sm-iac`이다.
 - 기본 AWS region은 `ap-northeast-2`로 둔다.
 - S3 backend bucket 이름은 account id를 포함해 `landit-terraform-state-982529430654`로 둔다.
+- bootstrap state key는 `bootstrap/state-backend/terraform.tfstate`로 둔다.
 - production state key는 `prod/landit-iac/terraform.tfstate`로 둔다.
 - development state key는 `dev/landit-iac/terraform.tfstate`로 둔다.
 - S3 backend locking은 Terraform S3 backend의 `use_lockfile = true`를 사용한다.
@@ -90,3 +91,19 @@
 - dev/prod root의 `terraform init -backend=false -reconfigure`와 `terraform validate`는 성공했다.
 - dev/prod root의 `terraform plan`은 S3 backend가 아직 초기화되지 않아 `Backend initialization required` 오류로 중단됐다.
 - 이 오류는 state bucket이 아직 생성되지 않은 현재 단계에서는 예상 가능한 제한이다.
+
+## 2026-06-28 S3 backend apply
+
+- 사용자 요청에 따라 `bootstrap/state-backend` plan 파일을 만들고 apply했다.
+- apply 결과는 `5 added, 0 changed, 0 destroyed`이다.
+- 생성된 리소스는 S3 bucket, public access block, versioning, AES256 기본 암호화, HTTPS-only bucket policy이다.
+- S3 bucket `landit-terraform-state-982529430654`는 `ap-northeast-2`에 생성됐다.
+- bucket versioning은 `Enabled`이다.
+- public access block은 `BlockPublicAcls`, `IgnorePublicAcls`, `BlockPublicPolicy`, `RestrictPublicBuckets`가 모두 `true`이다.
+- 기본 서버 측 암호화는 `AES256`이다.
+- apply 후 bootstrap root plan은 `No changes`이다.
+- dev/prod root의 S3 backend 초기화는 성공했고, 두 root 모두 plan 결과는 `No changes`이다.
+- dev/prod root는 아직 실제 리소스가 없어 S3 state object가 생성되지 않았다.
+- bootstrap root state도 S3 backend로 마이그레이션했다.
+- S3 object `bootstrap/state-backend/terraform.tfstate`가 생성된 것을 확인했다.
+- migration 후 bootstrap root의 `terraform validate`와 `terraform plan`은 모두 성공했고 plan 결과는 `No changes`이다.

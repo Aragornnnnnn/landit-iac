@@ -80,6 +80,7 @@ Terraform state는 S3 backend를 사용합니다.
 
 ```text
 Bucket: landit-terraform-state-982529430654
+Bootstrap key: bootstrap/state-backend/terraform.tfstate
 Production key: prod/landit-iac/terraform.tfstate
 Development key: dev/landit-iac/terraform.tfstate
 Region: ap-northeast-2
@@ -102,6 +103,7 @@ bucket 생성에 사용자 확인을 받은 뒤에만 아래 명령을 실행합
 
 ```bash
 AWS_PROFILE=landit terraform -chdir=bootstrap/state-backend apply
+AWS_PROFILE=landit terraform -chdir=bootstrap/state-backend init -migrate-state
 ```
 
 state bucket이 생성된 뒤 dev root를 초기화합니다.
@@ -125,6 +127,7 @@ state bucket이 아직 없으면 dev/prod root의 `terraform plan`은 `Backend i
 - secret 값은 Terraform state에 남기지 않는 방식을 우선 검토한다.
 - SSM path 후보는 `/landit/prod`, `/landit/develop`이다.
 - state key는 `prod/landit-iac/terraform.tfstate`, `dev/landit-iac/terraform.tfstate`이다.
+- bootstrap state key는 `bootstrap/state-backend/terraform.tfstate`이다.
 - state bucket은 `landit-terraform-state-982529430654`이다.
 - state bucket은 versioning, 기본 AES256 암호화, public access block, HTTPS-only bucket policy를 사용한다.
 

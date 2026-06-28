@@ -25,6 +25,7 @@
 - AWS profile은 `landit`, 기본 region은 `ap-northeast-2`, AWS account는 `982529430654`를 기준으로 한다.
 - Terraform state bucket은 `landit-terraform-state-982529430654`를 사용한다.
 - production state key는 `prod/landit-iac/terraform.tfstate`, development state key는 `dev/landit-iac/terraform.tfstate`를 사용한다.
+- bootstrap state key는 `bootstrap/state-backend/terraform.tfstate`를 사용한다.
 - state bucket은 `bootstrap/state-backend`에서 별도 bootstrap하고, bucket 생성 전 dev/prod 검증은 `terraform init -backend=false`로 제한한다.
 - 실제 `*.tfvars`, `*.tfplan`, Terraform state, secret 값, 접근 키, IP, security group id는 커밋하지 않는다.
 - secret 값은 Terraform state에 남기지 않는 방식을 우선 검토한다.

@@ -22,6 +22,7 @@
 - 가능한 경우 `terraform validate`와 `terraform plan`으로 검증하되, backend, profile, tfvars가 미정이면 실행하지 않은 이유를 보고한다.
 - `terraform plan` 없이 `terraform apply`를 실행하지 않는다.
 - `terraform apply`, `terraform destroy`, 실제 AWS 리소스 생성, 변경, 삭제는 사용자 확인 후에만 실행한다.
+- GitHub Actions apply는 `terraform-apply` environment required reviewer 승인 뒤에만 실행한다.
 - AWS profile은 `landit`, 기본 region은 `ap-northeast-2`, AWS account는 `982529430654`를 기준으로 한다.
 - Terraform state bucket은 `landit-terraform-state-982529430654`를 사용한다.
 - production state key는 `prod/landit-iac/terraform.tfstate`, development state key는 `dev/landit-iac/terraform.tfstate`를 사용한다.

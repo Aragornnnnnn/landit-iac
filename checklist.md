@@ -50,6 +50,19 @@
 - [x] 작업 기록 문서를 갱신한다.
 - [x] `git diff`와 `git status --short`로 변경 범위를 확인한다.
 
+## 2026-06-28 GitHub Actions Terraform workflow
+
+- [x] 현재 branch와 remote를 확인한다.
+- [x] workflow 구조를 plan 후 environment approval apply 방식으로 정한다.
+- [x] `.github/workflows/terraform.yml`을 추가한다.
+- [x] workflow가 장기 AWS key 대신 OIDC role ARN 변수 `AWS_ROLE_ARN`을 사용하도록 한다.
+- [x] apply가 `refs/heads/main`에서만 가능하도록 제한한다.
+- [x] README에 workflow 실행 조건과 GitHub environment 설정을 기록한다.
+- [x] context-notes에 workflow 결정 사항을 기록한다.
+- [x] workflow YAML 문법과 Terraform 검증을 실행한다.
+- [x] 변경 내용을 커밋한다.
+- [ ] `main`을 `origin/main`으로 push한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.
@@ -60,7 +73,7 @@
 - [ ] backend 배포 방식을 결정한다.
 - [ ] frontend 배포 방식을 결정한다.
 - [ ] AI 서비스가 별도 repo와 런타임을 가질지 결정한다.
-- [ ] GitHub Actions OIDC 대상 repository와 environment subject를 결정한다.
+- [x] GitHub Actions OIDC 대상 repository와 environment subject를 결정한다.
 - [ ] 도메인, DNS provider, TLS 종료 위치를 결정한다.
 - [ ] VPC, DB, cache, object storage, CDN 사용 여부를 결정한다.
 - [ ] secret을 Terraform 밖에서 관리할 운영 절차를 결정한다.

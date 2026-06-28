@@ -107,3 +107,25 @@
 - bootstrap root state도 S3 backend로 마이그레이션했다.
 - S3 object `bootstrap/state-backend/terraform.tfstate`가 생성된 것을 확인했다.
 - migration 후 bootstrap root의 `terraform validate`와 `terraform plan`은 모두 성공했고 plan 결과는 `No changes`이다.
+
+## 2026-06-28 GitHub Actions Terraform workflow
+
+- remote는 `origin https://github.com/Aragornnnnnn/landit-iac.git`이다.
+- 현재 branch는 `main`이고 작업 시작 시점의 `git status --short`는 깨끗했다.
+- workflow는 `.github/workflows/terraform.yml`에 둔다.
+- workflow trigger는 자동 push apply를 피하기 위해 `workflow_dispatch`만 사용한다.
+- `target` input은 `bootstrap-state-backend`, `dev`, `prod` 중 하나를 고른다.
+- `apply=false`면 plan까지만 실행한다.
+- `apply=true`면 plan artifact를 만들고 `terraform-apply` GitHub environment 승인을 기다린 뒤 같은 plan 파일로 apply한다.
+- apply는 `refs/heads/main`에서만 허용한다.
+- plan job은 `terraform-plan` environment를 사용하고, apply job은 `terraform-apply` environment를 사용한다.
+- AWS 인증은 long-lived key를 workflow에 넣지 않고 GitHub OIDC를 사용한다.
+- workflow는 repository variable 또는 environment variable `AWS_ROLE_ARN`을 요구한다.
+- OIDC role trust policy는 `repo:Aragornnnnnn/landit-iac:environment:terraform-plan`과 `repo:Aragornnnnnn/landit-iac:environment:terraform-apply` subject를 허용해야 한다.
+- 아직 GitHub Actions용 AWS IAM role은 이 Terraform 코드로 만들지 않았다.
+- workflow YAML은 Ruby YAML parser로 로드에 성공했다.
+- `actionlint`는 로컬에 설치되어 있지 않아 실행하지 못했다.
+- `terraform fmt -recursive -check`는 성공했다.
+- `bootstrap/state-backend`, `environments/dev`, `environments/prod` 세 root의 `terraform validate`는 모두 성공했다.
+- `bootstrap/state-backend`, `environments/dev`, `environments/prod` 세 root의 `terraform plan`은 모두 `No changes`이다.
+- 민감정보 패턴 검색에서 AWS access key나 secret key 문자열은 발견되지 않았다.

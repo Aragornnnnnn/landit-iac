@@ -7,16 +7,23 @@ on:
         description: Terraform root to run.
         required: true
         type: choice
-        default: dev
+        default: develop
         options:
-          - bootstrap-state-backend
-          - dev
-          - prod
-      apply:
-        description: Run apply after plan and terraform-apply environment approval.
+          - develop
+          - production
+      operation:
+        description: Run plan only, or run apply after environment approval.
         required: true
-        type: boolean
-        default: false
+        type: choice
+        default: plan-only
+        options:
+          - plan-only
+          - plan-and-apply
+      confirm_environment:
+        description: Type production to allow production apply. Leave empty otherwise.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -34,10 +41,12 @@ jobs:
   plan:
     name: Plan
     runs-on: ubuntu-latest
-    environment: terraform-plan
+    environment: terraform-plan-${{ inputs.target }}
     outputs:
+      apply-environment: ${{ steps.target.outputs.apply-environment }}
       plan-file: ${{ steps.target.outputs.plan-file }}
       root: ${{ steps.target.outputs.root }}
+      state-key: ${{ steps.target.outputs.state-key }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,17 +60,17 @@ jobs:
           TARGET: ${{ inputs.target }}
         run: |
           case "$TARGET" in
-            bootstrap-state-backend)
-              echo "root=bootstrap/state-backend" >> "$GITHUB_OUTPUT"
-              echo "plan-file=bootstrap-state-backend.tfplan" >> "$GITHUB_OUTPUT"
-              ;;
-            dev)
+            develop)
               echo "root=environments/dev" >> "$GITHUB_OUTPUT"
-              echo "plan-file=dev.tfplan" >> "$GITHUB_OUTPUT"
+              echo "plan-file=develop.tfplan" >> "$GITHUB_OUTPUT"
+              echo "state-key=dev/landit-iac/terraform.tfstate" >> "$GITHUB_OUTPUT"
+              echo "apply-environment=terraform-apply-develop" >> "$GITHUB_OUTPUT"
               ;;
-            prod)
+            production)
               echo "root=environments/prod" >> "$GITHUB_OUTPUT"
-              echo "plan-file=prod.tfplan" >> "$GITHUB_OUTPUT"
+              echo "plan-file=production.tfplan" >> "$GITHUB_OUTPUT"
+              echo "state-key=prod/landit-iac/terraform.tfstate" >> "$GITHUB_OUTPUT"
+              echo "apply-environment=terraform-apply-production" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "::error::Unknown target: $TARGET"
@@ -69,10 +78,29 @@ jobs:
               ;;
           esac
 
+      - name: Show execution summary
+        run: |
+          cat <<EOF
+          Target: ${{ inputs.target }}
+          Operation: ${{ inputs.operation }}
+          Terraform root: ${{ steps.target.outputs.root }}
+          AWS account: 982529430654
+          AWS region: $AWS_REGION
+          State bucket: landit-terraform-state-982529430654
+          State key: ${{ steps.target.outputs.state-key }}
+          Apply environment: ${{ steps.target.outputs.apply-environment }}
+          EOF
+
       - name: Require main branch for apply
-        if: ${{ inputs.apply == true && github.ref != 'refs/heads/main' }}
+        if: ${{ inputs.operation == 'plan-and-apply' && github.ref != 'refs/heads/main' }}
         run: |
           echo "::error::Apply is only allowed from refs/heads/main."
+          exit 1
+
+      - name: Require production confirmation
+        if: ${{ inputs.operation == 'plan-and-apply' && inputs.target == 'production' && inputs.confirm_environment != 'production' }}
+        run: |
+          echo "::error::Production apply requires confirm_environment=production."
           exit 1
 
       - name: Check AWS role variable
@@ -117,8 +145,8 @@ jobs:
     name: Apply
     runs-on: ubuntu-latest
     needs: plan
-    if: ${{ inputs.apply == true }}
-    environment: terraform-apply
+    if: ${{ inputs.operation == 'plan-and-apply' }}
+    environment: terraform-apply-${{ inputs.target }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

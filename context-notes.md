@@ -193,3 +193,13 @@
 - 현재 받은 Supabase pooler URL은 session pooler 형태로 취급한다.
 - secret 값은 출력하지 않았고 repo 파일에도 기록하지 않았다.
 - 검증은 `get-parameters-by-path`에서 parameter name, type, version만 조회하는 방식으로 수행했다.
+
+## 2026-06-28 SSM DB_URL JDBC 형식 수정
+
+- BE 로컬 연결 확인 결과 기존 `DB_URL` 형식이 Java JDBC 연결에 맞지 않는 것으로 확인됐다.
+- 기존 `DB_URL`은 일반 Postgres URI 형태였고 username과 password를 URL 안에 포함했다.
+- BE는 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`를 별도 env var로 읽으므로 `DB_URL`에는 credential을 넣지 않는다.
+- develop과 prod의 `DB_URL`을 `jdbc:postgresql://{host}:5432/postgres?sslmode=require&prepareThreshold=0` 형식으로 갱신했다.
+- develop과 prod의 `DB_URL` parameter version은 `2`가 됐다.
+- `DB_USERNAME`, `DB_PASSWORD`는 기존 version `1`을 유지했다.
+- 값 검증은 하지 않고 parameter name, type, version만 조회했다.

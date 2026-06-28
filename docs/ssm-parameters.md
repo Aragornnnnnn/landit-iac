@@ -10,6 +10,8 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 - development path는 `/landit/develop`입니다.
 - production path는 `/landit/prod`입니다.
 - secret 값은 Terraform state에 남기지 않기 위해 Terraform 밖에서 SSM Parameter Store에 작성합니다.
+- DB 연결 URL은 Java JDBC용 `jdbc:postgresql://` 형식으로 저장합니다.
+- DB 연결 URL에는 username과 password를 넣지 않고 `DB_USERNAME`, `DB_PASSWORD`를 별도로 사용합니다.
 - DB 연결 URL에는 `sslmode=require`와 `prepareThreshold=0` query parameter를 포함합니다.
 - 현재 받은 Supabase pooler URL은 session pooler 형태로 취급합니다.
 
@@ -17,7 +19,7 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 
 | Path pattern | Type | 용도 |
 | --- | --- | --- |
-| `/landit/{environment}/DB_URL` | `SecureString` | backend database connection URL |
+| `/landit/{environment}/DB_URL` | `SecureString` | backend JDBC database connection URL |
 | `/landit/{environment}/DB_USERNAME` | `SecureString` | backend database username |
 | `/landit/{environment}/DB_PASSWORD` | `SecureString` | backend database password |
 | `/landit/{environment}/OPENROUTER_API_KEY` | `SecureString` | AI API provider key |
@@ -26,6 +28,14 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/OPENROUTER_MODEL` | `String` | 기본 OpenRouter model |
 
 `{environment}`는 `develop` 또는 `prod`만 사용합니다.
+
+## DB URL 형식
+
+`DB_URL`은 아래 형식을 사용합니다. username과 password는 포함하지 않습니다.
+
+```text
+jdbc:postgresql://{host}:5432/postgres?sslmode=require&prepareThreshold=0
+```
 
 ## 검증 명령
 

@@ -131,6 +131,15 @@
 - [x] parameter name, type, version만 조회해 반영 상태를 검증한다.
 - [x] SSM parameter registry 문서를 추가한다.
 
+## 2026-06-28 SSM DB_URL JDBC 형식 수정
+
+- [x] 기존 `DB_URL`이 Java JDBC용으로 부적합한 `postgresql://` 형식임을 확인한다.
+- [x] develop `DB_URL`을 credential 없는 `jdbc:postgresql://` 형식으로 갱신한다.
+- [x] prod `DB_URL`을 credential 없는 `jdbc:postgresql://` 형식으로 갱신한다.
+- [x] `DB_USERNAME`, `DB_PASSWORD`는 기존 SecureString parameter로 유지한다.
+- [x] parameter name, type, version만 조회해 반영 상태를 검증한다.
+- [x] SSM parameter 문서에 DB URL 형식 규칙을 기록한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.

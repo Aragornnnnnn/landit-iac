@@ -25,8 +25,9 @@
 - frontend를 Vercel, S3 plus CloudFront, Amplify, 다른 방식 중 무엇으로 배포할지 결정 필요.
 - AI 서비스를 backend 내부 기능으로 둘지, 별도 런타임으로 둘지 결정 필요.
 - Terraform GitHub Actions는 `Aragornnnnnn/landit-iac`에서 실행한다.
-- plan job OIDC subject는 `repo:Aragornnnnnn/landit-iac:environment:terraform-plan`로 둔다.
-- apply job OIDC subject는 `repo:Aragornnnnnn/landit-iac:environment:terraform-apply`로 둔다.
+- plan job OIDC subject는 `terraform-plan-develop`, `terraform-plan-production` environment 기준으로 둔다.
+- apply job OIDC subject는 `terraform-apply-develop`, `terraform-apply-production` environment 기준으로 둔다.
+- 일반 workflow target은 `develop`, `production`만 노출하고 bootstrap은 관리자 절차로 분리한다.
 - GitHub Actions용 AWS IAM role과 세부 권한은 결정 필요.
 
 ## 도메인과 네트워크

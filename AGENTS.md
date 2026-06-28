@@ -22,7 +22,8 @@
 - 가능한 경우 `terraform validate`와 `terraform plan`으로 검증하되, backend, profile, tfvars가 미정이면 실행하지 않은 이유를 보고한다.
 - `terraform plan` 없이 `terraform apply`를 실행하지 않는다.
 - `terraform apply`, `terraform destroy`, 실제 AWS 리소스 생성, 변경, 삭제는 사용자 확인 후에만 실행한다.
-- GitHub Actions apply는 `terraform-apply` environment required reviewer 승인 뒤에만 실행한다.
+- GitHub Actions apply는 `terraform-apply-develop` 또는 `terraform-apply-production` environment required reviewer 승인 뒤에만 실행한다.
+- 일반 Terraform workflow는 `develop`과 `production` target만 노출하고, bootstrap 작업은 일반 workflow에서 실행하지 않는다.
 - AWS profile은 `landit`, 기본 region은 `ap-northeast-2`, AWS account는 `982529430654`를 기준으로 한다.
 - Terraform state bucket은 `landit-terraform-state-982529430654`를 사용한다.
 - production state key는 `prod/landit-iac/terraform.tfstate`, development state key는 `dev/landit-iac/terraform.tfstate`를 사용한다.
@@ -42,6 +43,8 @@
 
 ## Git / 검증
 
+- 작업에는 issue number가 필요하며, 없으면 사용자에게 issue number를 요청한다.
+- 작업 브랜치는 `feat/{issue number}` 형식으로 만들고, 환경별 브랜치 이름을 만들지 않는다.
 - 변경 후 `git diff`와 `git status --short`로 의도하지 않은 변경이 없는지 확인한다.
 - 검증 명령은 최종 응답에 실제 실행한 명령과 결과를 함께 보고한다.
 - 커밋 메시지는 하나의 논리 변경을 설명하는 한글 문장으로 작성한다.

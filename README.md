@@ -120,7 +120,7 @@ AWS_PROFILE=landit terraform -chdir=environments/dev plan
 
 production root도 같은 흐름을 사용하되 `environments/prod`에서 실행합니다.
 
-state bucket이 아직 없으면 dev/prod root의 `terraform plan`은 `Backend initialization required` 또는 backend 초기화 오류로 중단될 수 있습니다. 이 단계에서는 `terraform validate`와 bootstrap root의 `terraform plan`까지만 검증합니다.
+state bucket이 이미 준비되어 있으므로 dev/prod root는 S3 backend로 `terraform init`, `terraform validate`, `terraform plan`을 실행합니다.
 
 `terraform apply`와 `terraform destroy`는 사용자 확인 없이는 실행하지 않습니다. `terraform plan` 결과를 먼저 확인한 뒤 실제 리소스 변경 여부를 명확히 보고해야 합니다.
 
@@ -130,25 +130,43 @@ state bucket이 아직 없으면 dev/prod root의 `terraform plan`은 `Backend i
 
 입력값은 다음과 같습니다.
 
-- `target`: `bootstrap-state-backend`, `dev`, `prod` 중 하나.
-- `apply`: `false`면 plan만 실행하고, `true`면 plan 후 `terraform-apply` environment 승인을 기다렸다가 apply를 실행한다.
+- `target`: `develop`, `production` 중 하나.
+- `operation`: `plan-only` 또는 `plan-and-apply`.
+- `confirm_environment`: production apply를 실행할 때만 `production`을 입력한다.
 
 필요한 GitHub 설정입니다.
 
 - Repository variable 또는 environment variable `AWS_ROLE_ARN`에 GitHub Actions OIDC assume role ARN을 설정한다.
-- `terraform-plan` environment를 만든다. required reviewer는 필요 없다.
-- `terraform-apply` environment를 만들고 required reviewer를 설정한다.
+- `terraform-plan-develop`, `terraform-plan-production` environment를 만든다. required reviewer는 필요 없다.
+- `terraform-apply-develop`, `terraform-apply-production` environment를 만들고 required reviewer를 설정한다.
+- `terraform-apply-production`에는 production 담당자의 required reviewer와 prevent self-review를 설정한다.
 - apply는 `refs/heads/main`에서만 허용된다.
 
 workflow는 다음 순서로 실행됩니다.
 
-1. 선택한 root에서 `terraform fmt -recursive -check`, `terraform init`, `terraform validate`를 실행한다.
-2. `terraform plan -out`으로 plan 파일을 만들고 plan 내용을 로그에 출력한다.
-3. plan 파일을 1일 보관 artifact로 업로드한다.
-4. `apply=true`일 때만 `terraform-apply` environment 승인을 기다린다.
-5. 승인 후 같은 plan artifact를 내려받아 `terraform apply`를 실행한다.
+1. 선택한 target의 Terraform root, state key, AWS account, AWS region, apply environment를 로그에 출력한다.
+2. 선택한 root에서 `terraform fmt -recursive -check`, `terraform init`, `terraform validate`를 실행한다.
+3. `terraform plan -out`으로 plan 파일을 만들고 plan 내용을 로그에 출력한다.
+4. plan 파일을 1일 보관 artifact로 업로드한다.
+5. `operation=plan-and-apply`일 때만 target별 apply environment 승인을 기다린다.
+6. 승인 후 같은 plan artifact를 내려받아 `terraform apply`를 실행한다.
 
-OIDC IAM role은 아직 Terraform으로 만들지 않았습니다. role trust policy는 최소한 `repo:Aragornnnnnn/landit-iac:environment:terraform-plan`과 `repo:Aragornnnnnn/landit-iac:environment:terraform-apply` subject를 허용해야 합니다.
+production apply는 `operation=plan-and-apply`, `target=production`, `confirm_environment=production`, `refs/heads/main`, `terraform-apply-production` 승인이 모두 충족되어야 실행됩니다.
+
+`bootstrap/state-backend`는 일반 workflow target으로 노출하지 않습니다. state bucket이나 backend 정책 변경은 별도 관리자 절차로 다룹니다.
+
+OIDC IAM role은 아직 Terraform으로 만들지 않았습니다. role trust policy는 최소한 아래 subject를 허용해야 합니다.
+
+- `repo:Aragornnnnnn/landit-iac:environment:terraform-plan-develop`.
+- `repo:Aragornnnnnn/landit-iac:environment:terraform-plan-production`.
+- `repo:Aragornnnnnn/landit-iac:environment:terraform-apply-develop`.
+- `repo:Aragornnnnnn/landit-iac:environment:terraform-apply-production`.
+
+## Git 작업 흐름
+
+일반 작업은 issue number를 먼저 정하고 `feat/{issue number}` 브랜치에서 진행합니다. 브랜치는 작업 단위를 나타내고, `develop`/`production`은 Terraform target과 state key로만 구분합니다.
+
+환경별 브랜치인 `develop` 또는 `production` 브랜치는 만들지 않습니다. 같은 IaC 코드가 target별 root와 state에 적용되는 구조를 유지합니다.
 
 ## State와 secret
 

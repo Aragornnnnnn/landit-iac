@@ -162,18 +162,6 @@ OIDC IAM role은 아직 Terraform으로 만들지 않았습니다. role trust po
 - SSM path 후보는 `/landit/prod`, `/landit/develop`입니다.
 - state key는 `prod/landit-iac/terraform.tfstate`, `dev/landit-iac/terraform.tfstate`입니다.
 
-## 아직 결정 필요
-
-- dev/prod Terraform root 분리 방식과 module 공유 방식.
-- backend 배포 방식.
-- frontend 배포 방식.
-- AI 서비스 분리 여부와 배포 방식.
-- SSM Parameter Store path 최종 규칙.
-- GitHub Actions OIDC IAM role과 trust policy.
-- 도메인, DNS provider, TLS 종료 위치.
-- VPC, subnet, database, cache, object storage, CDN, logging 구성.
-- secret 주입 방식과 운영자 접근 절차.
-
 ## 디렉터리 구조
 
 ```text

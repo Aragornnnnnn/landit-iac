@@ -169,7 +169,7 @@
 - [x] prod API host를 `api.landit.im`으로 정정한다.
 - [x] 잘못 요청한 `api-landit.im` pending ACM 인증서를 삭제한다.
 - [x] Vercel에 추가한 prod `api`, `ai` CNAME의 DNS resolve와 HTTPS ALB 응답을 검증한다.
-- [ ] prod ECR에 BE와 AI image를 push한 뒤 ECS service와 target health를 검증한다.
+- [x] prod ECR에 BE와 AI image를 push한 뒤 ECS service와 target health를 검증한다.
 - [x] Vercel DNS에 등록할 `Name`, `Type`, `Value`, `Comment`를 정리한다.
 - [x] `git diff`와 `git status --short`로 변경 범위를 확인한다.
 

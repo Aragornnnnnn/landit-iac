@@ -262,7 +262,13 @@
 - 사용자가 Vercel에 prod `api`와 `ai` CNAME을 추가했다.
 - `api.landit.im`과 `ai.landit.im`은 모두 `prod-landit-alb-1073541301.ap-northeast-2.elb.amazonaws.com`으로 resolve된다.
 - `https://api.landit.im/actuator/health`와 `https://ai.landit.im/health`는 TLS와 ALB 연결은 성공하지만 현재 `HTTP 503`을 반환한다.
-- 503 원인은 prod ECR `prod-landit-api`, `prod-landit-worker`가 비어 있어 ECS task가 `CannotPullContainerError`로 시작하지 못하고 target group에 target이 없기 때문이다.
+- 사용자가 BE와 AI prod를 모두 배포했다고 알려준 뒤 다시 검증했다.
+- `https://api.landit.im/actuator/health`는 `HTTP 200`과 `{"groups":["liveness","readiness"],"status":"UP"}`를 반환했다.
+- `https://ai.landit.im/health`는 `HTTP 200`과 `{"status":"ok"}`를 반환했다.
+- `prod-landit-api`, `prod-landit-worker` ECS service는 모두 `ACTIVE`, desired/running `1/1`, PRIMARY deployment `COMPLETED` 상태이다.
+- `prod-landit-api` target group은 새 target `10.10.0.180:8080`이 `healthy`이고 이전 target `10.10.0.253:8080`은 draining 상태이다.
+- `prod-landit-ai` target group은 `10.10.1.233:8000`이 `healthy` 상태이다.
+- 이전 `HTTP 503` 원인은 prod ECR `prod-landit-api`, `prod-landit-worker`가 비어 있어 ECS task가 `CannotPullContainerError`로 시작하지 못하고 target group에 target이 없었기 때문이다.
 
 ## 2026-07-09 Auth token 만료시간 SSM 추가
 

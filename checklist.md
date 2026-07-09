@@ -208,6 +208,14 @@
 - [x] develop CORS preflight와 health check를 검증한다.
 - [x] 변경 내용을 커밋하고 `origin/main`으로 push한다.
 
+## 2026-07-09 SSM runtime 주입 규칙 문서화
+
+- [x] 현재 git 상태와 SSM 문서를 확인한다.
+- [x] SSM 생성과 ECS task definition secret 주입이 별도 단계임을 문서화한다.
+- [x] 기존 SSM 값 변경 후에도 ECS 새 deployment가 필요함을 문서화한다.
+- [x] `git diff`와 `git status --short`로 변경 범위를 확인한다.
+- [x] 변경 내용을 커밋한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.

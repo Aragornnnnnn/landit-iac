@@ -318,3 +318,9 @@
 - prod도 task definition secrets 주입은 반영됐지만, `https://api.landit.im` CORS smoke 응답에는 아직 `access-control-allow-origin` header가 없다.
 - prod SSM `/landit/prod/LANDIT_CORS_ALLOWED_ORIGINS` 값에는 `https://landit.im`, `https://test.landit.im`이 포함되어 있으므로, prod CORS header 부재는 이번 IaC secret wiring과 별개로 prod BE image/code 또는 rollout 상태를 추가 확인해야 한다.
 - apply 후 develop/prod `terraform plan -detailed-exitcode`는 모두 `No changes`를 반환했다.
+
+## 2026-07-09 SSM runtime 주입 규칙 문서화
+
+- 이번 CORS/auth 누락은 SSM parameter 생성과 ECS task definition secret 주입이 별도 단계라는 점을 문서에 충분히 드러내지 못해 발생했다.
+- 새 SSM parameter를 추가할 때는 Parameter Store 생성, registry 기록, Terraform task definition `secrets` 연결, plan/apply, `describe-task-definition` 확인, 실제 endpoint 검증을 한 흐름으로 처리한다.
+- 기존 SSM parameter 값만 바꿀 때도 running task에는 자동 반영되지 않는다. ECS secret은 container 시작 시점에 주입되므로 값 변경 후 새 deployment가 필요하다.

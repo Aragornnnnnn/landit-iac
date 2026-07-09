@@ -140,6 +140,49 @@
 - [x] parameter name, type, version만 조회해 반영 상태를 검증한다.
 - [x] SSM parameter 문서에 DB URL 형식 규칙을 기록한다.
 
+## 2026-07-07 develop API ECS health check grace period 수정
+
+- [x] 현재 `develop-landit-api` ECS service 설정을 확인한다.
+- [x] health check grace period를 180초로 수정한다.
+- [x] 수정 후 ECS service 설정을 확인한다.
+- [x] target group health를 확인한다.
+
+## 2026-07-09 BE와 AI ALB 라우팅 구성
+
+- [x] 이번 작업은 사용자 요청에 따라 issue number 없이 진행한다.
+- [x] 현재 git 상태와 기존 미커밋 문서 변경을 확인한다.
+- [x] live develop Terraform state와 현재 checkout의 차이를 확인한다.
+- [x] `feat/LAN-45`의 app platform Terraform 코드를 현재 작업 브랜치로 가져온다.
+- [x] develop ALB에 AI target group과 host rule을 추가한다.
+- [x] prod ALB와 BE, AI target group, HTTPS listener 구성을 추가한다.
+- [x] BE API task에 AI client SSM parameter 주입 구성을 추가한다.
+- [x] wildcard ACM 인증서를 요청하고 Vercel DNS 검증 record를 확인한다.
+- [x] develop과 prod SSM에 AI client parameter를 추가한다.
+- [x] SSM parameter registry와 작업 문서를 갱신한다.
+- [x] `terraform fmt -recursive`를 실행한다.
+- [x] develop과 prod Terraform validate를 실행한다.
+- [x] 가능한 범위에서 Terraform plan을 확인한다.
+- [x] develop Terraform plan을 apply한다.
+- [x] develop ALB listener rule, ECS service, target health, 외부 HTTPS health check를 검증한다.
+- [x] prod Terraform plan을 apply한다.
+- [x] prod ALB listener rule과 Terraform state 정합성을 검증한다.
+- [x] prod API host를 `api.landit.im`으로 정정한다.
+- [x] 잘못 요청한 `api-landit.im` pending ACM 인증서를 삭제한다.
+- [x] Vercel에 추가한 prod `api`, `ai` CNAME의 DNS resolve와 HTTPS ALB 응답을 검증한다.
+- [ ] prod ECR에 BE와 AI image를 push한 뒤 ECS service와 target health를 검증한다.
+- [x] Vercel DNS에 등록할 `Name`, `Type`, `Value`, `Comment`를 정리한다.
+- [x] `git diff`와 `git status --short`로 변경 범위를 확인한다.
+
+## 2026-07-09 Auth token 만료시간 SSM 추가
+
+- [x] 현재 git 상태와 관련 문서를 확인한다.
+- [x] 기존 `LANDIT_AUTH_TOKEN_*` parameter 등록 상태를 값 없이 확인한다.
+- [x] develop SSM에 access token, refresh token 만료시간 parameter를 작성한다.
+- [x] prod SSM에 access token, refresh token 만료시간 parameter를 작성한다.
+- [x] parameter name, type, version만 조회해 반영 상태를 검증한다.
+- [x] SSM parameter registry와 작업 기록을 갱신한다.
+- [x] `git diff`와 `git status --short`로 변경 범위를 확인한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.

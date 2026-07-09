@@ -22,6 +22,10 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/DB_URL` | `SecureString` | backend JDBC database connection URL |
 | `/landit/{environment}/DB_USERNAME` | `SecureString` | backend database username |
 | `/landit/{environment}/DB_PASSWORD` | `SecureString` | backend database password |
+| `/landit/{environment}/LANDIT_AI_CLIENT_MODE` | `String` | backend AI client mode |
+| `/landit/{environment}/LANDIT_AI_BASE_URL` | `String` | backend에서 호출하는 AI service base URL |
+| `/landit/{environment}/LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS` | `String` | backend access token 만료시간, 초 단위 |
+| `/landit/{environment}/LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS` | `String` | backend refresh token 만료시간, 초 단위 |
 | `/landit/{environment}/OPENROUTER_API_KEY` | `SecureString` | AI API provider key |
 | `/landit/{environment}/LLM_PROVIDER` | `String` | LLM provider identifier |
 | `/landit/{environment}/OPENROUTER_BASE_URL` | `String` | OpenRouter API base URL |
@@ -54,6 +58,6 @@ AWS_PROFILE=landit AWS_REGION=ap-northeast-2 \
 
 - SSM 값은 shell history, CI log, git diff에 남지 않는 방식으로 갱신합니다.
 - `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `OPENROUTER_API_KEY`는 `SecureString`으로만 관리합니다.
-- `LLM_PROVIDER`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`은 secret이 아니므로 `String`으로 관리합니다.
+- `LANDIT_AI_CLIENT_MODE`, `LANDIT_AI_BASE_URL`, `LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS`, `LLM_PROVIDER`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`은 secret이 아니므로 `String`으로 관리합니다.
 - Terraform에서 secret 값을 직접 생성하거나 import하지 않습니다.
 - 값 변경 후에는 값 자체가 아니라 parameter name, type, version만 검증 기록에 남깁니다.

@@ -2,7 +2,7 @@
 
 Landit 서비스의 Infrastructure as Code 레포입니다.
 
-이 레포는 현재 초기 세팅 단계입니다. 최종 인프라 구성과 아키텍처는 아직 확정되지 않았고, 실제 애플리케이션 리소스도 만들지 않았습니다.
+이 레포는 Landit의 Terraform backend, SSM runtime parameter, ECS Fargate application platform을 관리합니다. production 적용은 Terraform plan과 사용자 확인을 먼저 거친 뒤 진행합니다.
 
 ## 현재 상태
 
@@ -15,8 +15,9 @@ Landit 서비스의 Infrastructure as Code 레포입니다.
 | 일반 workflow target | `develop`, `production` |
 | Bootstrap | state bucket 관리자 절차로 분리 |
 | SSM Parameter Store | develop/prod 기본 runtime parameter 준비 완료 |
-| 실제 서비스 리소스 | 아직 만들지 않음 |
-| 아키텍처 | 확정 전 |
+| Application platform | develop/prod ECS, ALB, ECR, SQS, S3 구성 생성 완료 |
+| Production platform | prod runtime image push 필요 |
+| Public ingress | 환경별 BE와 AI host rule로 분리 |
 
 ## 문서
 
@@ -43,14 +44,18 @@ Landit 서비스의 Infrastructure as Code 레포입니다.
 | bootstrap state key | `bootstrap/state-backend/terraform.tfstate` |
 | AWS profile | `landit` |
 | AWS region | `ap-northeast-2` |
+| backend develop URL | `https://api-develop.landit.im` |
+| backend production URL | `https://api.landit.im` |
+| AI develop URL | `https://ai-develop.landit.im` |
+| AI production URL | `https://ai.landit.im` |
 
 ## 범위
 
-- IaC 작업 규칙과 문서 구조를 준비합니다.
-- dev/prod Terraform root를 나중에 확장할 수 있도록 최소 구조만 둡니다.
-- Terraform provider, version, 공통 태그, S3 backend 기준만 둡니다.
-- EC2, ECS, RDS, Vercel, CloudFront, Route53 같은 실제 서비스 리소스는 아직 만들지 않습니다.
-- SSM Parameter Store에는 초기 runtime parameter만 Terraform 밖에서 준비했습니다.
+- Terraform backend, GitHub Actions, ECS Fargate application platform을 관리합니다.
+- develop은 기존 ALB에 BE와 AI host rule을 함께 둡니다.
+- production은 별도 ALB에 BE와 AI host rule을 함께 둡니다.
+- DNS record는 Vercel에서 관리하므로 Terraform은 Route53 record를 만들지 않습니다.
+- SSM Parameter Store에는 runtime parameter를 Terraform 밖에서 준비합니다.
 - `terraform apply`, `terraform destroy`, 실제 AWS 리소스 생성, 변경, 삭제는 사용자 확인 없이는 실행하지 않습니다.
 
 ## 주요 경로
@@ -60,5 +65,6 @@ Landit 서비스의 Infrastructure as Code 레포입니다.
 | `bootstrap/state-backend` | Terraform state bucket 관리자 root |
 | `environments/dev` | development Terraform root |
 | `environments/prod` | production Terraform root |
+| `modules/app-platform` | ECS Fargate application platform module |
 | `.github/workflows/terraform.yml` | 수동 Terraform plan/apply workflow |
 | `docs/` | 개발자 가이드와 아키텍처 질문 |

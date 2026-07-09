@@ -203,3 +203,75 @@
 - develop과 prod의 `DB_URL` parameter version은 `2`가 됐다.
 - `DB_USERNAME`, `DB_PASSWORD`는 기존 version `1`을 유지했다.
 - 값 검증은 하지 않고 parameter name, type, version만 조회했다.
+
+## 2026-07-07 develop API ECS health check grace period 수정
+
+- GitHub Actions run `28803359543`은 Docker build와 push가 아니라 `Verify ECS service` 단계에서 길어졌다.
+- `develop-landit-api`의 새 task가 Spring Boot 부팅 완료 전에 ALB `/actuator/health` 검사에 실패했고, ECS stopped reason은 `Task failed ELB health checks`였다.
+- 수정 전 `develop-landit-api`의 `healthCheckGracePeriodSeconds`는 `0`이었다.
+- 현재 Landit IaC repo는 ECS service 리소스를 Terraform으로 관리하지 않으므로, 이번 수정은 live ECS service 설정 변경으로 처리한다.
+- 최소 수정은 `healthCheckGracePeriodSeconds`를 `180`으로 올리는 것이다.
+- `aws ecs update-service --health-check-grace-period-seconds 180`으로 live ECS service 설정을 수정했다.
+- 이미 실패한 deployment가 새 설정으로 재시도되지 않아 `--force-new-deployment`를 한 번 실행했다.
+- 검증 결과 `develop-landit-api`는 `healthCheckGracePeriodSeconds=180`, PRIMARY deployment `COMPLETED`, desired/running `1/1` 상태가 됐다.
+- ALB target `10.20.0.254:8080`은 `healthy`이고, `https://api-develop.landit.im/actuator/health`는 `HTTP 200`과 `{"status":"UP"}`를 반환했다.
+
+## 2026-07-09 BE와 AI ALB 라우팅 구성
+
+- 사용자가 이번 작업은 issue number 없이 시작하라고 명시했다.
+- 작업 브랜치는 issue number 대신 `feat/alb-routing`으로 만든다.
+- 도메인은 `be-prod=api.landit.im`, `be-develop=api-develop.landit.im`, `ai-prod=ai.landit.im`, `ai-develop=ai-develop.landit.im`로 결정했다.
+- `be-develop`은 기존 `api-develop.landit.im` 설정을 유지한다.
+- Vercel에서 DNS를 등록해야 하므로 Terraform이 Route53 record를 직접 만들지는 않는다.
+- develop은 기존 `develop-landit-alb`를 재사용하고, AI target group과 host rule을 추가하는 방향으로 간다.
+- prod는 운영 배포 전 준비를 위해 `prod-landit-alb`와 BE, AI target group을 Terraform으로 준비한다.
+- AI는 Fargate task public IP를 직접 쓰지 않는다. task public IP는 Elastic IP가 아니며 재배포 때 바뀔 수 있다.
+- live develop Terraform state에는 `module.app_platform` 리소스가 있지만 현재 `main` checkout에는 `modules/app-platform` 코드가 없다.
+- `feat/LAN-45` 브랜치에 app platform module과 dev HTTPS ALB 작업 코드가 있으므로 이번 브랜치에 필요한 Terraform 코드를 먼저 가져온 뒤 수정한다.
+- `feat/LAN-45`의 app platform module, dev/prod root module call, outputs, variables를 현재 브랜치로 가져왔다.
+- 기존 develop ACM 인증서 `2bc5fd3c-33cd-4c12-8867-ba3bf537b68d`는 `api-develop.landit.im`, `api.landit.im`만 포함하고, `ai-develop.landit.im`, `ai.landit.im`은 포함하지 않는다.
+- `ai.landit.im`, `api-develop.landit.im`, `ai-develop.landit.im`은 `*.landit.im` wildcard 인증서로 처리할 수 있다.
+- `api.landit.im`도 `*.landit.im` wildcard 인증서로 처리할 수 있으므로 별도 ACM 인증서는 필요 없다.
+- ACM wildcard 인증서 `arn:aws:acm:ap-northeast-2:982529430654:certificate/c27457fe-4469-4944-a5d4-322569ddd549`를 요청했다.
+- wildcard 인증서는 현재 `PENDING_VALIDATION` 상태이고, Vercel DNS에 ACM validation CNAME을 추가해야 한다.
+- develop과 prod의 `alb_certificate_arn` 기본값은 새 wildcard 인증서 ARN으로 맞췄다.
+- Vercel validation 전에는 wildcard 인증서가 `ISSUED`가 아니므로 Terraform apply를 실행하지 않는다.
+- SSM에 `/landit/develop/LANDIT_AI_CLIENT_MODE`, `/landit/develop/LANDIT_AI_BASE_URL`, `/landit/prod/LANDIT_AI_CLIENT_MODE`, `/landit/prod/LANDIT_AI_BASE_URL`을 `String` type으로 추가했다.
+- SSM parameter 검증은 값 없이 name, type, version만 조회했고 네 parameter 모두 version `1`이다.
+- 사용자가 Vercel에 ACM validation CNAME과 `ai-develop.landit.im` CNAME을 추가한 뒤 wildcard 인증서가 `ISSUED` 상태가 됐다.
+- `ai-develop.landit.im`은 `develop-landit-alb-786000484.ap-northeast-2.elb.amazonaws.com`으로 resolve된다.
+- `terraform -chdir=environments/dev apply /tmp/landit-develop-alb-routing.tfplan`을 실행했고 결과는 `5 added, 4 changed, 2 destroyed`이다.
+- develop output은 `api_domain_name=api-develop.landit.im`, `ai_domain_name=ai-develop.landit.im`, `alb_dns_name=develop-landit-alb-786000484.ap-northeast-2.elb.amazonaws.com`, `alb_zone_id=ZWKZPGTI48KDX`이다.
+- develop HTTPS listener에는 wildcard ACM 인증서 `arn:aws:acm:ap-northeast-2:982529430654:certificate/c27457fe-4469-4944-a5d4-322569ddd549`가 붙었다.
+- develop HTTPS listener host rule은 priority `100`의 `api-develop.landit.im` -> API target group, priority `110`의 `ai-develop.landit.im` -> AI target group이다.
+- ECS service는 `develop-landit-api` task definition revision `4`, `develop-landit-worker` task definition revision `2`로 배포 완료됐다.
+- AI target group은 `10.20.0.138:8000`이 `healthy` 상태이고, `https://ai-develop.landit.im/health`는 `HTTP 200`과 `{"status":"ok"}`를 반환했다.
+- API는 `https://api-develop.landit.im/actuator/health`에서 `HTTP 200`과 `status=UP`을 반환했다.
+- `terraform -chdir=environments/prod apply /tmp/landit-prod-alb-routing.tfplan`을 실행했고 결과는 `37 added, 0 changed, 0 destroyed`이다.
+- prod 첫 apply output은 `api_domain_name=api-landit.im`, `ai_domain_name=ai.landit.im`, `alb_dns_name=prod-landit-alb-1073541301.ap-northeast-2.elb.amazonaws.com`, `alb_zone_id=ZWKZPGTI48KDX`이다.
+- prod HTTPS listener에는 wildcard ACM 인증서 `arn:aws:acm:ap-northeast-2:982529430654:certificate/c27457fe-4469-4944-a5d4-322569ddd549`가 붙었다.
+- prod 첫 apply 직후 HTTPS listener host rule은 priority `100`의 `api-landit.im` -> API target group, priority `110`의 `ai.landit.im` -> AI target group이다.
+- prod ECR `prod-landit-api`, `prod-landit-worker`는 생성됐지만 아직 image가 없어 ECS task가 `CannotPullContainerError`로 시작하지 못한다.
+- prod API task image는 `982529430654.dkr.ecr.ap-northeast-2.amazonaws.com/prod-landit-api:latest`, AI task image는 `982529430654.dkr.ecr.ap-northeast-2.amazonaws.com/prod-landit-worker:latest`를 참조한다.
+- prod target group은 image push와 task 정상 기동 전까지 target health가 비어 있는 상태가 정상이다.
+- `api-landit.im`은 사용하지 않는 도메인이므로 prod API host를 `api.landit.im`으로 정정한다.
+- `terraform -chdir=environments/prod apply /tmp/landit-prod-api-domain-fix.tfplan`을 실행했고 결과는 `0 added, 1 changed, 0 destroyed`이다.
+- prod HTTPS listener host rule은 priority `100`의 `api.landit.im` -> API target group, priority `110`의 `ai.landit.im` -> AI target group으로 정정됐다.
+- prod output은 `api_domain_name=api.landit.im`, `ai_domain_name=ai.landit.im`, `alb_dns_name=prod-landit-alb-1073541301.ap-northeast-2.elb.amazonaws.com`, `alb_zone_id=ZWKZPGTI48KDX`이다.
+- 잘못 요청한 `api-landit.im`용 pending ACM 인증서 `arn:aws:acm:ap-northeast-2:982529430654:certificate/9134c8af-df0a-4a94-9906-061135f23996`는 삭제했다.
+- 사용자가 Vercel에 prod `api`와 `ai` CNAME을 추가했다.
+- `api.landit.im`과 `ai.landit.im`은 모두 `prod-landit-alb-1073541301.ap-northeast-2.elb.amazonaws.com`으로 resolve된다.
+- `https://api.landit.im/actuator/health`와 `https://ai.landit.im/health`는 TLS와 ALB 연결은 성공하지만 현재 `HTTP 503`을 반환한다.
+- 503 원인은 prod ECR `prod-landit-api`, `prod-landit-worker`가 비어 있어 ECS task가 `CannotPullContainerError`로 시작하지 못하고 target group에 target이 없기 때문이다.
+
+## 2026-07-09 Auth token 만료시간 SSM 추가
+
+- 사용자 요청에 따라 BE auth token 만료시간 runtime parameter를 SSM에 추가한다.
+- 대상 path는 기존 Landit runtime path인 `/landit/develop`, `/landit/prod`이다.
+- `LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS` 값은 `21600`초로 둔다.
+- `LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS` 값은 `1209600`초로 둔다.
+- 두 값은 secret이 아니므로 `String` type으로 저장한다.
+- 작업 전 SSM 이름 조회에서 `LANDIT_AUTH_TOKEN_SECRET`만 있었고, 두 만료시간 parameter는 없었다.
+- 현재 checkout에는 기존 미커밋 변경이 있으므로 이번 작업은 해당 SSM 값과 registry 기록만 최소 범위로 갱신한다.
+- SSM 작성 결과 네 parameter 모두 `Standard` tier, version `1`로 생성됐다.
+- 검증은 값 없이 name, type, version, last modified date만 조회하는 방식으로 수행했다.

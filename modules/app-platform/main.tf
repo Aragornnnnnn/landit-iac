@@ -488,6 +488,13 @@ resource "aws_ecs_task_definition" "api" {
         { name = "DB_URL", valueFrom = "${local.ssm_path}/DB_URL" },
         { name = "DB_USERNAME", valueFrom = "${local.ssm_path}/DB_USERNAME" },
         { name = "DB_PASSWORD", valueFrom = "${local.ssm_path}/DB_PASSWORD" },
+        { name = "LANDIT_CORS_ALLOWED_ORIGINS", valueFrom = "${local.ssm_path}/LANDIT_CORS_ALLOWED_ORIGINS" },
+        { name = "LANDIT_AUTH_TOKEN_SECRET", valueFrom = "${local.ssm_path}/LANDIT_AUTH_TOKEN_SECRET" },
+        { name = "LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS", valueFrom = "${local.ssm_path}/LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS" },
+        { name = "LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS", valueFrom = "${local.ssm_path}/LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS" },
+        { name = "LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES", valueFrom = "${local.ssm_path}/LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES" },
+        { name = "LANDIT_AUTH_OIDC_KAKAO_AUDIENCES", valueFrom = "${local.ssm_path}/LANDIT_AUTH_OIDC_KAKAO_AUDIENCES" },
+        { name = "LANDIT_AUTH_OIDC_APPLE_AUDIENCES", valueFrom = "${local.ssm_path}/LANDIT_AUTH_OIDC_APPLE_AUDIENCES" },
         { name = "LANDIT_AI_CLIENT_MODE", valueFrom = "${local.ssm_path}/LANDIT_AI_CLIENT_MODE" },
         { name = "LANDIT_AI_BASE_URL", valueFrom = "${local.ssm_path}/LANDIT_AI_BASE_URL" }
       ]

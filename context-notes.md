@@ -296,3 +296,25 @@
 - prod role에는 BE migration workflow가 사용하는 `/landit/prod/DB_URL`, `/landit/prod/DB_USERNAME`, `/landit/prod/DB_PASSWORD` SSM read 권한도 추가했다.
 - landit-be `prod` GitHub Environment variables에 `AWS_ROLE_ARN`, `AWS_ACCOUNT_ID`, `AWS_REGION`, `ECR_REGISTRY`, `ECR_REPOSITORY`, `ECS_CLUSTER`, `ECS_SERVICE`, `HEALTH_CHECK_URL`을 설정했다.
 - landit-ai repository variables에 `PROD_AWS_ROLE_ARN`, `PROD_WORKER_ECR_REPOSITORY`, `PROD_WORKER_ECR_IMAGE_URI`, `PROD_WORKER_ECS_CLUSTER`, `PROD_WORKER_ECS_SERVICE`를 설정했다.
+
+## 2026-07-09 API task auth/CORS SSM 주입 수정
+
+- develop BE 소셜 로그인 실패는 앱 기동 문제가 아니라 CORS preflight 단계에서 재현됐다.
+- `OPTIONS https://api-develop.landit.im/api/v1/auth/social-login`에 `Origin: https://test.landit.im`을 보내면 `HTTP 403`과 `Invalid CORS request`가 반환됐다.
+- SSM `/landit/develop`에는 `LANDIT_CORS_ALLOWED_ORIGINS`, `LANDIT_AUTH_TOKEN_SECRET`, `LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES`, `LANDIT_AUTH_OIDC_KAKAO_AUDIENCES`, `LANDIT_AUTH_OIDC_APPLE_AUDIENCES`가 이미 존재했다.
+- 하지만 `develop-landit-api:4` task definition의 API container secrets에는 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `LANDIT_AI_CLIENT_MODE`, `LANDIT_AI_BASE_URL`만 들어 있었다.
+- 원인은 SSM parameter 생성과 ECS task definition secret 주입을 별도 작업으로 취급했는데, ALB/ECS 플랫폼 구성에서 CORS와 auth runtime key 주입을 누락한 것이다.
+- API task `secrets`에 CORS, auth token, OIDC audience SSM parameter를 추가한다.
+- `terraform fmt -recursive`를 실행했다.
+- sandbox 안의 `terraform validate`는 AWS provider plugin 실행 실패로 막혔고, 외부 권한으로 재실행한 develop/prod validate는 모두 성공했다.
+- `AWS_PROFILE=landit terraform -chdir=environments/dev plan -out=/tmp/landit-dev-auth-cors-secrets.tfplan` 결과는 API task definition replacement와 ECS service task definition update만 포함했다.
+- `AWS_PROFILE=landit terraform -chdir=environments/prod plan -out=/tmp/landit-prod-auth-cors-secrets.tfplan` 결과도 API task definition replacement와 ECS service task definition update만 포함했다.
+- develop apply 결과는 `1 added, 1 changed, 1 destroyed`이고 `develop-landit-api`는 task definition revision `5`로 배포됐다.
+- prod apply 결과는 `1 added, 1 changed, 1 destroyed`이고 `prod-landit-api`는 task definition revision `2`로 배포됐다.
+- develop/prod API task definition 모두 `LANDIT_CORS_ALLOWED_ORIGINS`, `LANDIT_AUTH_TOKEN_SECRET`, `LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES`, `LANDIT_AUTH_OIDC_KAKAO_AUDIENCES`, `LANDIT_AUTH_OIDC_APPLE_AUDIENCES`를 secrets로 포함한다.
+- `develop-landit-api`, `prod-landit-api` ECS service는 모두 PRIMARY deployment `COMPLETED`, desired/running `1/1` 상태이다.
+- `OPTIONS https://api-develop.landit.im/api/v1/auth/social-login`에 `Origin: https://test.landit.im`을 보내면 `HTTP 200`과 `access-control-allow-origin: https://test.landit.im`을 반환한다.
+- develop social-login invalid token smoke는 `HTTP 400`, `OIDC_TOKEN_INVALID`, `access-control-allow-origin: https://test.landit.im`을 반환해 브라우저가 오류 응답을 읽을 수 있는 상태로 바뀌었다.
+- prod도 task definition secrets 주입은 반영됐지만, `https://api.landit.im` CORS smoke 응답에는 아직 `access-control-allow-origin` header가 없다.
+- prod SSM `/landit/prod/LANDIT_CORS_ALLOWED_ORIGINS` 값에는 `https://landit.im`, `https://test.landit.im`이 포함되어 있으므로, prod CORS header 부재는 이번 IaC secret wiring과 별개로 prod BE image/code 또는 rollout 상태를 추가 확인해야 한다.
+- apply 후 develop/prod `terraform plan -detailed-exitcode`는 모두 `No changes`를 반환했다.

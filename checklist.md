@@ -194,6 +194,20 @@
 - [x] landit-ai repository variables를 설정한다.
 - [x] role trust policy와 GitHub variables 반영 상태를 검증한다.
 
+## 2026-07-09 API task auth/CORS SSM 주입 수정
+
+- [x] develop 소셜 로그인 실패 원인을 CORS preflight와 ECS task definition으로 재현한다.
+- [x] API task definition에 CORS와 auth SSM parameter 주입이 빠진 것을 확인한다.
+- [x] 누락된 CORS와 auth parameter 이름 검증을 실패 상태로 확인한다.
+- [x] API task `secrets`에 CORS와 auth SSM parameter를 추가한다.
+- [x] `terraform fmt -recursive`를 실행한다.
+- [x] develop과 prod Terraform validate를 실행한다.
+- [x] develop과 prod Terraform plan을 확인한다.
+- [x] develop과 prod Terraform apply를 실행한다.
+- [x] develop과 prod API task definition에 CORS와 auth secret 이름이 포함됐는지 확인한다.
+- [x] develop CORS preflight와 health check를 검증한다.
+- [x] 변경 내용을 커밋하고 `origin/main`으로 push한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.

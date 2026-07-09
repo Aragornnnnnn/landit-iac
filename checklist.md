@@ -183,6 +183,17 @@
 - [x] SSM parameter registry와 작업 기록을 갱신한다.
 - [x] `git diff`와 `git status --short`로 변경 범위를 확인한다.
 
+## 2026-07-09 prod GitHub Actions 배포 설정
+
+- [x] landit-ai prod worker deploy 실패 로그를 확인한다.
+- [x] landit-be prod api deploy 실패 로그를 확인한다.
+- [x] 실패 원인이 GitHub Actions 배포 변수 누락임을 확인한다.
+- [x] prod GitHub Actions OIDC IAM role을 생성한다.
+- [x] prod deploy role에 ECR push, ECS update, prod DB SSM read 권한을 추가한다.
+- [x] landit-be prod environment variables를 설정한다.
+- [x] landit-ai repository variables를 설정한다.
+- [x] role trust policy와 GitHub variables 반영 상태를 검증한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.

@@ -85,6 +85,14 @@ OIDC IAM role은 아직 Terraform으로 만들지 않았습니다. role trust po
 - `repo:Aragornnnnnn/landit-iac:environment:terraform-apply-develop`.
 - `repo:Aragornnnnnn/landit-iac:environment:terraform-apply-production`.
 
+Application 배포용 prod OIDC role은 수동으로 관리합니다.
+
+- role ARN은 `arn:aws:iam::982529430654:role/landit-github-actions-prod-deploy`입니다.
+- trust subject는 `repo:Aragornnnnnn/landit-be:environment:prod`, `repo:Aragornnnnnn/landit-ai:ref:refs/heads/main`입니다.
+- 권한은 prod BE/AI ECR push, ECS service update/describe, prod DB SSM parameter read로 제한합니다.
+- `landit-be`는 `prod` GitHub Environment variables로 배포 값을 받습니다.
+- `landit-ai`는 repository variables의 `PROD_*` 값으로 배포 값을 받습니다.
+
 ## Git 작업 흐름
 
 - 일반 작업은 issue number를 먼저 정하고 `feat/{issue number}` 브랜치에서 진행합니다.

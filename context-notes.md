@@ -275,3 +275,18 @@
 - 현재 checkout에는 기존 미커밋 변경이 있으므로 이번 작업은 해당 SSM 값과 registry 기록만 최소 범위로 갱신한다.
 - SSM 작성 결과 네 parameter 모두 `Standard` tier, version `1`로 생성됐다.
 - 검증은 값 없이 name, type, version, last modified date만 조회하는 방식으로 수행했다.
+
+## 2026-07-09 prod GitHub Actions 배포 설정
+
+- landit-ai run `29005059322`, job `86074581657`은 `Validate deployment settings` 단계에서 실패했다.
+- landit-ai 실패 시점의 env는 `AWS_ROLE_ARN`, `ECR_REPOSITORY`, `ECR_IMAGE_URI`, `ECS_CLUSTER`, `ECS_SERVICE`가 비어 있었다.
+- landit-be run `29005068940`, job `86074610849`도 `Validate deployment settings` 단계에서 실패했다.
+- landit-be 실패 시점의 env는 `AWS_ROLE_ARN`, `AWS_ACCOUNT_ID`, `AWS_REGION`, `ECR_REGISTRY`, `ECR_REPOSITORY`, `ECS_CLUSTER`, `ECS_SERVICE`, `HEALTH_CHECK_URL`이 비어 있었다.
+- 기존 AWS IAM role은 `landit-github-actions-develop-deploy`만 있었고, trust policy는 `repo:Aragornnnnnn/landit-be:environment:develop`, `repo:Aragornnnnnn/landit-ai:environment:develop`만 허용했다.
+- 사용자 승인 후 prod GitHub Actions OIDC role `landit-github-actions-prod-deploy`를 생성했다.
+- prod role ARN은 `arn:aws:iam::982529430654:role/landit-github-actions-prod-deploy`이다.
+- prod role trust policy는 `repo:Aragornnnnnn/landit-be:environment:prod`, `repo:Aragornnnnnn/landit-ai:ref:refs/heads/main`을 허용한다.
+- prod role inline policy는 `prod-landit-api`, `prod-landit-worker` ECR push와 ECS service update/describe를 허용한다.
+- prod role에는 BE migration workflow가 사용하는 `/landit/prod/DB_URL`, `/landit/prod/DB_USERNAME`, `/landit/prod/DB_PASSWORD` SSM read 권한도 추가했다.
+- landit-be `prod` GitHub Environment variables에 `AWS_ROLE_ARN`, `AWS_ACCOUNT_ID`, `AWS_REGION`, `ECR_REGISTRY`, `ECR_REPOSITORY`, `ECS_CLUSTER`, `ECS_SERVICE`, `HEALTH_CHECK_URL`을 설정했다.
+- landit-ai repository variables에 `PROD_AWS_ROLE_ARN`, `PROD_WORKER_ECR_REPOSITORY`, `PROD_WORKER_ECR_IMAGE_URI`, `PROD_WORKER_ECS_CLUSTER`, `PROD_WORKER_ECS_SERVICE`를 설정했다.

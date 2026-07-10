@@ -324,3 +324,10 @@
 - 이번 CORS/auth 누락은 SSM parameter 생성과 ECS task definition secret 주입이 별도 단계라는 점을 문서에 충분히 드러내지 못해 발생했다.
 - 새 SSM parameter를 추가할 때는 Parameter Store 생성, registry 기록, Terraform task definition `secrets` 연결, plan/apply, `describe-task-definition` 확인, 실제 endpoint 검증을 한 흐름으로 처리한다.
 - 기존 SSM parameter 값만 바꿀 때도 running task에는 자동 반영되지 않는다. ECS secret은 container 시작 시점에 주입되므로 값 변경 후 새 deployment가 필요하다.
+
+## 2026-07-11 develop ECS 배포 태스크 진단 권한 추가
+
+- `landit-be`의 새 ECS 배포 검증 스크립트가 `ecs:ListTasks`, `ecs:DescribeTasks`를 호출하면서 GitHub Actions role `landit-github-actions-develop-deploy`이 `AccessDeniedException`으로 실패했다.
+- 이 역할은 현재 Terraform으로 관리하지 않는 inline policy `landit-github-actions-develop-deploy`을 사용한다.
+- 사용자 승인 후 태스크 진단 전용 Statement `DescribeDevelopEcsDeploymentTasks`에 `ecs:ListTasks`, `ecs:DescribeTasks`, `Resource: "*"`를 추가했다.
+- `aws iam get-role-policy`로 두 액션이 정책에 반영된 것을 확인했다.

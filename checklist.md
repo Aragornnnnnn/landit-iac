@@ -216,6 +216,12 @@
 - [x] `git diff`와 `git status --short`로 변경 범위를 확인한다.
 - [x] 변경 내용을 커밋한다.
 
+## 2026-07-11 develop ECS 배포 태스크 진단 권한 추가
+
+- [x] GitHub Actions 역할의 AccessDenied 원인을 확인한다.
+- [x] `ecs:ListTasks`, `ecs:DescribeTasks` 조회 권한을 추가한다.
+- [x] IAM 정책 반영 결과를 확인하고 context note에 기록한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.

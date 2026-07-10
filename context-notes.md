@@ -328,6 +328,6 @@
 ## 2026-07-11 develop ECS 배포 태스크 진단 권한 추가
 
 - `landit-be`의 새 ECS 배포 검증 스크립트가 `ecs:ListTasks`, `ecs:DescribeTasks`를 호출하면서 GitHub Actions role `landit-github-actions-develop-deploy`이 `AccessDeniedException`으로 실패했다.
-- 이 역할은 현재 Terraform으로 관리하지 않는 inline policy `landit-github-actions-develop-deploy`을 사용한다.
-- 사용자 승인 후 태스크 진단 전용 Statement `DescribeDevelopEcsDeploymentTasks`에 `ecs:ListTasks`, `ecs:DescribeTasks`, `Resource: "*"`를 추가했다.
-- `aws iam get-role-policy`로 두 액션이 정책에 반영된 것을 확인했다.
+- develop/prod 배포 역할은 현재 Terraform으로 관리하지 않는 각각의 inline policy를 사용한다.
+- 사용자 승인 후 develop `DescribeDevelopEcsDeploymentTasks`, prod `DescribeProdEcsDeploymentTasks` Statement에 `ecs:ListTasks`, `ecs:DescribeTasks`, `Resource: "*"`를 추가했다.
+- `aws iam get-role-policy`로 두 역할에 해당 액션이 반영된 것을 확인했다.

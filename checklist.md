@@ -222,6 +222,13 @@
 - [x] develop/prod 역할에 `ecs:ListTasks`, `ecs:DescribeTasks` 조회 권한을 추가한다.
 - [x] 두 IAM 정책 반영 결과를 확인하고 context note에 기록한다.
 
+## 2026-07-11 develop API health check grace period 확대
+
+- [x] ALB health check 실패 태스크의 기동 시간을 확인한다.
+- [x] API ECS health check grace period를 300초로 변경한다.
+- [x] Terraform plan/apply와 ECS 서비스 설정을 확인한다.
+- [x] 변경 내용을 `origin/main`에 푸시한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.

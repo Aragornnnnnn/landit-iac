@@ -331,3 +331,11 @@
 - develop/prod 배포 역할은 현재 Terraform으로 관리하지 않는 각각의 inline policy를 사용한다.
 - 사용자 승인 후 develop `DescribeDevelopEcsDeploymentTasks`, prod `DescribeProdEcsDeploymentTasks` Statement에 `ecs:ListTasks`, `ecs:DescribeTasks`, `Resource: "*"`를 추가했다.
 - `aws iam get-role-policy`로 두 역할에 해당 액션이 반영된 것을 확인했다.
+
+## 2026-07-11 develop API health check grace period 확대
+
+- GitHub Actions 실행 `29107872234`에서 새 API 태스크는 Spring Boot 기동 완료까지 160.882초가 걸렸다.
+- 현재 180초 grace period 안에는 ALB의 30초 간격 2회 성공 헬스 체크를 마칠 시간이 없어 태스크가 `Task failed ELB health checks`로 중지됐다.
+- API ECS service의 grace period를 300초로 변경해 최대 기동 시간과 ALB 헬스 체크 시간을 수용한다.
+- `AWS_PROFILE=landit terraform -chdir=environments/dev apply /tmp/landit-dev-api-grace-300.tfplan`은 ECS service in-place 변경 1건으로 성공했다.
+- apply 뒤 `aws ecs describe-services`로 `healthCheckGracePeriodSeconds = 300`을 확인했다.

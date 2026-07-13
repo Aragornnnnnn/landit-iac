@@ -365,5 +365,9 @@
 - Grafana Cloud의 account 추가, scrape job 생성, access policy token 생성은 외부 상태 변경이므로 실제 생성 직전에 사용자 확인을 받고 진행한다.
 - metric과 log label에는 사용자 ID, session ID, message ID, 요청 본문, query string, 인증 header를 넣지 않는다.
 - BE는 `MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED`, `MANAGEMENT_OTLP_METRICS_EXPORT_STEP`, signal-specific metrics endpoint를 사용하고, AI는 `OTEL_METRICS_ENABLED`, `OTEL_EXPORTER_OTLP_PROTOCOL`, base OTLP endpoint를 사용하도록 각 레포의 현재 설정 계약에 맞췄다.
+- BE와 AI 모두 `OTEL_TRACES_EXPORTER=none`, `OTEL_LOGS_EXPORTER=none`을 명시해 자동 계측 모듈이 trace나 log를 의도치 않게 전송하지 않고 metrics만 전송하도록 제한한다.
 - `terraform fmt -recursive`, develop/prod `terraform validate`, `git diff --check`가 통과했다. validate는 샌드박스에서 provider plugin 통신이 차단되어 같은 명령을 샌드박스 밖에서 재실행했다.
-- 실제 OTLP endpoint와 Grafana Cloud Logs secret ARN이 아직 없으므로 기본 enable flag는 `false`로 유지하고 `terraform plan`과 `apply`는 보류한다.
+- OTLP base endpoint는 `https://otlp-gateway-prod-ap-northeast-0.grafana.net/otlp`, Prometheus instance ID는 `3366938`이다. dev/prod의 환경별 OTLP header SSM `SecureString`은 작성됐다.
+- AWS Logs endpoint는 `https://aws-logs-prod-030.grafana.net/aws-logs/api/v1/push`, Loki instance ID는 `1679144`이다. 인증값은 Terraform 밖의 Secrets Manager에 작성됐으며 Terraform에는 secret ARN만 연결한다.
+- Grafana Cloud access policy는 OTLP용 `metrics:write`와 Logs용 `logs:write`로 분리했다. 두 token은 자동 만료가 없으므로 정기 점검과 수동 rotation 및 폐기가 필요하다.
+- 실제 endpoint와 secret ARN을 dev/prod에 연결하고 OTLP 및 로그 전송 enable flag를 `true`로 변경했다. `terraform plan`과 `apply`는 별도 검토와 사용자 승인 전까지 보류한다.

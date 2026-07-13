@@ -651,6 +651,8 @@ resource "aws_ecs_task_definition" "api" {
         { name = "SQS_JOBS_QUEUE_URL", value = aws_sqs_queue.jobs.url }
         ], var.grafana_otlp_enabled ? [
         { name = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", value = "${trimsuffix(var.grafana_otlp_endpoint, "/")}/v1/metrics" },
+        { name = "OTEL_TRACES_EXPORTER", value = "none" },
+        { name = "OTEL_LOGS_EXPORTER", value = "none" },
         { name = "OTEL_SERVICE_NAME", value = "landit-be" },
         { name = "OTEL_RESOURCE_ATTRIBUTES", value = "service.namespace=landit,deployment.environment.name=${var.environment}" },
         { name = "MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED", value = "true" },
@@ -726,6 +728,8 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "OTEL_METRICS_ENABLED", value = "true" },
         { name = "OTEL_EXPORTER_OTLP_PROTOCOL", value = "http/protobuf" },
         { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = var.grafana_otlp_endpoint },
+        { name = "OTEL_TRACES_EXPORTER", value = "none" },
+        { name = "OTEL_LOGS_EXPORTER", value = "none" },
         { name = "OTEL_SERVICE_NAME", value = "landit-ai" },
         { name = "OTEL_RESOURCE_ATTRIBUTES", value = "service.namespace=landit,deployment.environment.name=${var.environment}" }
       ] : [])

@@ -138,29 +138,29 @@ variable "alb_certificate_arn" {
 variable "grafana_otlp_enabled" {
   description = "Whether to send development application metrics to Grafana Cloud OTLP."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "grafana_otlp_endpoint" {
   description = "Development Grafana Cloud OTLP base endpoint."
   type        = string
-  default     = ""
+  default     = "https://otlp-gateway-prod-ap-northeast-0.grafana.net/otlp"
 }
 
 variable "grafana_logs_enabled" {
   description = "Whether to forward development CloudWatch Logs to Grafana Cloud."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "grafana_logs_endpoint" {
   description = "Development Grafana Cloud AWS Logs ingest endpoint."
   type        = string
-  default     = ""
+  default     = "https://aws-logs-prod-030.grafana.net/aws-logs/api/v1/push"
 }
 
 variable "grafana_logs_secret_arn" {
   description = "Secrets Manager ARN containing development Grafana Logs authentication."
   type        = string
-  default     = ""
+  default     = "arn:aws:secretsmanager:ap-northeast-2:982529430654:secret:landit/grafana-cloud/logs-R3yL8N"
 }

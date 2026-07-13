@@ -247,8 +247,8 @@
 - [x] Grafana Cloud가 CloudWatch 지표를 읽을 최소 IAM role을 Terraform으로 정의한다.
 - [x] BE와 AI task definition에 서비스명, 환경, OTLP endpoint와 인증 header를 주입한다.
 - [x] CloudWatch Logs를 Grafana Loki로 전달할 Data Firehose 구성을 추가한다.
-- [ ] Grafana Cloud OTLP 인증 header를 환경별 SSM parameter로 작성한다.
-- [ ] Grafana Cloud Logs 인증값을 AWS Secrets Manager에 작성한다.
+- [x] Grafana Cloud OTLP 인증 header를 환경별 SSM parameter로 작성한다.
+- [x] Grafana Cloud Logs 인증값을 AWS Secrets Manager에 작성한다.
 - [x] `terraform fmt -recursive`, develop/prod `terraform validate`를 실행한다.
 - [ ] 실제 endpoint와 secret ARN 준비 후 develop/prod `terraform plan`을 실행한다.
 - [ ] 사용자 승인 후 develop/prod Terraform apply를 실행한다.

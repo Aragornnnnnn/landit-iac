@@ -133,7 +133,7 @@ Expected: 첫 번째 없는 파일에서 non-zero exit code를 반환한다.
   "schemaVersion": 41,
   "tags": ["landit", "observability"],
   "time": {"from": "now-1h", "to": "now"},
-  "timezone": "browser"
+  "timezone": "Asia/Seoul"
 }
 ```
 

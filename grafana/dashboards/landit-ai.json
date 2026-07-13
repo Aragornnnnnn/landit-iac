@@ -3,7 +3,7 @@
   "title": "Landit AI",
   "description": "FastAPI AI worker의 endpoint, Python process·GC, 로그를 환경별로 확인합니다.",
   "tags": ["landit", "observability", "ai", "fastapi"],
-  "timezone": "browser",
+  "timezone": "Asia/Seoul",
   "schemaVersion": 41,
   "version": 1,
   "editable": true,

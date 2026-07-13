@@ -3,7 +3,7 @@
   "title": "Landit BE",
   "description": "Spring Boot API의 endpoint, JVM, 로그를 환경별로 확인합니다.",
   "tags": ["landit", "observability", "be", "spring-boot"],
-  "timezone": "browser",
+  "timezone": "Asia/Seoul",
   "schemaVersion": 41,
   "version": 1,
   "editable": true,

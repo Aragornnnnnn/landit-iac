@@ -3,7 +3,7 @@
   "title": "Landit Overview",
   "description": "BE·AI의 요청 상태와 로그를 환경별로 확인하는 운영 시작 화면입니다.",
   "tags": ["landit", "observability", "overview"],
-  "timezone": "browser",
+  "timezone": "Asia/Seoul",
   "schemaVersion": 41,
   "version": 1,
   "editable": true,

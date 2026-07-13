@@ -229,6 +229,17 @@
 - [x] Terraform plan/apply와 ECS 서비스 설정을 확인한다.
 - [x] 변경 내용을 `origin/main`에 푸시한다.
 
+## 2026-07-13 LAN-122 Sentry DSN ECS 주입
+
+- [x] develop/prod BE·AI Sentry DSN SSM parameter를 `SecureString`으로 작성한다.
+- [x] 최신 app platform task definition과 BE·AI 설정 이름을 확인한다.
+- [x] API와 AI task definition에 서비스별 SSM 값을 `SENTRY_DSN`으로 주입한다.
+- [x] BE `SENTRY_ENVIRONMENT`와 AI `APP_ENV`를 Terraform environment 값으로 주입한다.
+- [x] SSM parameter registry와 작업 기록을 갱신한다.
+- [x] `terraform fmt -recursive`, develop/prod `terraform validate`, `terraform plan`을 실행한다.
+- [x] 사용자 승인 후 develop/prod Terraform apply를 실행한다.
+- [x] 새 ECS task definition의 secret과 서비스 deployment 상태를 검증한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.

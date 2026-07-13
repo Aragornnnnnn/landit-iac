@@ -478,6 +478,7 @@ resource "aws_ecs_task_definition" "api" {
       environment = [
         { name = "AWS_REGION", value = var.aws_region },
         { name = "ENVIRONMENT", value = var.environment },
+        { name = "SENTRY_ENVIRONMENT", value = var.environment },
         { name = "SPRING_FLYWAY_BASELINE_ON_MIGRATE", value = "true" },
         { name = "SPRING_PROFILES_ACTIVE", value = var.environment },
         { name = "S3_BUCKET_NAME", value = aws_s3_bucket.app.bucket },
@@ -496,7 +497,8 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_AUTH_OIDC_KAKAO_AUDIENCES", valueFrom = "${local.ssm_path}/LANDIT_AUTH_OIDC_KAKAO_AUDIENCES" },
         { name = "LANDIT_AUTH_OIDC_APPLE_AUDIENCES", valueFrom = "${local.ssm_path}/LANDIT_AUTH_OIDC_APPLE_AUDIENCES" },
         { name = "LANDIT_AI_CLIENT_MODE", valueFrom = "${local.ssm_path}/LANDIT_AI_CLIENT_MODE" },
-        { name = "LANDIT_AI_BASE_URL", valueFrom = "${local.ssm_path}/LANDIT_AI_BASE_URL" }
+        { name = "LANDIT_AI_BASE_URL", valueFrom = "${local.ssm_path}/LANDIT_AI_BASE_URL" },
+        { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_BE_SENTRY_DSN" }
       ]
 
       logConfiguration = {
@@ -536,6 +538,7 @@ resource "aws_ecs_task_definition" "worker" {
       environment = [
         { name = "AWS_REGION", value = var.aws_region },
         { name = "ENVIRONMENT", value = var.environment },
+        { name = "APP_ENV", value = var.environment },
         { name = "S3_BUCKET_NAME", value = aws_s3_bucket.app.bucket },
         { name = "SQS_JOBS_QUEUE_URL", value = aws_sqs_queue.jobs.url }
       ]
@@ -547,7 +550,8 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "LLM_PROVIDER", valueFrom = "${local.ssm_path}/LLM_PROVIDER" },
         { name = "OPENROUTER_BASE_URL", valueFrom = "${local.ssm_path}/OPENROUTER_BASE_URL" },
         { name = "OPENROUTER_MODEL", valueFrom = "${local.ssm_path}/OPENROUTER_MODEL" },
-        { name = "OPENROUTER_API_KEY", valueFrom = "${local.ssm_path}/OPENROUTER_API_KEY" }
+        { name = "OPENROUTER_API_KEY", valueFrom = "${local.ssm_path}/OPENROUTER_API_KEY" },
+        { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_AI_SENTRY_DSN" }
       ]
 
       logConfiguration = {

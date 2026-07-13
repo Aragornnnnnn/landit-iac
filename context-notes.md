@@ -339,3 +339,16 @@
 - API ECS service의 grace period를 300초로 변경해 최대 기동 시간과 ALB 헬스 체크 시간을 수용한다.
 - `AWS_PROFILE=landit terraform -chdir=environments/dev apply /tmp/landit-dev-api-grace-300.tfplan`은 ECS service in-place 변경 1건으로 성공했다.
 - apply 뒤 `aws ecs describe-services`로 `healthCheckGracePeriodSeconds = 300`을 확인했다.
+
+## 2026-07-13 LAN-122 Sentry DSN ECS 주입
+
+- 사용자 제공 DSN은 `/landit/develop`과 `/landit/prod`에 서비스별 `LANDIT_BE_SENTRY_DSN`, `LANDIT_AI_SENTRY_DSN` `SecureString`으로 작성했다. 값은 문서와 검증 출력에 남기지 않는다.
+- 동일한 환경에서 BE와 AI가 서로 다른 Sentry 프로젝트를 사용하므로 SSM parameter 이름은 서비스별로 분리한다.
+- BE와 AI 애플리케이션은 모두 `SENTRY_DSN` 환경변수만 읽으므로, ECS API와 AI container의 `secrets`에서 각각 서비스별 SSM parameter를 `SENTRY_DSN`으로 매핑한다.
+- BE는 `SENTRY_ENVIRONMENT`, AI는 `APP_ENV`를 각각 읽으므로 ECS 일반 환경변수에 Terraform `environment` 값을 연결한다.
+- task definition 변경은 새 ECS deployment를 만들며, Terraform apply 후 task definition의 `secrets`와 service rollout 상태를 확인해야 한다.
+- `terraform fmt -recursive -check`와 develop/prod `terraform validate`가 통과했다. 각 환경 plan은 API·AI task definition replacement와 ECS service task definition update만 포함했다.
+- develop apply와 prod apply는 각각 `2 added, 2 changed, 2 destroyed`로 완료됐다.
+- 새 task definition은 BE `SENTRY_DSN`을 `LANDIT_BE_SENTRY_DSN`으로, AI `SENTRY_DSN`을 `LANDIT_AI_SENTRY_DSN`으로 매핑한다. 값은 조회하지 않았다.
+- BE API에는 `SENTRY_ENVIRONMENT=develop` 또는 `prod`, AI에는 `APP_ENV=develop` 또는 `prod`가 포함됐다.
+- develop/prod API·AI ECS service는 모두 PRIMARY deployment `COMPLETED`, desired/running `1/1` 상태가 됐다. develop 새 API target도 `healthy` 상태로 전환됐다.

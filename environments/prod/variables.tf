@@ -84,7 +84,7 @@ variable "ai_health_check_path" {
 variable "api_health_check_grace_period_seconds" {
   description = "Production API ECS health check grace period seconds."
   type        = number
-  default     = 180
+  default     = 300
 }
 
 variable "ai_health_check_grace_period_seconds" {

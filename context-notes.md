@@ -403,5 +403,9 @@
 - 공개 JVM dashboard `11892`와 FastAPI dashboard `18739`는 레이아웃만 참고하고 Landit의 실제 메트릭 이름과 label에 맞게 쿼리를 작성한다.
 - dashboard JSON은 `landit-iac`에서 관리하고 단기 Grafana service account token으로 HTTP API에 배포한다. 별도 Grafana Terraform state와 provider는 추가하지 않는다.
 - service account token은 환경변수로만 사용하고 배포·검증 후 폐기한다. dashboard 자동 배포 workflow와 alert rule은 이번 범위에서 제외한다.
-- 현재 stack 이름 `scarletmyrtle3008`은 사용자 승인에 따라 `landitobservability`로 변경한다. stack 이름이 URL subdomain이므로 새 Grafana URL은 `https://landitobservability.grafana.net`이 된다.
-- `landitobservability`를 사용할 수 없으면 `landitmonitoring`을 사용한다. rename 직후 기존 Prometheus·Loki 데이터 소스 UID와 develop·prod 수집 상태를 다시 확인한 뒤 dashboard 배포를 진행한다.
+- Grafana Cloud API로 stack 표시 이름을 `landitobservability`로 변경했다. 기존 stack slug는 그대로여서 Grafana URL은 계속 `https://scarletmyrtle3008.grafana.net`이다.
+- Grafana HTTP API용 service account `landit-dashboard-provisioner`를 Editor 역할로 만들고, 단기 token으로 `Landit` folder의 `landit-overview`, `landit-be`, `landit-ai` dashboard를 upsert했다. URL은 각각 `/d/landit-overview/landit-overview`, `/d/landit-be/landit-be`, `/d/landit-ai/landit-ai`다. 배포와 조회 검증에 쓴 token은 모두 즉시 폐기했다.
+- dashboard 동기화 스크립트는 folder를 먼저 생성하고 이미 존재할 때만 UID로 조회한다. Editor 역할 token이 존재하지 않는 folder UID를 먼저 조회하면 권한 오류가 나는 Grafana RBAC 동작을 반영한 순서다.
+- Grafana service account의 datasource query API 호출은 해당 account의 datasource query 권한이 없어 403을 반환했다. 대신 Grafana Cloud access policy의 metrics·logs read scope로 Prometheus와 Loki endpoint를 직접 조회해 dashboard에 사용한 BE HTTP·JVM, AI HTTP·process·CPython GC 쿼리 12개가 성공하는 것을 확인했다.
+- Loki의 24시간 집계는 develop·prod의 API·worker log group 네 개를 모두 반환했다. 전체 로그와 에러 로그 selector도 `query_range` endpoint에서 정상 동작했다.
+- service account token과 Cloud Access Policy token은 repo, Terraform state, 문서, 명령 출력에 기록하지 않았다. Cloud Access Policy token은 이번 작업 후 사용자가 Grafana Cloud에서 rotation해야 한다.

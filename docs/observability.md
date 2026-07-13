@@ -18,6 +18,28 @@ BE와 AI는 Grafana Cloud OTLP endpoint로 직접 지표를 전송합니다. All
 
 Grafana Cloud CloudWatch scrape는 조직 SCP의 `tag:GetResources` 명시적 거부를 변경할 수 없어 사용하지 않습니다. 따라서 ALB TPS와 ECS CPU·memory는 현재 Grafana Cloud 조회 범위에서 제외합니다.
 
+## Grafana 대시보드
+
+Grafana Cloud stack의 표시 이름은 `landitobservability`입니다. 기존 stack slug는 유지되므로 접속 주소는 계속 `https://scarletmyrtle3008.grafana.net`입니다.
+
+`Landit` folder에는 다음 dashboard를 둡니다.
+
+- [Landit Overview](https://scarletmyrtle3008.grafana.net/d/landit-overview/landit-overview). BE·AI의 TPS, 5xx 오류율, 응답시간, 통합 전체 로그와 에러 로그를 확인합니다.
+- [Landit BE](https://scarletmyrtle3008.grafana.net/d/landit-be/landit-be). BE endpoint 지표와 JVM heap, GC, thread, API 로그를 확인합니다.
+- [Landit AI](https://scarletmyrtle3008.grafana.net/d/landit-ai/landit-ai). AI endpoint 지표와 process CPU·memory·thread, CPython GC, worker 로그를 확인합니다.
+
+세 dashboard는 `환경` 변수에서 `prod`와 `develop`을 전환합니다. 기본값은 `prod`이며, `로그 본문 검색`을 비워 두면 전체 로그를 표시합니다. 에러 로그는 별도 level label이 없으므로 `error`, `exception`, `traceback`, `critical`, `fatal` 본문 정규식으로 필터링합니다.
+
+Dashboard JSON은 `grafana/dashboards/`에서 관리합니다. 수정 후에는 유효 기간을 제한한 Grafana service account token을 환경변수로만 전달해 동기화합니다.
+
+```bash
+GRAFANA_URL=https://scarletmyrtle3008.grafana.net \
+GRAFANA_SERVICE_ACCOUNT_TOKEN=<temporary-token> \
+./scripts/sync-grafana-dashboards.sh
+```
+
+동기화가 끝나면 해당 token을 즉시 폐기합니다. Grafana dashboard 관리에는 Cloud Access Policy가 아닌 Grafana service account token이 필요합니다.
+
 ## 애플리케이션 OTLP 지표
 
 dev/prod는 아래 OTLP endpoint로 지표 전송을 활성화합니다.

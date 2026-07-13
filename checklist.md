@@ -265,11 +265,11 @@
 - [x] 대시보드 설계 문서를 작성하고 자체 검토한다.
 - [x] 사용자가 설계 문서를 검토한다.
 - [x] dashboard 구현 계획을 작성하고 자체 검토한다.
-- [ ] Grafana stack 이름을 `landitobservability`로 변경하고 수집 상태를 다시 확인한다.
-- [ ] dashboard JSON과 동기화 스크립트를 구현한다.
-- [ ] 단기 Grafana service account token으로 대시보드를 배포한다.
-- [ ] develop·prod의 필수 메트릭과 전체·에러 로그 패널을 검증한다.
-- [ ] 배포 token을 폐기하고 운영 문서를 갱신한다.
+- [x] Grafana stack 표시 이름을 `landitobservability`로 변경하고 수집 상태를 다시 확인한다.
+- [x] dashboard JSON과 동기화 스크립트를 구현한다.
+- [x] 단기 Grafana service account token으로 대시보드를 배포한다.
+- [x] develop·prod의 필수 메트릭과 전체·에러 로그 패널을 검증한다.
+- [x] 배포 token을 폐기하고 운영 문서를 갱신한다.
 
 ## 아키텍처 결정 전 질문
 

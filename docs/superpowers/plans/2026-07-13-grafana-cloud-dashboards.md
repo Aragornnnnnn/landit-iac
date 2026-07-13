@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Grafana Cloud stack 이름을 Landit에 맞게 변경하고, develop·prod의 BE·AI 필수 메트릭과 전체·에러 로그를 확인하는 대시보드 3개를 배포한다.
+**Goal:** Grafana Cloud stack 표시 이름을 Landit에 맞게 변경하고, develop·prod의 BE·AI 필수 메트릭과 전체·에러 로그를 확인하는 대시보드 3개를 배포한다.
 
-**Architecture:** stack을 `landitobservability`로 rename한 뒤 기존 Prometheus·Loki 데이터가 유지되는지 먼저 확인한다. 대시보드 JSON은 `landit-iac`에 저장하고 단기 Grafana service account token으로 HTTP API에 upsert한다. token은 파일이나 명령 출력에 남기지 않고 배포 직후 폐기한다.
+**Architecture:** stack 표시 이름을 `landitobservability`로 변경한 뒤 기존 Grafana URL에서 Prometheus·Loki 데이터가 유지되는지 먼저 확인한다. 대시보드 JSON은 `landit-iac`에 저장하고 단기 Grafana service account token으로 HTTP API에 upsert한다. token은 파일이나 명령 출력에 남기지 않고 배포 직후 폐기한다.
 
 **Tech Stack:** Grafana Cloud HTTP API, Grafana dashboard JSON, PromQL, LogQL, Bash, curl, jq.
 
@@ -44,7 +44,7 @@
 - Consumes: 기존 stack `scarletmyrtle3008`과 로그인된 Grafana Cloud Portal session.
 - Produces: 새 stack URL과 rename 후에도 유지되는 data source UID 및 수집 상태.
 
-- [ ] **Step 1: rename 전 상태를 기록한다.**
+- [x] **Step 1: rename 전 상태를 기록한다.**
 
 ```text
 Current stack: scarletmyrtle3008
@@ -54,15 +54,15 @@ Metric environments: develop, prod
 Log groups: /landit/develop/api, /landit/develop/worker, /landit/prod/api, /landit/prod/worker
 ```
 
-- [ ] **Step 2: stack 이름을 변경한다.**
+- [x] **Step 2: stack 이름을 변경한다.**
 
-Cloud Portal의 stack Details에서 Grafana Instance URL을 `landitobservability`로 변경한다. 이름이 이미 사용 중이면 `landitmonitoring`을 사용한다. 두 이름을 모두 사용할 수 없으면 rename을 중단한다.
+Grafana Cloud API로 stack 표시 이름을 `landitobservability`로 변경한다. 이 변경은 기존 Grafana URL slug를 바꾸지 않는다.
 
-- [ ] **Step 3: 새 URL과 data source를 확인한다.**
+- [x] **Step 3: 새 URL과 data source를 확인한다.**
 
-새 URL에서 Data sources 화면을 열고 `grafanacloud-prom`과 `grafanacloud-logs` UID를 확인한다.
+기존 Grafana URL에서 Data sources API를 조회해 `grafanacloud-prom`과 `grafanacloud-logs` UID를 확인한다.
 
-- [ ] **Step 4: rename 후 수집 상태를 확인한다.**
+- [x] **Step 4: rename 후 수집 상태를 확인한다.**
 
 Prometheus Explore에서 아래 쿼리를 실행한다.
 
@@ -84,7 +84,7 @@ sum by (environment, aws_log_group) (
 
 Expected: develop·prod의 api·worker 네 log group이 모두 조회된다.
 
-- [ ] **Step 5: rename 결과를 문서에 반영하고 커밋한다.**
+- [x] **Step 5: rename 결과를 문서에 반영하고 커밋한다.**
 
 Run:
 
@@ -109,7 +109,7 @@ Expected: rename 관련 문서 변경만 커밋된다.
 - Consumes: Prometheus UID `grafanacloud-prom`, Loki UID `grafanacloud-logs`, metric labels와 log labels.
 - Produces: Grafana `/api/dashboards/db` payload의 `dashboard` 필드로 사용할 JSON 객체 3개.
 
-- [ ] **Step 1: dashboard가 없을 때 검증이 실패하는지 확인한다.**
+- [x] **Step 1: dashboard가 없을 때 검증이 실패하는지 확인한다.**
 
 Run:
 
@@ -121,7 +121,7 @@ done
 
 Expected: 첫 번째 없는 파일에서 non-zero exit code를 반환한다.
 
-- [ ] **Step 2: 세 dashboard의 공통 JSON 설정을 작성한다.**
+- [x] **Step 2: 세 dashboard의 공통 JSON 설정을 작성한다.**
 
 세 파일은 아래 값을 공통으로 사용한다.
 
@@ -139,7 +139,7 @@ Expected: 첫 번째 없는 파일에서 non-zero exit code를 반환한다.
 
 `environment` 변수는 custom variable로 `prod,develop`을 제공하고 current value를 `prod`로 설정한다. `log_search`는 빈 문자열을 기본값으로 사용하는 textbox variable로 작성한다. 모든 dashboard는 `전체 로그`와 `에러 로그` 제목의 Loki panel을 포함한다.
 
-- [ ] **Step 3: Landit Overview panel을 작성한다.**
+- [x] **Step 3: Landit Overview panel을 작성한다.**
 
 `landit-overview.json`은 UID `landit-overview`, title `Landit Overview`를 사용한다. `service` custom variable은 `All : api|worker,BE : api,AI : worker` 값을 사용한다.
 
@@ -197,7 +197,7 @@ sum by (aws_log_group) (count_over_time({project="landit",environment="$environm
 
 BE·AI 상세 dashboard link는 `keepTime=true`, `includeVars=true`로 설정해 현재 시간 범위와 `environment` 값을 유지한다.
 
-- [ ] **Step 4: Landit BE panel을 작성한다.**
+- [x] **Step 4: Landit BE panel을 작성한다.**
 
 `landit-be.json`은 UID `landit-be`, title `Landit BE`를 사용한다. `endpoint` variable은 아래 query와 All value `.*`를 사용한다.
 
@@ -273,7 +273,7 @@ jvm_classes_loaded{service_name="landit-be",deployment_environment_name="$enviro
 
 GC 평균 pause는 pause sum rate를 count rate로 나누고, 최대 pause는 `jvm_gc_pause_milliseconds_max`를 사용한다. 전체·에러 로그와 로그 발생량 추이는 `/landit/$environment/api`만 조회한다.
 
-- [ ] **Step 5: Landit AI panel을 작성한다.**
+- [x] **Step 5: Landit AI panel을 작성한다.**
 
 `landit-ai.json`은 UID `landit-ai`, title `Landit AI`를 사용한다. `endpoint` variable은 아래 query와 All value `.*`를 사용한다.
 
@@ -332,7 +332,7 @@ sum by (generation) (rate(cpython_gc_uncollectable_objects_total{service_name="l
 
 전체·에러 로그와 로그 발생량 추이는 `/landit/$environment/worker`만 조회한다.
 
-- [ ] **Step 6: dashboard JSON을 정적 검증한다.**
+- [x] **Step 6: dashboard JSON을 정적 검증한다.**
 
 Run:
 
@@ -353,7 +353,7 @@ test "$(rg -l 'grafanacloud-logs' grafana/dashboards/*.json | wc -l | tr -d ' ')
 
 Expected: 모든 검증이 exit code `0`을 반환한다.
 
-- [ ] **Step 7: dashboard JSON을 커밋한다.**
+- [x] **Step 7: dashboard JSON을 커밋한다.**
 
 ```bash
 git add grafana/dashboards/landit-overview.json grafana/dashboards/landit-be.json grafana/dashboards/landit-ai.json
@@ -371,13 +371,13 @@ git commit -m "feat: Grafana Cloud 운영 대시보드 추가"
 - Consumes: `GRAFANA_URL`, `GRAFANA_SERVICE_ACCOUNT_TOKEN`, dashboard JSON 3개.
 - Produces: `landit-observability` folder와 UID가 고정된 dashboard 3개.
 
-- [ ] **Step 1: 스크립트가 없을 때 검증이 실패하는지 확인한다.**
+- [x] **Step 1: 스크립트가 없을 때 검증이 실패하는지 확인한다.**
 
 Run: `bash -n scripts/sync-grafana-dashboards.sh`.
 
 Expected: 파일이 없어 non-zero exit code를 반환한다.
 
-- [ ] **Step 2: 최소 동기화 스크립트를 작성한다.**
+- [x] **Step 2: 최소 동기화 스크립트를 작성한다.**
 
 ```bash
 #!/usr/bin/env bash
@@ -440,7 +440,7 @@ for dashboard_file in "${DASHBOARD_DIR}"/*.json; do
 done
 ```
 
-- [ ] **Step 3: 환경변수 누락과 shell 문법을 검증한다.**
+- [x] **Step 3: 환경변수 누락과 shell 문법을 검증한다.**
 
 Run:
 
@@ -451,7 +451,7 @@ env -u GRAFANA_URL -u GRAFANA_SERVICE_ACCOUNT_TOKEN ./scripts/sync-grafana-dashb
 
 Expected: `bash -n`은 성공하고 실행은 `GRAFANA_URL is required`로 실패한다. token 값은 출력되지 않는다.
 
-- [ ] **Step 4: 실행 권한과 secret 노출을 확인한다.**
+- [x] **Step 4: 실행 권한과 secret 노출을 확인한다.**
 
 ```bash
 chmod +x scripts/sync-grafana-dashboards.sh
@@ -461,7 +461,7 @@ if rg -n 'glsa_[A-Za-z0-9_-]{20,}|glc_[A-Za-z0-9_-]{20,}' grafana scripts; then 
 
 Expected: 모두 exit code `0`이다.
 
-- [ ] **Step 5: 동기화 스크립트를 커밋한다.**
+- [x] **Step 5: 동기화 스크립트를 커밋한다.**
 
 ```bash
 git add scripts/sync-grafana-dashboards.sh
@@ -481,15 +481,15 @@ git commit -m "chore: Grafana dashboard 동기화 스크립트 추가"
 - Consumes: 로그인된 Grafana session, `landit-dashboard-provisioner` service account, Editor token.
 - Produces: `Landit` folder와 dashboard 3개. 작업 종료 시 active token은 남지 않는다.
 
-- [ ] **Step 1: service account를 생성한다.**
+- [x] **Step 1: service account를 생성한다.**
 
 Grafana Administration에서 `landit-dashboard-provisioner`를 `Editor` role로 생성한다. 같은 이름이 있으면 기존 account를 사용한다.
 
-- [ ] **Step 2: 1일 만료 token을 생성한다.**
+- [x] **Step 2: 1일 만료 token을 생성한다.**
 
 token은 브라우저 자동화 메모리에만 보관하고 응답, 파일, shell 명령에 출력하지 않는다.
 
-- [ ] **Step 3: dashboard JSON을 API로 upsert한다.**
+- [x] **Step 3: dashboard JSON을 API로 upsert한다.**
 
 `Landit` folder를 만든 뒤 JSON 3개를 `/api/dashboards/db`에 `overwrite=true`로 전송한다. 응답에는 아래 UID만 기록한다.
 
@@ -499,7 +499,7 @@ landit-be
 landit-ai
 ```
 
-- [ ] **Step 4: 같은 JSON을 다시 upsert해 멱등성을 확인한다.**
+- [x] **Step 4: 같은 JSON을 다시 upsert해 멱등성을 확인한다.**
 
 Expected: dashboard 수가 늘지 않고 같은 UID의 version만 증가한다.
 
@@ -516,31 +516,31 @@ Expected: dashboard 수가 늘지 않고 같은 UID의 version만 증가한다.
 - Consumes: 배포된 dashboard 3개와 develop·prod telemetry.
 - Produces: 실제 panel 검증 기록, 폐기된 token, 최신 운영 문서.
 
-- [ ] **Step 1: Overview를 두 환경에서 검증한다.**
+- [x] **Step 1: Overview를 두 환경에서 검증한다.**
 
 `prod`, `develop` 각각에서 전체 TPS, BE·AI TPS, 오류율, P95, 전체 로그, 에러 로그 panel이 query error 없이 렌더링되는지 확인한다. 요청이나 에러가 없는 시계열은 `No data`가 허용되지만 query error는 허용하지 않는다.
 
-- [ ] **Step 2: BE dashboard를 두 환경에서 검증한다.**
+- [x] **Step 2: BE dashboard를 두 환경에서 검증한다.**
 
 endpoint variable, TPS, 오류율, P95, heap, GC pause, thread, 전체 로그, 에러 로그를 확인한다.
 
-- [ ] **Step 3: AI dashboard를 두 환경에서 검증한다.**
+- [x] **Step 3: AI dashboard를 두 환경에서 검증한다.**
 
 endpoint variable, TPS, 오류율, P95, process CPU·memory·thread, CPython GC, 전체 로그, 에러 로그를 확인한다.
 
-- [ ] **Step 4: dashboard link와 새 URL을 확인한다.**
+- [x] **Step 4: dashboard link와 Grafana URL을 확인한다.**
 
 Overview에서 BE·AI 상세 dashboard로 이동할 때 `var-environment`와 현재 시간 범위가 유지되는지 확인한다.
 
-- [ ] **Step 5: 배포 token을 폐기한다.**
+- [x] **Step 5: 배포 token을 폐기한다.**
 
 `landit-dashboard-provisioner`에서 생성한 token을 삭제하고 active token이 남지 않았는지 확인한다. service account 자체는 다음 수동 배포를 위해 유지한다.
 
-- [ ] **Step 6: 운영 문서를 갱신한다.**
+- [x] **Step 6: 운영 문서를 갱신한다.**
 
 `docs/observability.md`에 dashboard URL, 환경 전환, 로그 검색, JSON 동기화 명령, token 발급·폐기 절차를 추가한다. `checklist.md`와 `context-notes.md`에는 실제 dashboard URL과 검증 결과만 기록하고 token은 기록하지 않는다.
 
-- [ ] **Step 7: 전체 로컬 검증을 실행한다.**
+- [x] **Step 7: 전체 로컬 검증을 실행한다.**
 
 ```bash
 terraform fmt -recursive -check
@@ -555,7 +555,7 @@ git status --short
 
 Expected: 모든 명령이 exit code `0`이고 의도한 문서 파일만 수정 상태다.
 
-- [ ] **Step 8: 검증 문서를 커밋한다.**
+- [x] **Step 8: 검증 문서를 커밋한다.**
 
 ```bash
 git add docs/observability.md checklist.md context-notes.md

@@ -250,7 +250,7 @@
 - [x] Grafana Cloud OTLP 인증 header를 환경별 SSM parameter로 작성한다.
 - [x] Grafana Cloud Logs 인증값을 AWS Secrets Manager에 작성한다.
 - [x] `terraform fmt -recursive`, develop/prod `terraform validate`를 실행한다.
-- [ ] 실제 endpoint와 secret ARN 준비 후 develop/prod `terraform plan`을 실행한다.
+- [x] 실제 endpoint와 secret ARN 준비 후 develop/prod `terraform plan`을 실행한다.
 - [ ] 사용자 승인 후 develop/prod Terraform apply를 실행한다.
 - [ ] Grafana Cloud AWS account, CloudWatch scrape job, dashboard를 구성한다.
 - [ ] ALB TPS, ECS CPU·memory, BE JVM·GC, AI process·GC, BE·AI 로그 조회를 확인한다.

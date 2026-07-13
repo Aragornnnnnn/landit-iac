@@ -371,3 +371,6 @@
 - AWS Logs endpoint는 `https://aws-logs-prod-030.grafana.net/aws-logs/api/v1/push`, Loki instance ID는 `1679144`이다. 인증값은 Terraform 밖의 Secrets Manager에 작성됐으며 Terraform에는 secret ARN만 연결한다.
 - Grafana Cloud access policy는 OTLP용 `metrics:write`와 Logs용 `logs:write`로 분리했다. 두 token은 자동 만료가 없으므로 정기 점검과 수동 rotation 및 폐기가 필요하다.
 - 실제 endpoint와 secret ARN을 dev/prod에 연결하고 OTLP 및 로그 전송 enable flag를 `true`로 변경했다. `terraform plan`과 `apply`는 별도 검토와 사용자 승인 전까지 보류한다.
+- develop plan은 `9 added, 2 changed, 2 destroyed`이며, 환경별 Firehose·IAM·log subscription 생성과 API·AI task definition 교체 및 ECS service 갱신만 포함한다.
+- production plan은 공용 Grafana CloudWatch read role까지 포함해 `11 added, 2 changed, 2 destroyed`이며, 그 외 변경 범위는 develop과 동일하다.
+- 두 plan 모두 `/tmp/lan122-dev.tfplan`, `/tmp/lan122-prod.tfplan`에 저장했고 예상하지 않은 기존 리소스 변경은 없다. apply는 사용자 승인 전까지 실행하지 않는다.

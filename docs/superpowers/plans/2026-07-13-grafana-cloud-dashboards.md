@@ -562,7 +562,7 @@ git add docs/observability.md checklist.md context-notes.md
 git commit -m "docs: Grafana dashboard 운영과 검증 결과 반영"
 ```
 
-- [ ] **Step 9: 최종 상태를 push한다.**
+- [x] **Step 9: 최종 상태를 push한다.**
 
 ```bash
 git status --short

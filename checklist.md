@@ -255,7 +255,7 @@
 - [x] 사용하지 않는 Grafana CloudWatch IAM role과 policy를 production에서 제거한다.
 - [x] 제거 후 dev/prod Terraform 상태와 Firehose·ECS 서비스 상태를 확인한다.
 - [x] develop BE·AI 변경을 배포한 뒤 BE JVM·GC·HTTP와 AI process·GC·HTTP 지표 조회를 확인한다.
-- [ ] production BE·AI 변경을 배포한 뒤 같은 애플리케이션 지표 조회를 확인한다.
+- [x] production BE·AI 변경을 배포한 뒤 같은 애플리케이션 지표 조회를 확인한다.
 
 ## 아키텍처 결정 전 질문
 

@@ -388,5 +388,7 @@
 - 기존 access policy는 `metrics:write`, active, 만료 없음 상태이며 token은 유지했다. username만 OTLP stack instance ID `1721357`로 바꾼 일회성 OTLP 요청이 HTTP `200`을 반환해 원인을 확인했다.
 - dev/prod `LANDIT_GRAFANA_CLOUD_OTLP_HEADERS`를 version `2`로 갱신했다. develop API·AI는 강제 새 배포 후 health `200`, 새 log stream에서 `401`, `Unauthorized`, export 실패 메시지 없이 안정화됐다.
 - Grafana Explore에서 develop BE HTTP 6, JVM GC 8, JVM memory 25개 시계열과 AI HTTP 17, CPython GC 9, process 6개 시계열을 확인했다.
-- production은 SSM 인증값만 교정했으며 BE·AI 변경 image 배포는 이번 작업에서 실행하지 않는다. production 배포 후 같은 지표 조회를 별도 확인한다.
+- production BE·AI 최신 image 배포 후 기존 태스크가 SSM version `1` 인증값을 유지해 OTLP `401 Unauthorized`를 반환하는 것을 확인했다. 같은 task definition으로 두 ECS service를 강제 재배포해 SSM version `2`를 다시 주입했다.
+- 재배포 후 production API·AI는 desired/running `1/1`, PRIMARY deployment `COMPLETED`, health `200` 상태이며 새 log stream에서 `401`과 지표 전송 실패 메시지가 조회되지 않았다.
+- Grafana Explore에서 develop과 production 각각 BE HTTP·JVM GC·JVM memory, AI HTTP·CPython GC·process 지표가 모두 조회되어 총 12개 환경·서비스·분류 조합을 확인했다.
 - 적용 후 `terraform fmt -recursive -check`, develop/prod `terraform validate`, `git diff --check`가 통과했다. develop/prod `terraform plan -detailed-exitcode`는 모두 exit code `0`과 `No changes`를 반환했다.

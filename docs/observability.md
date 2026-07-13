@@ -85,3 +85,5 @@ terraform -chdir=environments/prod show -no-color /tmp/lan122-prod.tfplan
 ```
 
 apply 후 Grafana Cloud에서 환경별 API·AI 로그를 확인합니다. BE·AI 변경 image를 배포한 뒤 JVM·GC·HTTP와 process·GC·HTTP 지표를 확인합니다. Firehose 실패 백업 prefix와 delivery 오류도 함께 확인합니다.
+
+2026-07-13 기준 develop과 prod에서 BE HTTP·JVM GC·JVM memory, AI HTTP·CPython GC·process 지표를 모두 확인했습니다.

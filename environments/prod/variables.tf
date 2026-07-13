@@ -135,17 +135,6 @@ variable "alb_certificate_arn" {
   default     = "arn:aws:acm:ap-northeast-2:982529430654:certificate/c27457fe-4469-4944-a5d4-322569ddd549"
 }
 
-variable "grafana_cloud_external_id" {
-  description = "External ID required when Grafana Cloud assumes the shared CloudWatch read role."
-  type        = string
-  default     = "3366938"
-
-  validation {
-    condition     = length(trimspace(var.grafana_cloud_external_id)) > 0
-    error_message = "grafana_cloud_external_id must not be empty."
-  }
-}
-
 variable "grafana_otlp_enabled" {
   description = "Whether to send production application metrics to Grafana Cloud OTLP."
   type        = bool

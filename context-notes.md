@@ -403,3 +403,5 @@
 - 공개 JVM dashboard `11892`와 FastAPI dashboard `18739`는 레이아웃만 참고하고 Landit의 실제 메트릭 이름과 label에 맞게 쿼리를 작성한다.
 - dashboard JSON은 `landit-iac`에서 관리하고 단기 Grafana service account token으로 HTTP API에 배포한다. 별도 Grafana Terraform state와 provider는 추가하지 않는다.
 - service account token은 환경변수로만 사용하고 배포·검증 후 폐기한다. dashboard 자동 배포 workflow와 alert rule은 이번 범위에서 제외한다.
+- 현재 stack 이름 `scarletmyrtle3008`은 사용자 승인에 따라 `landitobservability`로 변경한다. stack 이름이 URL subdomain이므로 새 Grafana URL은 `https://landitobservability.grafana.net`이 된다.
+- `landitobservability`를 사용할 수 없으면 `landitmonitoring`을 사용한다. rename 직후 기존 Prometheus·Loki 데이터 소스 UID와 develop·prod 수집 상태를 다시 확인한 뒤 dashboard 배포를 진행한다.

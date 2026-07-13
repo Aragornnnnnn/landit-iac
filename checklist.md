@@ -263,7 +263,8 @@
 - [x] 공개 JVM·FastAPI 대시보드와 환경 분리 방식을 검토한다.
 - [x] 환경 변수 기반 Overview·BE·AI 대시보드 설계를 확정한다.
 - [x] 대시보드 설계 문서를 작성하고 자체 검토한다.
-- [ ] 사용자가 설계 문서를 검토한다.
+- [x] 사용자가 설계 문서를 검토한다.
+- [ ] Grafana stack 이름을 `landitobservability`로 변경하고 수집 상태를 다시 확인한다.
 - [ ] dashboard JSON과 동기화 스크립트를 구현한다.
 - [ ] 단기 Grafana service account token으로 대시보드를 배포한다.
 - [ ] develop·prod의 필수 메트릭과 전체·에러 로그 패널을 검증한다.

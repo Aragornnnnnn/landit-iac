@@ -6,6 +6,8 @@ Landit 운영자가 Grafana Cloud에서 환경별 BE·AI 상태를 빠르게 확
 
 대시보드는 `prod`와 `develop`을 복제하지 않는다. 모든 대시보드에 환경 변수를 두고 기본값을 `prod`로 설정한다.
 
+현재 stack 이름 `scarletmyrtle3008`은 대시보드 배포 전에 `landitobservability`로 변경한다. Grafana stack 이름은 URL subdomain이므로 변경 후 접속 주소는 `https://landitobservability.grafana.net`이 된다.
+
 ## 현재 데이터
 
 ### 메트릭
@@ -180,6 +182,8 @@ BE와 AI의 HTTP 메트릭 이름이 다르므로 각 서비스 쿼리를 별도
 
 Grafana UI 작업 자동화에는 Cloud Access Policy가 아닌 Grafana service account를 사용한다.
 
+stack rename을 먼저 완료하고 새 URL에서 기존 Prometheus·Loki 데이터 소스와 수집 데이터가 유지되는지 확인한 뒤 service account와 dashboard를 생성한다. `landitobservability` 이름을 사용할 수 없으면 `landitmonitoring`을 사용하며, 두 이름을 모두 사용할 수 없으면 임의의 숫자를 붙이지 않고 작업을 중단해 사용자에게 알린다.
+
 - service account 이름은 `landit-dashboard-provisioner`로 한다.
 - folder 생성과 dashboard upsert가 가능한 `Editor` role을 사용한다.
 - `Editor`는 token 유효 기간에 다른 dashboard도 수정할 수 있으므로 token 만료 시간을 1일로 제한하고 작업 직후 폐기한다.
@@ -189,7 +193,7 @@ Grafana UI 작업 자동화에는 Cloud Access Policy가 아닌 Grafana service 
 
 동기화 스크립트는 다음 순서로 동작한다.
 
-1. `GRAFANA_URL=https://scarletmyrtle3008.grafana.net`과 `GRAFANA_SERVICE_ACCOUNT_TOKEN`을 확인한다.
+1. rename 후 확정된 `GRAFANA_URL`과 `GRAFANA_SERVICE_ACCOUNT_TOKEN`을 확인한다.
 2. `/api/folders/landit-observability`를 조회하고 없으면 `/api/folders`로 생성한다.
 3. `/api/dashboards/db`로 dashboard JSON 3개를 folder에 upsert한다.
 4. 생성된 dashboard URL과 UID만 출력한다.
@@ -215,6 +219,8 @@ Grafana UI 작업 자동화에는 Cloud Access Policy가 아닌 Grafana service 
 
 ### Grafana 검증
 
+- 변경된 stack URL로 로그인할 수 있고 기존 데이터 소스 UID가 유지된다.
+- rename 후에도 develop·prod 메트릭과 로그가 계속 조회된다.
 - `prod`, `develop` 전환 시 모든 메트릭 패널이 선택한 환경으로 바뀐다.
 - Overview에서 BE·AI TPS, 오류율, P95가 조회된다.
 - BE에서 endpoint HTTP 지표와 JVM memory·GC·thread 지표가 조회된다.

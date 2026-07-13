@@ -257,6 +257,18 @@
 - [x] develop BE·AI 변경을 배포한 뒤 BE JVM·GC·HTTP와 AI process·GC·HTTP 지표 조회를 확인한다.
 - [x] production BE·AI 변경을 배포한 뒤 같은 애플리케이션 지표 조회를 확인한다.
 
+## 2026-07-13 LAN-122 Grafana Cloud 대시보드
+
+- [x] Grafana 데이터 소스와 실제 메트릭·로그 라벨을 확인한다.
+- [x] 공개 JVM·FastAPI 대시보드와 환경 분리 방식을 검토한다.
+- [x] 환경 변수 기반 Overview·BE·AI 대시보드 설계를 확정한다.
+- [x] 대시보드 설계 문서를 작성하고 자체 검토한다.
+- [ ] 사용자가 설계 문서를 검토한다.
+- [ ] dashboard JSON과 동기화 스크립트를 구현한다.
+- [ ] 단기 Grafana service account token으로 대시보드를 배포한다.
+- [ ] develop·prod의 필수 메트릭과 전체·에러 로그 패널을 검증한다.
+- [ ] 배포 token을 폐기하고 운영 문서를 갱신한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.

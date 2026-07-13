@@ -392,3 +392,14 @@
 - 재배포 후 production API·AI는 desired/running `1/1`, PRIMARY deployment `COMPLETED`, health `200` 상태이며 새 log stream에서 `401`과 지표 전송 실패 메시지가 조회되지 않았다.
 - Grafana Explore에서 develop과 production 각각 BE HTTP·JVM GC·JVM memory, AI HTTP·CPython GC·process 지표가 모두 조회되어 총 12개 환경·서비스·분류 조합을 확인했다.
 - 적용 후 `terraform fmt -recursive -check`, develop/prod `terraform validate`, `git diff --check`가 통과했다. develop/prod `terraform plan -detailed-exitcode`는 모두 exit code `0`과 `No changes`를 반환했다.
+
+## 2026-07-13 LAN-122 Grafana Cloud 대시보드
+
+- Grafana에는 Landit 전용 dashboard가 없으며 Prometheus UID는 `grafanacloud-prom`, Loki UID는 `grafanacloud-logs`이다.
+- 환경별 dashboard를 복제하지 않고 모든 dashboard에 `prod`, `develop` 환경 변수를 둔다. 기본값은 `prod`이다.
+- `Landit Overview`, `Landit BE`, `Landit AI` 세 dashboard를 `Landit` folder에 구성한다.
+- 세 dashboard 모두 전체 로그와 에러 로그 패널을 포함한다. Overview는 BE·AI 통합 로그를, 상세 dashboard는 서비스별 log group을 조회한다.
+- 에러 로그는 현재 별도 `level` label이 없어 `error`, `exception`, `traceback`, `critical`, `fatal` 본문 정규식으로 구분한다.
+- 공개 JVM dashboard `11892`와 FastAPI dashboard `18739`는 레이아웃만 참고하고 Landit의 실제 메트릭 이름과 label에 맞게 쿼리를 작성한다.
+- dashboard JSON은 `landit-iac`에서 관리하고 단기 Grafana service account token으로 HTTP API에 배포한다. 별도 Grafana Terraform state와 provider는 추가하지 않는다.
+- service account token은 환경변수로만 사용하고 배포·검증 후 폐기한다. dashboard 자동 배포 workflow와 alert rule은 이번 범위에서 제외한다.

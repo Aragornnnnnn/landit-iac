@@ -38,3 +38,8 @@ output "app_bucket_name" {
   description = "Production private application S3 bucket name."
   value       = module.app_platform.app_bucket_name
 }
+
+output "grafana_cloudwatch_role_arn" {
+  description = "Shared IAM role ARN used by the Grafana Cloud AWS integration."
+  value       = aws_iam_role.grafana_cloudwatch.arn
+}

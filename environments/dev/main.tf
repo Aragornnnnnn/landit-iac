@@ -28,4 +28,10 @@ module "app_platform" {
   worker_desired_count = var.worker_desired_count
 
   alb_certificate_arn = var.alb_certificate_arn
+
+  grafana_otlp_enabled    = var.grafana_otlp_enabled
+  grafana_otlp_endpoint   = var.grafana_otlp_endpoint
+  grafana_logs_enabled    = var.grafana_logs_enabled
+  grafana_logs_endpoint   = var.grafana_logs_endpoint
+  grafana_logs_secret_arn = var.grafana_logs_secret_arn
 }

@@ -25,6 +25,7 @@ Landit 서비스의 Infrastructure as Code 레포입니다.
 - [Developer Guide](docs/developer-guide.md): 개발자용 Terraform 실행, GitHub Actions, Git 작업 흐름.
 - [Architecture Questions](docs/architecture-questions.md): 아키텍처 확정 전 질문.
 - [SSM Parameters](docs/ssm-parameters.md): runtime parameter 이름, 타입, 운영 규칙.
+- [Observability](docs/observability.md): Sentry와 Grafana Cloud 지표·로그 연동 구조와 검증 절차.
 - [checklist.md](checklist.md): 작업 체크리스트.
 - [context-notes.md](context-notes.md): 작업 결정과 검증 기록.
 

@@ -352,3 +352,18 @@
 - 새 task definition은 BE `SENTRY_DSN`을 `LANDIT_BE_SENTRY_DSN`으로, AI `SENTRY_DSN`을 `LANDIT_AI_SENTRY_DSN`으로 매핑한다. 값은 조회하지 않았다.
 - BE API에는 `SENTRY_ENVIRONMENT=develop` 또는 `prod`, AI에는 `APP_ENV=develop` 또는 `prod`가 포함됐다.
 - develop/prod API·AI ECS service는 모두 PRIMARY deployment `COMPLETED`, desired/running `1/1` 상태가 됐다. develop 새 API target도 `healthy` 상태로 전환됐다.
+
+## 2026-07-13 LAN-122 Grafana Cloud 통합 모니터링
+
+- Grafana Cloud Free stack `scarletmyrtle3008`을 사용한다. 새 유료 stack이나 유료 plan은 만들지 않는다.
+- Grafana Cloud AWS account 연결용 AWS account ID는 `008923505280`, External ID는 `3366938`이다. External ID는 비밀값은 아니지만 trust policy에서 일치 조건으로 제한한다.
+- AWS 자원 지표는 Grafana Cloud CloudWatch scrape로 수집한다. 대상은 `AWS/ApplicationELB`의 `RequestCount`와 `AWS/ECS`의 `CPUUtilization`, `MemoryUtilization`이다.
+- BE와 AI 애플리케이션 지표는 Grafana Cloud OTLP endpoint로 직접 전송한다. 현재 규모에서는 서비스별 Alloy sidecar의 리소스, 설정 배포, 장애 지점을 추가하지 않는 편이 단순하다. Alloy는 전송 재시도와 로컬 버퍼링 요구가 생길 때 도입한다.
+- BE 로그와 AI 로그는 기존 CloudWatch Logs를 유지하고 Data Firehose로 Grafana Loki에 전달한다. 환경별 delivery stream 하나를 API와 AI log group이 공유하고, log stream 이름은 별도 Loki label로 추가하지 않는다.
+- OTLP 인증 header는 Terraform 변수나 state에 넣지 않고 환경별 SSM `SecureString`에 기록한다.
+- Loki access policy token은 Terraform 변수나 state에 넣지 않는다. AWS Secrets Manager에 `{"api_key":"<Loki instance ID>:<logs write token>"}` 형식으로 작성하고 Firehose가 secret ARN으로 조회한다.
+- Grafana Cloud의 account 추가, scrape job 생성, access policy token 생성은 외부 상태 변경이므로 실제 생성 직전에 사용자 확인을 받고 진행한다.
+- metric과 log label에는 사용자 ID, session ID, message ID, 요청 본문, query string, 인증 header를 넣지 않는다.
+- BE는 `MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED`, `MANAGEMENT_OTLP_METRICS_EXPORT_STEP`, signal-specific metrics endpoint를 사용하고, AI는 `OTEL_METRICS_ENABLED`, `OTEL_EXPORTER_OTLP_PROTOCOL`, base OTLP endpoint를 사용하도록 각 레포의 현재 설정 계약에 맞췄다.
+- `terraform fmt -recursive`, develop/prod `terraform validate`, `git diff --check`가 통과했다. validate는 샌드박스에서 provider plugin 통신이 차단되어 같은 명령을 샌드박스 밖에서 재실행했다.
+- 실제 OTLP endpoint와 Grafana Cloud Logs secret ARN이 아직 없으므로 기본 enable flag는 `false`로 유지하고 `terraform plan`과 `apply`는 보류한다.

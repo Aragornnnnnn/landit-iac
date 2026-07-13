@@ -123,3 +123,51 @@ variable "alb_certificate_arn" {
   type        = string
   default     = null
 }
+
+variable "grafana_otlp_enabled" {
+  description = "Whether to send application metrics directly to Grafana Cloud OTLP."
+  type        = bool
+  default     = false
+}
+
+variable "grafana_otlp_endpoint" {
+  description = "Grafana Cloud OTLP base endpoint. Required when grafana_otlp_enabled is true."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.grafana_otlp_endpoint == "" || can(regex("^https://[^[:space:]]+$", var.grafana_otlp_endpoint))
+    error_message = "grafana_otlp_endpoint must be empty or a valid HTTPS URL."
+  }
+}
+
+variable "grafana_logs_enabled" {
+  description = "Whether to forward application CloudWatch Logs to Grafana Cloud with Data Firehose."
+  type        = bool
+  default     = false
+}
+
+variable "grafana_logs_endpoint" {
+  description = "Grafana Cloud AWS Logs ingest endpoint. Required when grafana_logs_enabled is true."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.grafana_logs_endpoint == "" || can(regex("^https://[^[:space:]]+$", var.grafana_logs_endpoint))
+    error_message = "grafana_logs_endpoint must be empty or a valid HTTPS URL."
+  }
+}
+
+variable "grafana_logs_secret_arn" {
+  description = "Secrets Manager ARN containing the Grafana Logs api_key. Required when grafana_logs_enabled is true."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      var.grafana_logs_secret_arn == "" ||
+      can(regex("^arn:aws:secretsmanager:[^:]+:[0-9]{12}:secret:.+$", var.grafana_logs_secret_arn))
+    )
+    error_message = "grafana_logs_secret_arn must be empty or a valid AWS Secrets Manager ARN."
+  }
+}

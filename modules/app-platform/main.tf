@@ -329,6 +329,172 @@ resource "aws_cloudwatch_log_group" "worker" {
   retention_in_days = 14
 }
 
+data "aws_iam_policy_document" "firehose_assume_role" {
+  count = var.grafana_logs_enabled ? 1 : 0
+
+  statement {
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["firehose.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "firehose" {
+  count = var.grafana_logs_enabled ? 1 : 0
+
+  name               = "${local.name_prefix}-grafana-logs-firehose"
+  assume_role_policy = data.aws_iam_policy_document.firehose_assume_role[0].json
+}
+
+data "aws_iam_policy_document" "firehose" {
+  count = var.grafana_logs_enabled ? 1 : 0
+
+  statement {
+    actions = [
+      "s3:AbortMultipartUpload",
+      "s3:GetBucketLocation",
+      "s3:GetObject",
+      "s3:ListBucket",
+      "s3:ListBucketMultipartUploads",
+      "s3:PutObject"
+    ]
+    resources = [
+      aws_s3_bucket.app.arn,
+      "${aws_s3_bucket.app.arn}/grafana-logs-failed/*"
+    ]
+  }
+
+  statement {
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [var.grafana_logs_secret_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "firehose" {
+  count = var.grafana_logs_enabled ? 1 : 0
+
+  name   = "${local.name_prefix}-grafana-logs-firehose"
+  role   = aws_iam_role.firehose[0].id
+  policy = data.aws_iam_policy_document.firehose[0].json
+}
+
+resource "aws_kinesis_firehose_delivery_stream" "grafana_logs" {
+  count = var.grafana_logs_enabled ? 1 : 0
+
+  name        = "${local.name_prefix}-grafana-logs"
+  destination = "http_endpoint"
+
+  http_endpoint_configuration {
+    url                = var.grafana_logs_endpoint
+    name               = "Grafana Cloud AWS Logs"
+    buffering_size     = 1
+    buffering_interval = 60
+    role_arn           = aws_iam_role.firehose[0].arn
+    s3_backup_mode     = "FailedDataOnly"
+
+    secrets_manager_configuration {
+      enabled    = true
+      role_arn   = aws_iam_role.firehose[0].arn
+      secret_arn = var.grafana_logs_secret_arn
+    }
+
+    request_configuration {
+      content_encoding = "GZIP"
+
+      common_attributes {
+        name  = "lbl_project"
+        value = var.project_name
+      }
+
+      common_attributes {
+        name  = "lbl_environment"
+        value = var.environment
+      }
+    }
+
+    s3_configuration {
+      role_arn           = aws_iam_role.firehose[0].arn
+      bucket_arn         = aws_s3_bucket.app.arn
+      prefix             = "grafana-logs-failed/"
+      buffering_size     = 5
+      buffering_interval = 300
+      compression_format = "GZIP"
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(trimspace(var.grafana_logs_endpoint)) > 0
+      error_message = "grafana_logs_endpoint is required when grafana_logs_enabled is true."
+    }
+
+    precondition {
+      condition     = length(trimspace(var.grafana_logs_secret_arn)) > 0
+      error_message = "grafana_logs_secret_arn is required when grafana_logs_enabled is true."
+    }
+  }
+}
+
+data "aws_iam_policy_document" "logs_subscription_assume_role" {
+  count = var.grafana_logs_enabled ? 1 : 0
+
+  statement {
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["logs.amazonaws.com"]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/${var.project_name}/${var.environment}/*"]
+    }
+  }
+}
+
+resource "aws_iam_role" "logs_subscription" {
+  count = var.grafana_logs_enabled ? 1 : 0
+
+  name               = "${local.name_prefix}-grafana-logs-subscription"
+  assume_role_policy = data.aws_iam_policy_document.logs_subscription_assume_role[0].json
+}
+
+data "aws_iam_policy_document" "logs_subscription" {
+  count = var.grafana_logs_enabled ? 1 : 0
+
+  statement {
+    actions   = ["firehose:PutRecord"]
+    resources = [aws_kinesis_firehose_delivery_stream.grafana_logs[0].arn]
+  }
+}
+
+resource "aws_iam_role_policy" "logs_subscription" {
+  count = var.grafana_logs_enabled ? 1 : 0
+
+  name   = "${local.name_prefix}-grafana-logs-subscription"
+  role   = aws_iam_role.logs_subscription[0].id
+  policy = data.aws_iam_policy_document.logs_subscription[0].json
+}
+
+resource "aws_cloudwatch_log_subscription_filter" "grafana_logs" {
+  for_each = var.grafana_logs_enabled ? {
+    api    = aws_cloudwatch_log_group.api.name
+    worker = aws_cloudwatch_log_group.worker.name
+  } : {}
+
+  name            = "${local.name_prefix}-${each.key}-grafana-logs"
+  role_arn        = aws_iam_role.logs_subscription[0].arn
+  log_group_name  = each.value
+  filter_pattern  = ""
+  destination_arn = aws_kinesis_firehose_delivery_stream.grafana_logs[0].arn
+  distribution    = "ByLogStream"
+}
+
 data "aws_iam_policy_document" "ecs_task_assume_role" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -475,7 +641,7 @@ resource "aws_ecs_task_definition" "api" {
         }
       ]
 
-      environment = [
+      environment = concat([
         { name = "AWS_REGION", value = var.aws_region },
         { name = "ENVIRONMENT", value = var.environment },
         { name = "SENTRY_ENVIRONMENT", value = var.environment },
@@ -483,9 +649,15 @@ resource "aws_ecs_task_definition" "api" {
         { name = "SPRING_PROFILES_ACTIVE", value = var.environment },
         { name = "S3_BUCKET_NAME", value = aws_s3_bucket.app.bucket },
         { name = "SQS_JOBS_QUEUE_URL", value = aws_sqs_queue.jobs.url }
-      ]
+        ], var.grafana_otlp_enabled ? [
+        { name = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", value = "${trimsuffix(var.grafana_otlp_endpoint, "/")}/v1/metrics" },
+        { name = "OTEL_SERVICE_NAME", value = "landit-be" },
+        { name = "OTEL_RESOURCE_ATTRIBUTES", value = "service.namespace=landit,deployment.environment.name=${var.environment}" },
+        { name = "MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED", value = "true" },
+        { name = "MANAGEMENT_OTLP_METRICS_EXPORT_STEP", value = "30s" }
+      ] : [])
 
-      secrets = [
+      secrets = concat([
         { name = "DB_URL", valueFrom = "${local.ssm_path}/DB_URL" },
         { name = "DB_USERNAME", valueFrom = "${local.ssm_path}/DB_USERNAME" },
         { name = "DB_PASSWORD", valueFrom = "${local.ssm_path}/DB_PASSWORD" },
@@ -499,7 +671,9 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_AI_CLIENT_MODE", valueFrom = "${local.ssm_path}/LANDIT_AI_CLIENT_MODE" },
         { name = "LANDIT_AI_BASE_URL", valueFrom = "${local.ssm_path}/LANDIT_AI_BASE_URL" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_BE_SENTRY_DSN" }
-      ]
+        ], var.grafana_otlp_enabled ? [
+        { name = "OTEL_EXPORTER_OTLP_HEADERS", valueFrom = "${local.ssm_path}/LANDIT_GRAFANA_CLOUD_OTLP_HEADERS" }
+      ] : [])
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -511,6 +685,13 @@ resource "aws_ecs_task_definition" "api" {
       }
     }
   ])
+
+  lifecycle {
+    precondition {
+      condition     = !var.grafana_otlp_enabled || length(trimspace(var.grafana_otlp_endpoint)) > 0
+      error_message = "grafana_otlp_endpoint is required when grafana_otlp_enabled is true."
+    }
+  }
 }
 
 resource "aws_ecs_task_definition" "worker" {
@@ -535,15 +716,21 @@ resource "aws_ecs_task_definition" "worker" {
         }
       ]
 
-      environment = [
+      environment = concat([
         { name = "AWS_REGION", value = var.aws_region },
         { name = "ENVIRONMENT", value = var.environment },
         { name = "APP_ENV", value = var.environment },
         { name = "S3_BUCKET_NAME", value = aws_s3_bucket.app.bucket },
         { name = "SQS_JOBS_QUEUE_URL", value = aws_sqs_queue.jobs.url }
-      ]
+        ], var.grafana_otlp_enabled ? [
+        { name = "OTEL_METRICS_ENABLED", value = "true" },
+        { name = "OTEL_EXPORTER_OTLP_PROTOCOL", value = "http/protobuf" },
+        { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = var.grafana_otlp_endpoint },
+        { name = "OTEL_SERVICE_NAME", value = "landit-ai" },
+        { name = "OTEL_RESOURCE_ATTRIBUTES", value = "service.namespace=landit,deployment.environment.name=${var.environment}" }
+      ] : [])
 
-      secrets = [
+      secrets = concat([
         { name = "DB_URL", valueFrom = "${local.ssm_path}/DB_URL" },
         { name = "DB_USERNAME", valueFrom = "${local.ssm_path}/DB_USERNAME" },
         { name = "DB_PASSWORD", valueFrom = "${local.ssm_path}/DB_PASSWORD" },
@@ -552,7 +739,9 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "OPENROUTER_MODEL", valueFrom = "${local.ssm_path}/OPENROUTER_MODEL" },
         { name = "OPENROUTER_API_KEY", valueFrom = "${local.ssm_path}/OPENROUTER_API_KEY" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_AI_SENTRY_DSN" }
-      ]
+        ], var.grafana_otlp_enabled ? [
+        { name = "OTEL_EXPORTER_OTLP_HEADERS", valueFrom = "${local.ssm_path}/LANDIT_GRAFANA_CLOUD_OTLP_HEADERS" }
+      ] : [])
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -564,6 +753,13 @@ resource "aws_ecs_task_definition" "worker" {
       }
     }
   ])
+
+  lifecycle {
+    precondition {
+      condition     = !var.grafana_otlp_enabled || length(trimspace(var.grafana_otlp_endpoint)) > 0
+      error_message = "grafana_otlp_endpoint is required when grafana_otlp_enabled is true."
+    }
+  }
 }
 
 resource "aws_ecs_service" "api" {

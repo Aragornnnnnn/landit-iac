@@ -356,13 +356,12 @@
 ## 2026-07-13 LAN-122 Grafana Cloud 통합 모니터링
 
 - Grafana Cloud Free stack `scarletmyrtle3008`을 사용한다. 새 유료 stack이나 유료 plan은 만들지 않는다.
-- Grafana Cloud AWS account 연결용 AWS account ID는 `008923505280`, External ID는 `3366938`이다. External ID는 비밀값은 아니지만 trust policy에서 일치 조건으로 제한한다.
-- AWS 자원 지표는 Grafana Cloud CloudWatch scrape로 수집한다. 대상은 `AWS/ApplicationELB`의 `RequestCount`와 `AWS/ECS`의 `CPUUtilization`, `MemoryUtilization`이다.
+- 조직 SCP의 `tag:GetResources` 명시적 거부를 수정할 관리 계정 접근이 없어 Grafana Cloud CloudWatch scrape는 범위에서 제외한다. 따라서 ALB TPS와 ECS CPU·memory 지표는 Grafana Cloud에서 수집하지 않는다.
 - BE와 AI 애플리케이션 지표는 Grafana Cloud OTLP endpoint로 직접 전송한다. 현재 규모에서는 서비스별 Alloy sidecar의 리소스, 설정 배포, 장애 지점을 추가하지 않는 편이 단순하다. Alloy는 전송 재시도와 로컬 버퍼링 요구가 생길 때 도입한다.
 - BE 로그와 AI 로그는 기존 CloudWatch Logs를 유지하고 Data Firehose로 Grafana Loki에 전달한다. 환경별 delivery stream 하나를 API와 AI log group이 공유하고, log stream 이름은 별도 Loki label로 추가하지 않는다.
 - OTLP 인증 header는 Terraform 변수나 state에 넣지 않고 환경별 SSM `SecureString`에 기록한다.
 - Loki access policy token은 Terraform 변수나 state에 넣지 않는다. AWS Secrets Manager에 `{"api_key":"<Loki instance ID>:<logs write token>"}` 형식으로 작성하고 Firehose가 secret ARN으로 조회한다.
-- Grafana Cloud의 account 추가, scrape job 생성, access policy token 생성은 외부 상태 변경이므로 실제 생성 직전에 사용자 확인을 받고 진행한다.
+- Grafana Cloud access policy token 생성은 외부 상태 변경이므로 실제 생성 직전에 사용자 확인을 받고 진행한다.
 - metric과 log label에는 사용자 ID, session ID, message ID, 요청 본문, query string, 인증 header를 넣지 않는다.
 - BE는 `MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED`, `MANAGEMENT_OTLP_METRICS_EXPORT_STEP`, signal-specific metrics endpoint를 사용하고, AI는 `OTEL_METRICS_ENABLED`, `OTEL_EXPORTER_OTLP_PROTOCOL`, base OTLP endpoint를 사용하도록 각 레포의 현재 설정 계약에 맞췄다.
 - BE와 AI 모두 `OTEL_TRACES_EXPORTER=none`, `OTEL_LOGS_EXPORTER=none`을 명시해 자동 계측 모듈이 trace나 log를 의도치 않게 전송하지 않고 metrics만 전송하도록 제한한다.
@@ -372,7 +371,7 @@
 - Grafana Cloud access policy는 OTLP용 `metrics:write`와 Logs용 `logs:write`로 분리했다. 두 token은 자동 만료가 없으므로 정기 점검과 수동 rotation 및 폐기가 필요하다.
 - 실제 endpoint와 secret ARN을 dev/prod에 연결하고 OTLP 및 로그 전송 enable flag를 `true`로 변경했다. `terraform plan`과 `apply`는 별도 검토와 사용자 승인 전까지 보류한다.
 - develop plan은 `9 added, 2 changed, 2 destroyed`이며, 환경별 Firehose·IAM·log subscription 생성과 API·AI task definition 교체 및 ECS service 갱신만 포함한다.
-- production plan은 공용 Grafana CloudWatch read role까지 포함해 `11 added, 2 changed, 2 destroyed`이며, 그 외 변경 범위는 develop과 동일하다.
+- production plan은 공용 Grafana CloudWatch read role까지 포함해 `11 added, 2 changed, 2 destroyed`였으며, CloudWatch scrape 범위 제외에 따라 해당 role과 policy를 삭제한다.
 - 두 plan 모두 `/tmp/lan122-dev.tfplan`, `/tmp/lan122-prod.tfplan`에 저장했고 예상하지 않은 기존 리소스 변경은 없다. apply는 사용자 승인 전까지 실행하지 않는다.
 - 사용자 지시에 따라 저장한 plan 파일을 적용했다. develop은 `9 added, 2 changed, 2 destroyed`, production은 `11 added, 2 changed, 2 destroyed`로 계획과 동일하게 완료됐다.
 - apply 후 develop/prod API·AI ECS service는 모두 desired/running `1/1`, PRIMARY deployment `COMPLETED`, failed task `0` 상태다.
@@ -381,5 +380,9 @@
 - Grafana Logs Drilldown에서 `service_name=cloud/aws` 로그와 `environment`, `project`, `aws_log_group` label을 확인했다. 최근 15분 범위에서 develop과 prod 로그가 모두 조회된다.
 - Grafana Cloud AWS account `landit` 등록과 role assume은 성공했다. 다만 CloudWatch scrape job 생성 시 `tag:GetResources` 검증이 실패했다.
 - `tag:GetResources` 직접 호출은 조직 SCP `p-5soyo0ar`의 명시적 거부로 실패하고 `cloudwatch:ListMetrics`는 성공한다. Grafana Cloud 생성 화면은 resource tag 옵션을 해제해도 이 권한을 필수 검증하므로, 조직 관리자가 해당 SCP에서 `tag:GetResources`를 허용하기 전에는 scrape job을 만들 수 없다.
+- 관리 계정 접근이 불가능한 상태에서는 별도 exporter나 Alloy를 운영해 우회하지 않는다. CloudWatch scrape 관련 IAM role과 정책을 제거하고 Sentry, Firehose Loki 로그, BE·AI OTLP 애플리케이션 메트릭만 운영한다.
+- 제거 plan은 develop `No changes`, production `0 added, 0 changed, 2 destroyed`였으며 production에서는 `landit-grafana-cloudwatch-integration` IAM role과 `landit-grafana-cloudwatch-read` inline policy만 대상으로 확인했다.
+- production 제거 apply는 `0 added, 0 changed, 2 destroyed`로 완료됐고, IAM role 조회는 `NoSuchEntity`를 반환했다.
+- 제거 후 develop/prod Terraform plan은 모두 `No changes`이며, 두 Firehose delivery stream은 `ACTIVE`, 네 ECS service는 `ACTIVE`, desired/running `1/1`, PRIMARY deployment `COMPLETED` 상태다.
 - 현재 ECS service는 새 환경변수를 주입한 기존 image를 실행한다. BE·AI 애플리케이션 지표는 각 레포 변경을 배포한 뒤에만 생성되므로 branch push와 배포 후 별도 검증한다.
 - 적용 후 `terraform fmt -recursive -check`, develop/prod `terraform validate`, `git diff --check`가 통과했다. develop/prod `terraform plan -detailed-exitcode`는 모두 exit code `0`과 `No changes`를 반환했다.

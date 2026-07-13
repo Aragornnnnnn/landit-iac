@@ -1,13 +1,10 @@
 # Landit Observability
 
-Landit은 Sentry로 애플리케이션 오류를 확인하고, Grafana Cloud에서 AWS 자원 지표, 애플리케이션 지표, CloudWatch Logs를 함께 조회합니다.
+Landit은 Sentry로 애플리케이션 오류를 확인하고, Grafana Cloud에서 애플리케이션 지표와 CloudWatch Logs를 함께 조회합니다.
 
 ## 데이터 흐름
 
 ```text
-ALB, ECS CloudWatch metrics
-  -> Grafana Cloud CloudWatch scrape
-
 BE, AI application metrics
   -> Grafana Cloud OTLP endpoint
 
@@ -19,19 +16,7 @@ BE, AI stdout
 
 BE와 AI는 Grafana Cloud OTLP endpoint로 직접 지표를 전송합니다. Alloy는 로컬 버퍼링, 신호 가공, 다중 backend 전송이 필요해질 때 도입합니다.
 
-## CloudWatch 지표 연동
-
-운영 Terraform state가 `landit-grafana-cloudwatch-integration` IAM role을 관리합니다. Grafana Cloud AWS account 설정에는 `grafana_cloudwatch_role_arn` output을 사용합니다.
-
-CloudWatch scrape job은 `ap-northeast-2`에서 아래 지표만 수집합니다.
-
-- `AWS/ApplicationELB`의 `RequestCount` `Sum`.
-- `AWS/ECS`의 `CPUUtilization` `Average`.
-- `AWS/ECS`의 `MemoryUtilization` `Average`.
-
-`RequestCount`는 선택한 조회 구간의 초 단위로 나누어 전체 TPS를 계산합니다. AWS resource tag는 `Project=landit`, `Environment=develop` 또는 `Environment=prod`를 사용합니다.
-
-Grafana Cloud의 CloudWatch scrape job 생성 검증은 `tag:GetResources`를 호출합니다. IAM role에서 이 권한을 허용해도 AWS Organizations SCP가 명시적으로 거부하면 생성할 수 없으므로, 조직 정책에서도 `tag:GetResources`를 허용해야 합니다.
+Grafana Cloud CloudWatch scrape는 조직 SCP의 `tag:GetResources` 명시적 거부를 변경할 수 없어 사용하지 않습니다. 따라서 ALB TPS와 ECS CPU·memory는 현재 Grafana Cloud 조회 범위에서 제외합니다.
 
 ## 애플리케이션 OTLP 지표
 
@@ -97,4 +82,4 @@ AWS_PROFILE=landit terraform -chdir=environments/prod plan -out=/tmp/lan122-prod
 terraform -chdir=environments/prod show -no-color /tmp/lan122-prod.tfplan
 ```
 
-apply 후 Grafana Cloud에서 ALB TPS, ECS CPU·memory와 환경별 API·AI 로그를 확인합니다. BE·AI 변경 image를 배포한 뒤 JVM·GC·HTTP와 process·GC·HTTP 지표를 확인합니다. Firehose 실패 백업 prefix와 delivery 오류도 함께 확인합니다.
+apply 후 Grafana Cloud에서 환경별 API·AI 로그를 확인합니다. BE·AI 변경 image를 배포한 뒤 JVM·GC·HTTP와 process·GC·HTTP 지표를 확인합니다. Firehose 실패 백업 prefix와 delivery 오류도 함께 확인합니다.

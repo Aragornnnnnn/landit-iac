@@ -374,3 +374,12 @@
 - develop plan은 `9 added, 2 changed, 2 destroyed`이며, 환경별 Firehose·IAM·log subscription 생성과 API·AI task definition 교체 및 ECS service 갱신만 포함한다.
 - production plan은 공용 Grafana CloudWatch read role까지 포함해 `11 added, 2 changed, 2 destroyed`이며, 그 외 변경 범위는 develop과 동일하다.
 - 두 plan 모두 `/tmp/lan122-dev.tfplan`, `/tmp/lan122-prod.tfplan`에 저장했고 예상하지 않은 기존 리소스 변경은 없다. apply는 사용자 승인 전까지 실행하지 않는다.
+- 사용자 지시에 따라 저장한 plan 파일을 적용했다. develop은 `9 added, 2 changed, 2 destroyed`, production은 `11 added, 2 changed, 2 destroyed`로 계획과 동일하게 완료됐다.
+- apply 후 develop/prod API·AI ECS service는 모두 desired/running `1/1`, PRIMARY deployment `COMPLETED`, failed task `0` 상태다.
+- develop/prod Firehose delivery stream은 `ACTIVE`이고 API·AI log group 네 곳의 subscription filter가 환경별 stream을 가리킨다.
+- Firehose의 `IncomingRecords`와 `DeliveryToHttpEndpoint.Success`가 develop/prod에서 계속 발생하며, `FailedValidation.Records`와 `SecretsManager.AccessDeniedException`은 `0`이다.
+- Grafana Logs Drilldown에서 `service_name=cloud/aws` 로그와 `environment`, `project`, `aws_log_group` label을 확인했다. 최근 15분 범위에서 develop과 prod 로그가 모두 조회된다.
+- Grafana Cloud AWS account `landit` 등록과 role assume은 성공했다. 다만 CloudWatch scrape job 생성 시 `tag:GetResources` 검증이 실패했다.
+- `tag:GetResources` 직접 호출은 조직 SCP `p-5soyo0ar`의 명시적 거부로 실패하고 `cloudwatch:ListMetrics`는 성공한다. Grafana Cloud 생성 화면은 resource tag 옵션을 해제해도 이 권한을 필수 검증하므로, 조직 관리자가 해당 SCP에서 `tag:GetResources`를 허용하기 전에는 scrape job을 만들 수 없다.
+- 현재 ECS service는 새 환경변수를 주입한 기존 image를 실행한다. BE·AI 애플리케이션 지표는 각 레포 변경을 배포한 뒤에만 생성되므로 branch push와 배포 후 별도 검증한다.
+- 적용 후 `terraform fmt -recursive -check`, develop/prod `terraform validate`, `git diff --check`가 통과했다. develop/prod `terraform plan -detailed-exitcode`는 모두 exit code `0`과 `No changes`를 반환했다.

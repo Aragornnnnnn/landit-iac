@@ -31,6 +31,8 @@ CloudWatch scrape job은 `ap-northeast-2`에서 아래 지표만 수집합니다
 
 `RequestCount`는 선택한 조회 구간의 초 단위로 나누어 전체 TPS를 계산합니다. AWS resource tag는 `Project=landit`, `Environment=develop` 또는 `Environment=prod`를 사용합니다.
 
+Grafana Cloud의 CloudWatch scrape job 생성 검증은 `tag:GetResources`를 호출합니다. IAM role에서 이 권한을 허용해도 AWS Organizations SCP가 명시적으로 거부하면 생성할 수 없으므로, 조직 정책에서도 `tag:GetResources`를 허용해야 합니다.
+
 ## 애플리케이션 OTLP 지표
 
 dev/prod는 아래 OTLP endpoint로 지표 전송을 활성화합니다.
@@ -95,4 +97,4 @@ AWS_PROFILE=landit terraform -chdir=environments/prod plan -out=/tmp/lan122-prod
 terraform -chdir=environments/prod show -no-color /tmp/lan122-prod.tfplan
 ```
 
-apply 후 Grafana Cloud에서 ALB TPS, ECS CPU·memory, BE JVM·GC·HTTP, AI process·GC·HTTP 지표와 환경별 API·AI 로그를 확인합니다. Firehose 실패 백업 prefix와 delivery 오류도 함께 확인합니다.
+apply 후 Grafana Cloud에서 ALB TPS, ECS CPU·memory와 환경별 API·AI 로그를 확인합니다. BE·AI 변경 image를 배포한 뒤 JVM·GC·HTTP와 process·GC·HTTP 지표를 확인합니다. Firehose 실패 백업 prefix와 delivery 오류도 함께 확인합니다.

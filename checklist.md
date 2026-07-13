@@ -251,9 +251,11 @@
 - [x] Grafana Cloud Logs 인증값을 AWS Secrets Manager에 작성한다.
 - [x] `terraform fmt -recursive`, develop/prod `terraform validate`를 실행한다.
 - [x] 실제 endpoint와 secret ARN 준비 후 develop/prod `terraform plan`을 실행한다.
-- [ ] 사용자 승인 후 develop/prod Terraform apply를 실행한다.
-- [ ] Grafana Cloud AWS account, CloudWatch scrape job, dashboard를 구성한다.
-- [ ] ALB TPS, ECS CPU·memory, BE JVM·GC, AI process·GC, BE·AI 로그 조회를 확인한다.
+- [x] 사용자 승인 후 develop/prod Terraform apply를 실행한다.
+- [x] Grafana Cloud AWS account를 구성한다.
+- [ ] 조직 SCP에서 `tag:GetResources`를 허용한 뒤 CloudWatch scrape job과 dashboard를 구성한다.
+- [x] Firehose 전송 지표와 Grafana Loki에서 develop·prod BE·AI 로그 조회를 확인한다.
+- [ ] BE·AI 변경을 배포한 뒤 ALB TPS, ECS CPU·memory, BE JVM·GC, AI process·GC 지표 조회를 확인한다.
 
 ## 아키텍처 결정 전 질문
 

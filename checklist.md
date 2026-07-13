@@ -242,7 +242,7 @@
 
 ## 2026-07-13 LAN-122 Grafana Cloud 통합 모니터링
 
-- [x] Grafana Cloud Free stack을 확인하고 CloudWatch scrape는 조직 SCP 제약으로 범위에서 제외한다.
+- [x] 기존 Grafana Cloud stack을 확인하고 CloudWatch scrape는 조직 SCP 제약으로 범위에서 제외한다.
 - [x] 애플리케이션 지표 전송 방식을 OTLP 직접 전송으로 결정한다.
 - [x] BE와 AI task definition에 서비스명, 환경, OTLP endpoint와 인증 header를 주입한다.
 - [x] CloudWatch Logs를 Grafana Loki로 전달할 Data Firehose 구성을 추가한다.
@@ -254,7 +254,8 @@
 - [x] Firehose 전송 지표와 Grafana Loki에서 develop·prod BE·AI 로그 조회를 확인한다.
 - [x] 사용하지 않는 Grafana CloudWatch IAM role과 policy를 production에서 제거한다.
 - [x] 제거 후 dev/prod Terraform 상태와 Firehose·ECS 서비스 상태를 확인한다.
-- [ ] BE·AI 변경을 배포한 뒤 BE JVM·GC·HTTP와 AI process·GC·HTTP 지표 조회를 확인한다.
+- [x] develop BE·AI 변경을 배포한 뒤 BE JVM·GC·HTTP와 AI process·GC·HTTP 지표 조회를 확인한다.
+- [ ] production BE·AI 변경을 배포한 뒤 같은 애플리케이션 지표 조회를 확인한다.
 
 ## 아키텍처 결정 전 질문
 

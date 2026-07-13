@@ -355,7 +355,7 @@
 
 ## 2026-07-13 LAN-122 Grafana Cloud 통합 모니터링
 
-- Grafana Cloud Free stack `scarletmyrtle3008`을 사용한다. 새 유료 stack이나 유료 plan은 만들지 않는다.
+- 기존 Grafana Cloud stack `scarletmyrtle3008`을 사용한다. 새 stack이나 유료 plan은 만들지 않는다. 현재 portal에는 14일 trial 상태로 표시된다.
 - 조직 SCP의 `tag:GetResources` 명시적 거부를 수정할 관리 계정 접근이 없어 Grafana Cloud CloudWatch scrape는 범위에서 제외한다. 따라서 ALB TPS와 ECS CPU·memory 지표는 Grafana Cloud에서 수집하지 않는다.
 - BE와 AI 애플리케이션 지표는 Grafana Cloud OTLP endpoint로 직접 전송한다. 현재 규모에서는 서비스별 Alloy sidecar의 리소스, 설정 배포, 장애 지점을 추가하지 않는 편이 단순하다. Alloy는 전송 재시도와 로컬 버퍼링 요구가 생길 때 도입한다.
 - BE 로그와 AI 로그는 기존 CloudWatch Logs를 유지하고 Data Firehose로 Grafana Loki에 전달한다. 환경별 delivery stream 하나를 API와 AI log group이 공유하고, log stream 이름은 별도 Loki label로 추가하지 않는다.
@@ -366,7 +366,7 @@
 - BE는 `MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED`, `MANAGEMENT_OTLP_METRICS_EXPORT_STEP`, signal-specific metrics endpoint를 사용하고, AI는 `OTEL_METRICS_ENABLED`, `OTEL_EXPORTER_OTLP_PROTOCOL`, base OTLP endpoint를 사용하도록 각 레포의 현재 설정 계약에 맞췄다.
 - BE와 AI 모두 `OTEL_TRACES_EXPORTER=none`, `OTEL_LOGS_EXPORTER=none`을 명시해 자동 계측 모듈이 trace나 log를 의도치 않게 전송하지 않고 metrics만 전송하도록 제한한다.
 - `terraform fmt -recursive`, develop/prod `terraform validate`, `git diff --check`가 통과했다. validate는 샌드박스에서 provider plugin 통신이 차단되어 같은 명령을 샌드박스 밖에서 재실행했다.
-- OTLP base endpoint는 `https://otlp-gateway-prod-ap-northeast-0.grafana.net/otlp`, Prometheus instance ID는 `3366938`이다. dev/prod의 환경별 OTLP header SSM `SecureString`은 작성됐다.
+- OTLP base endpoint는 `https://otlp-gateway-prod-ap-northeast-0.grafana.net/otlp`, OTLP stack instance ID는 `1721357`이다. Prometheus service instance ID `3366938`과 구분하며 Basic 인증 username에는 OTLP stack instance ID를 사용한다. dev/prod의 환경별 OTLP header SSM `SecureString`은 작성됐다.
 - AWS Logs endpoint는 `https://aws-logs-prod-030.grafana.net/aws-logs/api/v1/push`, Loki instance ID는 `1679144`이다. 인증값은 Terraform 밖의 Secrets Manager에 작성됐으며 Terraform에는 secret ARN만 연결한다.
 - Grafana Cloud access policy는 OTLP용 `metrics:write`와 Logs용 `logs:write`로 분리했다. 두 token은 자동 만료가 없으므로 정기 점검과 수동 rotation 및 폐기가 필요하다.
 - 실제 endpoint와 secret ARN을 dev/prod에 연결하고 OTLP 및 로그 전송 enable flag를 `true`로 변경했다. `terraform plan`과 `apply`는 별도 검토와 사용자 승인 전까지 보류한다.
@@ -384,5 +384,9 @@
 - 제거 plan은 develop `No changes`, production `0 added, 0 changed, 2 destroyed`였으며 production에서는 `landit-grafana-cloudwatch-integration` IAM role과 `landit-grafana-cloudwatch-read` inline policy만 대상으로 확인했다.
 - production 제거 apply는 `0 added, 0 changed, 2 destroyed`로 완료됐고, IAM role 조회는 `NoSuchEntity`를 반환했다.
 - 제거 후 develop/prod Terraform plan은 모두 `No changes`이며, 두 Firehose delivery stream은 `ACTIVE`, 네 ECS service는 `ACTIVE`, desired/running `1/1`, PRIMARY deployment `COMPLETED` 상태다.
-- 현재 ECS service는 새 환경변수를 주입한 기존 image를 실행한다. BE·AI 애플리케이션 지표는 각 레포 변경을 배포한 뒤에만 생성되므로 branch push와 배포 후 별도 검증한다.
+- BE·AI develop PR merge와 배포 후 초기 OTLP 전송은 Basic username에 Prometheus service instance ID `3366938`을 사용해 두 서비스 모두 `401 Unauthorized`가 발생했다.
+- 기존 access policy는 `metrics:write`, active, 만료 없음 상태이며 token은 유지했다. username만 OTLP stack instance ID `1721357`로 바꾼 일회성 OTLP 요청이 HTTP `200`을 반환해 원인을 확인했다.
+- dev/prod `LANDIT_GRAFANA_CLOUD_OTLP_HEADERS`를 version `2`로 갱신했다. develop API·AI는 강제 새 배포 후 health `200`, 새 log stream에서 `401`, `Unauthorized`, export 실패 메시지 없이 안정화됐다.
+- Grafana Explore에서 develop BE HTTP 6, JVM GC 8, JVM memory 25개 시계열과 AI HTTP 17, CPython GC 9, process 6개 시계열을 확인했다.
+- production은 SSM 인증값만 교정했으며 BE·AI 변경 image 배포는 이번 작업에서 실행하지 않는다. production 배포 후 같은 지표 조회를 별도 확인한다.
 - 적용 후 `terraform fmt -recursive -check`, develop/prod `terraform validate`, `git diff --check`가 통과했다. develop/prod `terraform plan -detailed-exitcode`는 모두 exit code `0`과 `No changes`를 반환했다.

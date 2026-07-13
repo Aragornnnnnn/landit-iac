@@ -36,6 +36,8 @@ grafana_otlp_endpoint = "https://otlp-gateway-prod-ap-northeast-0.grafana.net/ot
 
 BE와 AI task는 이 값을 `OTEL_EXPORTER_OTLP_HEADERS`로 주입합니다. Terraform 코드와 state에는 header 값이 저장되지 않습니다.
 
+Basic 인증 username에는 OTLP stack instance ID `1721357`을 사용합니다. Prometheus service instance ID `3366938`은 OTLP gateway 인증 username으로 사용하지 않습니다.
+
 BE는 30초 간격으로 OTLP metric export를 활성화하고 base endpoint에 `/v1/metrics`를 붙인 signal-specific endpoint를 사용합니다. AI는 base endpoint를 사용합니다. 두 서비스 모두 trace와 log exporter를 `none`으로 제한해 metrics만 OTLP로 전송합니다. 공통 resource attribute는 `service.namespace=landit`, `deployment.environment.name=develop|prod`이고, service name은 각각 `landit-be`, `landit-ai`입니다.
 
 ## CloudWatch Logs 전달

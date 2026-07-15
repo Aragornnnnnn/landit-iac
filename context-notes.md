@@ -409,3 +409,16 @@
 - Grafana service account의 datasource query API 호출은 해당 account의 datasource query 권한이 없어 403을 반환했다. 대신 Grafana Cloud access policy의 metrics·logs read scope로 Prometheus와 Loki endpoint를 직접 조회해 dashboard에 사용한 BE HTTP·JVM, AI HTTP·process·CPython GC 쿼리 12개가 성공하는 것을 확인했다.
 - Loki의 24시간 집계는 develop·prod의 API·worker log group 네 개를 모두 반환했다. 전체 로그와 에러 로그 selector도 `query_range` endpoint에서 정상 동작했다.
 - service account token과 Cloud Access Policy token은 repo, Terraform state, 문서, 명령 출력에 기록하지 않았다. Cloud Access Policy token은 이번 작업 후 사용자가 Grafana Cloud에서 rotation해야 한다.
+
+## 2026-07-15 LAN-134 공통 콘텐츠 CloudFront 제공
+
+- 시나리오 썸네일과 연습 예문 이미지는 develop과 prod가 공유하는 private 콘텐츠 버킷에 둔다. 사용자 음성과 Grafana 실패 로그는 기존 환경별 application bucket에 남긴다.
+- 콘텐츠 이미지는 S3 URL이 아니라 CloudFront URL로 조회한다. S3 public access는 차단하고 CloudFront OAC만 `content/*`를 읽도록 제한한다.
+- 공유 리소스는 dev/prod state에 중복 선언하지 않고 `shared/landit-iac/terraform.tfstate`의 별도 root가 소유한다.
+- custom CDN domain과 ACM 인증서는 이번 범위에 포함하지 않는다. 초기 DB URL은 Terraform output으로 제공하는 CloudFront 기본 domain을 사용한다.
+- 콘텐츠 업로드 API는 만들지 않는다. 운영자가 UUID 기반 새 key로 업로드하고 `Cache-Control: public, max-age=31536000, immutable`을 설정한 뒤 DB의 CloudFront URL을 갱신한다.
+- 이전 객체는 develop과 prod의 참조 URL 변경 및 최대 캐시 TTL 경과를 확인한 뒤 삭제한다. Terraform apply와 실제 객체 업로드는 별도 사용자 확인이 필요하다.
+- `AWS_PROFILE=landit terraform -chdir=environments/shared init -reconfigure`와 shared/dev/prod `terraform validate`가 통과했다. 샌드박스 안에서는 AWS provider가 실행되지 않아 동일 검증을 샌드박스 밖에서 실행했다.
+- shared plan은 `landit-content-982529430654` bucket, ownership controls, public access block, AES256 기본 암호화, bucket policy, CloudFront OAC, CloudFront distribution만 추가하는 `7 to add, 0 to change, 0 to destroy` 결과다.
+- CloudFront는 HTTP를 HTTPS로 redirect하고 GET·HEAD만 허용한다. TLS 최소 버전은 `TLSv1.2_2021`이며 default cache TTL과 max TTL은 1년이다.
+- 독립 검토는 S3 private 설정, OAC의 `content/*` 제한, CloudFront 조회 제한, shared state와 workflow 연결에서 P1·P2를 찾지 못했다. README의 apply 전 리소스 상태를 완료처럼 보이게 하는 P3 표현은 `Terraform 구성 추가, apply 전`으로 수정했고 `git diff --check`와 workflow YAML parsing을 다시 통과했다.

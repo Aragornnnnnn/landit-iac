@@ -11,6 +11,7 @@ on:
         options:
           - develop
           - production
+          - shared
       operation:
         description: plan만 실행할지, 환경 승인 후 apply까지 실행할지 선택합니다.
         required: true
@@ -71,6 +72,12 @@ jobs:
               echo "plan-file=production.tfplan" >> "$GITHUB_OUTPUT"
               echo "state-key=prod/landit-iac/terraform.tfstate" >> "$GITHUB_OUTPUT"
               echo "apply-environment=terraform-apply-production" >> "$GITHUB_OUTPUT"
+              ;;
+            shared)
+              echo "root=environments/shared" >> "$GITHUB_OUTPUT"
+              echo "plan-file=shared.tfplan" >> "$GITHUB_OUTPUT"
+              echo "state-key=shared/landit-iac/terraform.tfstate" >> "$GITHUB_OUTPUT"
+              echo "apply-environment=terraform-apply-shared" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "::error::Unknown target: $TARGET"

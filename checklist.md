@@ -271,6 +271,15 @@
 - [x] develop·prod의 필수 메트릭과 전체·에러 로그 패널을 검증한다.
 - [x] 배포 token을 폐기하고 운영 문서를 갱신한다.
 
+## 2026-07-15 LAN-134 공통 콘텐츠 CloudFront 제공
+
+- [x] 공유 Terraform root와 state key를 추가한다.
+- [x] private 콘텐츠 버킷, CloudFront OAC, distribution, bucket policy를 추가한다.
+- [x] GitHub Actions shared target과 승인 environment 안내를 추가한다.
+- [x] 콘텐츠 key, cache header, DB URL 반영, 이전 객체 삭제 절차를 문서화한다.
+- [x] `terraform fmt`, shared/dev/prod validate, shared plan을 실행한다.
+- [x] diff 독립 검토와 사용자 승인 전 apply 보류를 확인한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.

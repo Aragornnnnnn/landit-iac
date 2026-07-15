@@ -47,6 +47,15 @@ terraform -chdir=environments/prod validate
 AWS_PROFILE=landit terraform -chdir=environments/prod plan
 ```
 
+공통 콘텐츠 root는 private 콘텐츠 bucket과 CloudFront를 관리합니다.
+
+```bash
+terraform fmt -recursive
+AWS_PROFILE=landit terraform -chdir=environments/shared init -reconfigure
+terraform -chdir=environments/shared validate
+AWS_PROFILE=landit terraform -chdir=environments/shared plan
+```
+
 `terraform apply`와 `terraform destroy`는 plan 결과를 먼저 확인하고, 실제 변경 내용을 사용자에게 보고한 뒤에만 실행합니다.
 
 ## GitHub Actions Terraform
@@ -55,15 +64,15 @@ AWS_PROFILE=landit terraform -chdir=environments/prod plan
 
 | 입력 | 값 |
 | --- | --- |
-| `target` | `develop`, `production` |
+| `target` | `shared`, `develop`, `production` |
 | `operation` | `plan-only`, `plan-and-apply` |
 | `confirm_environment` | production apply 때만 `production` 입력 |
 
 필요한 GitHub 설정입니다.
 
 - Repository variable 또는 environment variable `AWS_ROLE_ARN`에 GitHub Actions OIDC assume role ARN을 설정합니다.
-- `terraform-plan-develop`, `terraform-plan-production` environment를 만듭니다.
-- `terraform-apply-develop`, `terraform-apply-production` environment를 만들고 required reviewer를 설정합니다.
+- `terraform-plan-shared`, `terraform-plan-develop`, `terraform-plan-production` environment를 만듭니다.
+- `terraform-apply-shared`, `terraform-apply-develop`, `terraform-apply-production` environment를 만들고 required reviewer를 설정합니다.
 - `terraform-apply-production`에는 production 담당자의 required reviewer와 prevent self-review를 설정합니다.
 - apply는 `refs/heads/main`에서만 허용합니다.
 
@@ -82,6 +91,8 @@ OIDC IAM role은 아직 Terraform으로 만들지 않았습니다. role trust po
 
 - `repo:Aragornnnnnn/landit-iac:environment:terraform-plan-develop`.
 - `repo:Aragornnnnnn/landit-iac:environment:terraform-plan-production`.
+- `repo:Aragornnnnnn/landit-iac:environment:terraform-plan-shared`.
+- `repo:Aragornnnnnn/landit-iac:environment:terraform-apply-shared`.
 - `repo:Aragornnnnnn/landit-iac:environment:terraform-apply-develop`.
 - `repo:Aragornnnnnn/landit-iac:environment:terraform-apply-production`.
 
@@ -112,4 +123,4 @@ Application 배포용 prod OIDC role은 수동으로 관리합니다.
 - 접근 키, IP, security group id, secret 값은 커밋하지 않습니다.
 - SSM path는 `/landit/prod`, `/landit/develop`을 사용합니다.
 - runtime parameter 이름과 타입은 [SSM Parameters](ssm-parameters.md)를 따릅니다.
-- state key는 `prod/landit-iac/terraform.tfstate`, `dev/landit-iac/terraform.tfstate`입니다.
+- state key는 `shared/landit-iac/terraform.tfstate`, `prod/landit-iac/terraform.tfstate`, `dev/landit-iac/terraform.tfstate`입니다.

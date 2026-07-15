@@ -164,3 +164,9 @@ Expected: whitespace 오류와 의도하지 않은 파일 변경이 없다.
 git add environments/shared .github/workflows/terraform.yml README.md docs checklist.md context-notes.md
 git commit -m "feat: 공통 콘텐츠 CloudFront 조회 기반을 추가한다"
 ```
+
+## 적용 후 정합성 보정
+
+- CloudFront 기본 `*.cloudfront.net` certificate는 `minimum_protocol_version`을 `TLSv1`로 고정한다.
+- `TLSv1.2_2021` 선언은 perpetual diff를 만들므로 제거한다.
+- TLS 1.2 이상 강제는 custom domain과 us-east-1 ACM certificate를 추가하는 별도 작업으로 둔다.

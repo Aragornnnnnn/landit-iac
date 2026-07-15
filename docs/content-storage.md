@@ -32,7 +32,7 @@ URL: https://{cloudFrontDomain}/content/scenarios/101/thumbnail/{assetId}.webp
 
 운영자는 시나리오 썸네일 URL을 `scenario.thumbnail_url`에, 연습 예문 URL을 `practice_examples_payload[].imageUrl`에 저장합니다. develop과 prod가 별도 DB를 사용하면 각 환경에 같은 CloudFront URL을 반영합니다.
 
-이번 구성은 CloudFront 기본 domain만 제공합니다. custom CDN domain, DNS record, ACM 인증서는 별도 작업으로 추가합니다.
+이번 구성은 CloudFront 기본 domain만 제공합니다. 기본 `*.cloudfront.net` 인증서는 CloudFront 보안 정책을 `TLSv1`로 고정하므로, TLS 1.2 이상을 강제하려면 별도 작업에서 custom CDN domain과 us-east-1 ACM 인증서를 추가해야 합니다.
 
 ## 업로드와 교체 절차
 

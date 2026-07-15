@@ -420,5 +420,6 @@
 - 이전 객체는 develop과 prod의 참조 URL 변경 및 최대 캐시 TTL 경과를 확인한 뒤 삭제한다. Terraform apply와 실제 객체 업로드는 별도 사용자 확인이 필요하다.
 - `AWS_PROFILE=landit terraform -chdir=environments/shared init -reconfigure`와 shared/dev/prod `terraform validate`가 통과했다. 샌드박스 안에서는 AWS provider가 실행되지 않아 동일 검증을 샌드박스 밖에서 실행했다.
 - shared plan은 `landit-content-982529430654` bucket, ownership controls, public access block, AES256 기본 암호화, bucket policy, CloudFront OAC, CloudFront distribution만 추가하는 `7 to add, 0 to change, 0 to destroy` 결과다.
-- CloudFront는 HTTP를 HTTPS로 redirect하고 GET·HEAD만 허용한다. TLS 최소 버전은 `TLSv1.2_2021`이며 default cache TTL과 max TTL은 1년이다.
+- CloudFront는 HTTP를 HTTPS로 redirect하고 GET·HEAD만 허용한다. default cache TTL과 max TTL은 1년이다. CloudFront 기본 domain의 default certificate는 보안 정책을 `TLSv1`로 고정하므로, TLS 1.2 이상을 강제하려면 custom domain과 us-east-1 ACM 인증서가 필요하다.
 - 독립 검토는 S3 private 설정, OAC의 `content/*` 제한, CloudFront 조회 제한, shared state와 workflow 연결에서 P1·P2를 찾지 못했다. README의 apply 전 리소스 상태를 완료처럼 보이게 하는 P3 표현은 `Terraform 구성 추가, apply 전`으로 수정했고 `git diff --check`와 workflow YAML parsing을 다시 통과했다.
+- 실제 apply 뒤 CloudFront API가 기본 certificate의 TLS 최소 버전을 `TLSv1`로 반환했고 Terraform plan에도 지원되지 않는 `TLSv1.2_2021` 변경이 반복됐다. 공식 CloudFront 문서의 기본 certificate 제약에 따라 해당 선언을 제거하고 no-change plan으로 다시 검증한다.

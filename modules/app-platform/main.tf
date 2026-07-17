@@ -741,6 +741,8 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "LLM_PROVIDER", valueFrom = "${local.ssm_path}/LLM_PROVIDER" },
         { name = "OPENROUTER_BASE_URL", valueFrom = "${local.ssm_path}/OPENROUTER_BASE_URL" },
         { name = "OPENROUTER_MODEL", valueFrom = "${local.ssm_path}/OPENROUTER_MODEL" },
+        { name = "MESSAGE_FEEDBACK_MODEL", valueFrom = "${local.ssm_path}/MESSAGE_FEEDBACK_MODEL" },
+        { name = "MESSAGE_FEEDBACK_REVIEW_ENABLED", valueFrom = "${local.ssm_path}/MESSAGE_FEEDBACK_REVIEW_ENABLED" },
         { name = "OPENROUTER_API_KEY", valueFrom = "${local.ssm_path}/OPENROUTER_API_KEY" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_AI_SENTRY_DSN" }
         ], var.grafana_otlp_enabled ? [

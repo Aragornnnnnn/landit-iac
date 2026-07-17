@@ -280,6 +280,15 @@
 - [x] `terraform fmt`, shared/dev/prod validate, shared plan을 실행한다.
 - [x] diff 독립 검토와 사용자 승인 전 apply 보류를 확인한다.
 
+## 2026-07-17 메시지 피드백 worker 환경 변수 추가
+
+- [x] develop·prod SSM에 메시지 피드백 전용 model과 review enable parameter를 `String`으로 작성한다.
+- [x] AI worker task definition에 두 SSM parameter를 환경 변수로 주입한다.
+- [x] SSM parameter registry와 작업 기록을 갱신한다.
+- [x] `terraform fmt`, develop/prod `terraform validate`, `terraform plan`을 실행한다.
+- [x] 사용자 승인 후 develop/prod Terraform apply를 실행한다.
+- [x] 새 worker task definition과 ECS deployment에서 두 환경 변수 주입을 확인한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.

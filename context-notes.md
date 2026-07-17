@@ -423,3 +423,16 @@
 - CloudFront는 HTTP를 HTTPS로 redirect하고 GET·HEAD만 허용한다. default cache TTL과 max TTL은 1년이다. CloudFront 기본 domain의 default certificate는 보안 정책을 `TLSv1`로 고정하므로, TLS 1.2 이상을 강제하려면 custom domain과 us-east-1 ACM 인증서가 필요하다.
 - 독립 검토는 S3 private 설정, OAC의 `content/*` 제한, CloudFront 조회 제한, shared state와 workflow 연결에서 P1·P2를 찾지 못했다. README의 apply 전 리소스 상태를 완료처럼 보이게 하는 P3 표현은 `Terraform 구성 추가, apply 전`으로 수정했고 `git diff --check`와 workflow YAML parsing을 다시 통과했다.
 - 실제 apply 뒤 CloudFront API가 기본 certificate의 TLS 최소 버전을 `TLSv1`로 반환했고 Terraform plan에도 지원되지 않는 `TLSv1.2_2021` 변경이 반복됐다. 공식 CloudFront 문서의 기본 certificate 제약에 따라 해당 선언을 제거하고 no-change plan으로 다시 검증한다.
+
+## 2026-07-17 메시지 피드백 worker 환경 변수 추가
+
+- 사용자 요청에 따라 `/landit/develop`, `/landit/prod`에 `MESSAGE_FEEDBACK_MODEL=openai/gpt-5.4`, `MESSAGE_FEEDBACK_REVIEW_ENABLED=false` `String` parameter를 각각 작성했다.
+- 값은 secret이 아니지만, 검증 출력에는 이름, 타입, version만 남긴다.
+- AI worker task definition은 두 SSM parameter를 같은 이름의 환경 변수로 주입하도록 변경했다.
+- task definition을 실제 ECS service에 반영하려면 develop·prod Terraform plan 확인 뒤 별도 apply 승인이 필요하다.
+- 현재 배포된 AI 코드에는 두 환경 변수 설정이 없어, 후속 AI 코드 배포 전에는 새 환경 변수가 주입되어도 런타임 동작은 바뀌지 않는다.
+- `terraform fmt -recursive`, `git diff --check`, sandbox 밖에서 실행한 develop·prod `terraform validate`가 통과했다.
+- develop plan과 prod plan은 각각 worker task definition 교체 1건, ECS worker service task definition 갱신 1건만 포함하며 모두 `1 to add, 1 to change, 1 to destroy`다.
+- 사용자 승인 후 두 plan을 apply했다. develop과 prod 모두 `1 added, 1 changed, 1 destroyed`로 완료됐다.
+- develop worker는 revision `5`, prod worker는 revision `4`가 됐다. 두 revision의 `secrets`에는 환경별 `MESSAGE_FEEDBACK_MODEL`, `MESSAGE_FEEDBACK_REVIEW_ENABLED` SSM path가 포함된다.
+- apply 후 develop·prod worker service는 모두 desired/running `1/1`, PRIMARY deployment `COMPLETED` 상태다.

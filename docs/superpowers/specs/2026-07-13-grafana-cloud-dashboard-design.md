@@ -59,7 +59,7 @@ dashboard UID는 각각 `landit-overview`, `landit-be`, `landit-ai`로 고정한
 - 모든 로그 패널은 `project="landit"`, `environment="$environment"`를 사용한다.
 - 환경 변수는 `prod`, `develop` 두 값만 제공한다.
 - dashboard link는 현재 시간 범위와 환경 값을 유지한다.
-- 데이터가 없을 때는 0으로 보이지 않도록 `No data` 상태를 유지한다.
+- 5xx 오류율과 에러 로그 발생량은 오류가 없을 때 `0`으로 표시한다. 원문 로그 패널은 조회 결과가 없으면 `No data` 상태를 유지한다.
 
 ## Landit Overview
 

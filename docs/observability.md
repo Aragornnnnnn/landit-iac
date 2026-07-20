@@ -28,7 +28,7 @@ Grafana Cloud stack의 표시 이름은 `landitobservability`입니다. 기존 s
 - [Landit BE](https://scarletmyrtle3008.grafana.net/d/landit-be/landit-be). BE endpoint 지표와 JVM heap, GC, thread, API 로그를 확인합니다.
 - [Landit AI](https://scarletmyrtle3008.grafana.net/d/landit-ai/landit-ai). AI endpoint 지표와 process CPU·memory·thread, CPython GC, worker 로그를 확인합니다.
 
-세 dashboard는 `환경` 변수에서 `prod`와 `develop`을 전환합니다. 기본값은 `prod`이며, 시간대는 브라우저 설정과 관계없이 한국 표준시 `Asia/Seoul`로 고정합니다. `로그 본문 검색`을 비워 두면 전체 로그를 표시합니다. BE 에러 로그와 에러 발생량은 `ERROR`, `FATAL` 레벨 줄만 표시합니다. Java stack trace의 이어지는 줄은 레벨이 없어 `UNK`로 표시될 수 있으므로 전체 로그 패널에서 확인합니다.
+세 dashboard는 `환경` 변수에서 `prod`와 `develop`을 전환합니다. 기본값은 `prod`이며, 시간대는 브라우저 설정과 관계없이 한국 표준시 `Asia/Seoul`로 고정합니다. `로그 본문 검색`을 비워 두면 전체 로그를 표시합니다. BE 에러 로그와 에러 발생량은 `ERROR`, `FATAL` 레벨 줄만 표시합니다. 5xx 오류율과 에러 로그 발생량은 오류가 없을 때 `0`으로 표시하며, 원문 로그 패널은 조회 결과가 없으면 비어 있습니다. Java stack trace의 이어지는 줄은 레벨이 없어 `UNK`로 표시될 수 있으므로 전체 로그 패널에서 확인합니다.
 
 Dashboard JSON은 `grafana/dashboards/`에서 관리합니다. 수정 후에는 유효 기간을 제한한 Grafana service account token을 환경변수로만 전달해 동기화합니다.
 

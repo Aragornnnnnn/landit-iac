@@ -295,8 +295,15 @@
 - [x] prod 전용 채널 분리와 장애성 알림 범위를 확정한다.
 - [x] Sentry 신규·회귀·반복 급증 조건과 Grafana 5xx 조건을 확정한다.
 - [x] Discord 연동과 alert rule 설계를 문서화하고 자체 검토한다.
-- [ ] 사용자가 설계 문서를 검토한다.
-- [ ] 승인된 설계를 기준으로 구현 계획을 작성한다.
+- [x] 사용자가 설계 문서를 검토한다.
+- [x] Sentry Team 플랜 제한을 확인하고 Lambda relay 방식으로 설계를 변경한다.
+- [x] Lambda handler를 테스트 우선으로 구현한다.
+- [x] prod Terraform에 Lambda Function URL과 최소 IAM 권한을 추가한다.
+- [ ] Discord webhook과 relay 인증값을 Terraform 밖의 prod SSM `SecureString`으로 준비한다.
+- [x] `terraform fmt`, prod `terraform validate`, `terraform plan`을 실행한다.
+- [ ] 사용자 승인 후 prod Terraform apply를 실행한다.
+- [ ] Sentry Internal Integration과 BE·AI issue alert rule을 relay에 연결한다.
+- [ ] 실제 Sentry test alert가 `#alerts-sentry-prod`에 도착하는지 확인한다.
 
 ## 아키텍처 결정 전 질문
 

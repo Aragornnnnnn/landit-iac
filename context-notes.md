@@ -445,5 +445,12 @@
 - Grafana는 초기에는 prod BE·AI의 HTTP 5xx 장애만 알린다. 5분 동안 5xx가 5건 이상이면서 오류율이 20% 이상인 조건을 1분마다 평가하고, 2분 동안 유지되면 firing한다.
 - Grafana P95 응답시간, 트래픽 없음, 지표 없음, 에러 로그 발생량은 정상 기준이나 수집 공백을 장애와 구분하기 어려워 초기 범위에서 제외한다.
 - Grafana 복구 알림은 incident 종료 확인을 위해 발송한다. Sentry resolved 알림은 제외한다.
-- Sentry와 Grafana의 기본 Discord integration을 사용하고 별도 중계 서비스를 만들지 않는다.
+- Grafana는 기본 Discord webhook contact point를 사용한다. contact point test notification이 `#alerts-grafana-prod`에 도착한 것을 확인했다.
+- Sentry 공식 Discord integration은 현재 Saynow 플랜에서 `Requires Team Plan or above`로 차단된다. 현재 조직의 project service hook API도 `unavailable_feature`이므로 직접 webhook 방식은 사용할 수 없다.
+- 사용자는 Sentry Team 업그레이드 대신 prod 전용 AWS Lambda relay 사용을 승인했다. Sentry Internal Integration의 alert rule action이 Lambda Function URL을 호출하고, Lambda가 payload를 Discord webhook 형식으로 변환해 `#alerts-sentry-prod`로 전달한다.
+- Lambda Function URL에는 별도 API Gateway를 두지 않는다. Sentry custom integration의 고정 header와 prod SSM `SecureString`의 relay token을 상수 시간 비교하고, prod가 아닌 payload는 전달하지 않는다.
+- Discord webhook URL과 relay token은 Terraform 변수나 state에 넣지 않고 `/landit/prod` SSM에 Terraform 밖에서 작성한다. Terraform은 parameter ARN과 이름만 참조한다.
 - Discord webhook URL과 integration credential은 저장소, Terraform 변수와 state, 문서에 기록하지 않는다.
+- Lambda handler는 invalid token `401`, malformed JSON `400`, non-prod와 environment 누락 `204` 제외, prod Discord payload 변환, base64 body decode를 unit test로 검증했다. 테스트는 구현 파일 부재와 environment 누락 허용 동작으로 각각 먼저 실패한 뒤 구현 후 6개 모두 통과했다.
+- prod Terraform은 Python 3.13 arm64 Lambda 128MB, timeout 5초, reserved concurrency 2, 14일 log group, Function URL과 공개 URL 호출에 필요한 두 permission을 추가한다. 실행 role의 추가 권한은 prod relay token과 Discord webhook SSM parameter 두 개에 대한 `ssm:GetParameter`뿐이다.
+- prod plan은 Lambda relay 관련 리소스만 `8 to add, 0 to change, 0 to destroy`이며 기존 ECS와 네트워크 변경은 없다. Function URL output은 sensitive로 표시되고 secret 값은 plan에 포함되지 않았다.

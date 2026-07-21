@@ -2,6 +2,24 @@
 
 Landit은 Sentry로 애플리케이션 오류를 확인하고, Grafana Cloud에서 애플리케이션 지표와 CloudWatch Logs를 함께 조회합니다.
 
+## prod Discord 장애 알림
+
+Grafana Cloud는 prod BE·AI HTTP 5xx alert를 `#alerts-grafana-prod` Discord webhook으로 직접 전송합니다. Sentry 공식 Discord integration은 현재 Saynow 플랜에서 사용할 수 없어 아래 relay 경로를 사용합니다.
+
+```text
+Sentry prod issue alert
+  -> Sentry Internal Integration alert action
+  -> Lambda Function URL
+  -> prod Sentry Discord relay Lambda
+  -> #alerts-sentry-prod Discord webhook
+```
+
+Lambda는 Sentry custom integration의 `X-Landit-Sentry-Token` header를 `/landit/prod/LANDIT_SENTRY_RELAY_AUTH_TOKEN`과 상수 시간 비교합니다. 인증을 통과하고 environment가 명시적으로 `prod`인 payload만 Discord embed로 변환합니다. Discord webhook URL은 `/landit/prod/LANDIT_SENTRY_DISCORD_WEBHOOK_URL`에서 실행 시 복호화해 읽습니다. 두 값은 Standard `SecureString`이며 Terraform 밖에서 작성합니다.
+
+Function URL은 API Gateway 없이 외부에서 호출할 수 있으므로 timeout 5초, reserved concurrency 2로 제한합니다. Lambda 실행 role은 두 SSM parameter의 `ssm:GetParameter`만 추가로 허용합니다. secret 값과 Function URL은 로그에 출력하지 않습니다.
+
+Discord webhook을 교체할 때는 새 URL을 prod SSM에 반영하고 test alert 수신을 확인한 뒤 기존 webhook을 폐기합니다. relay token을 교체할 때는 새 값을 SSM과 Sentry Internal Integration header 양쪽에 반영하고 test alert를 확인합니다.
+
 ## 데이터 흐름
 
 ```text

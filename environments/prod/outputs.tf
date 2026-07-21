@@ -38,3 +38,9 @@ output "app_bucket_name" {
   description = "Production private application S3 bucket name."
   value       = module.app_platform.app_bucket_name
 }
+
+output "sentry_discord_relay_function_url" {
+  description = "Production Sentry Internal Integration webhook endpoint."
+  value       = aws_lambda_function_url.sentry_discord_relay.function_url
+  sensitive   = true
+}

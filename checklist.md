@@ -1,5 +1,20 @@
 # Checklist
 
+## 2026-07-22 LAN-192 prod 관측성과 Discord 장애 알림
+
+- [x] Sentry relay를 ingress와 비동기 delivery로 분리하고 HMAC 검증 테스트를 통과한다.
+- [x] AI 로그가 실제 `WARNING`, `ERROR` 레벨을 보존하도록 수정하고 전체 테스트를 통과한다.
+- [x] BE 로그가 Spring 기본 포맷에서 실제 레벨을 보존하는지 확인한다.
+- [x] Grafana AI·Overview 에러 패널을 실제 레벨 기반으로 변경한다.
+- [x] prod ALB access log용 비공개 S3 bucket과 30일 lifecycle을 구성한다.
+- [x] prod WAF 관리형 규칙 두 개와 IP rate rule을 모두 `Count`로 구성한다.
+- [x] dev·prod Terraform validate를 통과한다.
+- [x] prod Terraform plan에서 변경 범위와 삭제 없음 여부를 확인한다.
+- [ ] 저장된 prod plan을 적용하고 Lambda·S3·WAF live 상태를 확인한다.
+- [ ] AI prod 배포 후 CloudWatch 로그 레벨과 Grafana dashboard를 검증한다.
+- [ ] Sentry prod BE·AI alert rule을 구성하고 Discord 수신을 확인한다.
+- [ ] 완료 전 독립 리뷰와 최종 검증을 통과한다.
+
 ## 2026-06-28 Landit IaC 초기 세팅
 
 - [x] 현재 `landit-iac` 레포 파일 상태를 확인한다.

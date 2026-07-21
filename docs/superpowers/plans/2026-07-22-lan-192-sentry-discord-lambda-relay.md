@@ -59,7 +59,7 @@
 - Consumes: Function URL v2 event, `Sentry-Hook-Signature`, Lambda context ARN, 두 SSM parameter name.
 - Produces: `lambda_handler(event, context) -> dict`, internal event `{"relayMode":"delivery","bodyBase64":str,"signature":str}`.
 
-- [ ] **Step 1: ingress가 secret과 Discord를 읽지 않고 async dispatch하는 실패 테스트를 작성한다.**
+- [x] **Step 1: ingress가 secret과 Discord를 읽지 않고 async dispatch하는 실패 테스트를 작성한다.**
 
 ```python
 def test_ingress_dispatches_delivery_without_reading_secrets(self):
@@ -77,7 +77,7 @@ def test_ingress_dispatches_delivery_without_reading_secrets(self):
     send_discord.assert_not_called()
 ```
 
-- [ ] **Step 2: internal delivery만 HMAC과 prod를 검증하는 실패 테스트를 작성한다.**
+- [x] **Step 2: internal delivery만 HMAC과 prod를 검증하는 실패 테스트를 작성한다.**
 
 ```python
 def test_internal_delivery_verifies_signature_and_sends_prod(self):
@@ -96,13 +96,13 @@ def test_internal_delivery_verifies_signature_and_sends_prod(self):
     send_discord.assert_called_once()
 ```
 
-- [ ] **Step 3: 기존 Lambda unit test를 실행해 새 계약이 실패하는지 확인한다.**
+- [x] **Step 3: 기존 Lambda unit test를 실행해 새 계약이 실패하는지 확인한다.**
 
 Run: `python3 -m unittest discover -s environments/prod/lambda/tests -v`
 
 Expected: ingress가 동기 `get_secret`과 `send_discord`를 호출해 새 테스트가 실패한다.
 
-- [ ] **Step 4: ingress validation과 async dispatch를 최소 구현한다.**
+- [x] **Step 4: ingress validation과 async dispatch를 최소 구현한다.**
 
 ```python
 MAX_RAW_BODY_BYTES = 700_000
@@ -135,7 +135,7 @@ def handle_ingress(event, context):
     return response(204)
 ```
 
-- [ ] **Step 5: internal delivery handler를 구현하고 외부 Function URL event와 분리한다.**
+- [x] **Step 5: internal delivery handler를 구현하고 외부 Function URL event와 분리한다.**
 
 ```python
 def is_delivery_event(event):
@@ -147,7 +147,7 @@ def lambda_handler(event, context):
     return handle_ingress(event, context)
 ```
 
-- [ ] **Step 6: Terraform에 self invoke와 실행 한도를 반영한다.**
+- [x] **Step 6: Terraform에 self invoke와 실행 한도를 반영한다.**
 
 ```hcl
 statement {
@@ -165,7 +165,7 @@ resource "aws_lambda_function_event_invoke_config" "sentry_discord_relay" {
 }
 ```
 
-- [ ] **Step 7: Lambda unit test와 Terraform 정적 검증을 실행한다.**
+- [x] **Step 7: Lambda unit test와 Terraform 정적 검증을 실행한다.**
 
 Run: `python3 -m unittest discover -s environments/prod/lambda/tests -v`
 
@@ -175,7 +175,7 @@ Run: `AWS_PROFILE=landit terraform -chdir=environments/prod validate`
 
 Expected: 모든 명령이 exit code `0`이다.
 
-- [ ] **Step 8: Lambda 변경을 커밋한다.**
+- [x] **Step 8: Lambda 변경을 커밋한다.**
 
 ```bash
 git add environments/prod/lambda/sentry_discord_relay.py \
@@ -197,7 +197,7 @@ git commit -m "fix: Sentry Discord 전달을 비동기로 분리한다"
 - Consumes: Python `logging` root logger와 Uvicorn handler.
 - Produces: 첫 로그 줄 `level=<LEVEL> logger=<LOGGER> message=<MESSAGE>`.
 
-- [ ] **Step 1: WARNING과 ERROR 필드를 검증하는 실패 테스트를 작성한다.**
+- [x] **Step 1: WARNING과 ERROR 필드를 검증하는 실패 테스트를 작성한다.**
 
 ```python
 def test_log_formatter_includes_explicit_level(self):
@@ -212,13 +212,13 @@ def test_log_formatter_includes_explicit_level(self):
     self.assertNotIn("level=ERROR", stream.getvalue())
 ```
 
-- [ ] **Step 2: AI logging test를 실행해 formatter 부재로 실패하는지 확인한다.**
+- [x] **Step 2: AI logging test를 실행해 formatter 부재로 실패하는지 확인한다.**
 
 Run: `python -m unittest tests.test_logging -v`
 
 Expected: `app.core.logging` 또는 `build_log_formatter`가 없어 실패한다.
 
-- [ ] **Step 3: 공통 formatter와 logging 설정을 구현한다.**
+- [x] **Step 3: 공통 formatter와 logging 설정을 구현한다.**
 
 ```python
 # AI stdout 로그에 명시적인 level 필드를 설정한다.
@@ -243,7 +243,7 @@ def configure_logging():
     root.setLevel(logging.INFO)
 ```
 
-- [ ] **Step 4: app 초기화 전에 logging을 설정한다.**
+- [x] **Step 4: app 초기화 전에 logging을 설정한다.**
 
 ```python
 from app.core.logging import configure_logging
@@ -253,7 +253,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or Settings()
 ```
 
-- [ ] **Step 5: 대상과 전체 AI 테스트를 실행한다.**
+- [x] **Step 5: 대상과 전체 AI 테스트를 실행한다.**
 
 Run: `.venv/bin/python -m unittest tests.test_logging -v`
 
@@ -263,7 +263,7 @@ Run: `.venv/bin/python -m compileall -q app tests`
 
 Expected: 모든 테스트와 compileall이 exit code `0`이다.
 
-- [ ] **Step 6: AI 이슈 문서와 검증 기록을 작성하고 커밋한다.**
+- [x] **Step 6: AI 이슈 문서와 검증 기록을 작성하고 커밋한다.**
 
 ```bash
 git add app/core/logging.py app/main.py tests/test_logging.py \
@@ -282,7 +282,7 @@ git commit -m "fix: AI 로그에 명시적인 level 필드를 추가한다"
 - Consumes: AI logfmt `level` field와 기존 BE Spring log line.
 - Produces: AI `ERROR|CRITICAL` 전용 LogQL과 서비스 선택을 유지하는 Overview query.
 
-- [ ] **Step 1: dashboard 계약을 검증하는 실패 스크립트를 작성한다.**
+- [x] **Step 1: dashboard 계약을 검증하는 실패 스크립트를 작성한다.**
 
 ```bash
 #!/usr/bin/env bash
@@ -297,13 +297,13 @@ jq -e '[.panels[] | select(.title == "에러 로그 발생량" or .title == "에
   grafana/dashboards/landit-overview.json >/dev/null
 ```
 
-- [ ] **Step 2: 계약 스크립트가 현재 broad regex 때문에 실패하는지 확인한다.**
+- [x] **Step 2: 계약 스크립트가 현재 broad regex 때문에 실패하는지 확인한다.**
 
 Run: `bash scripts/test-grafana-log-level-queries.sh`
 
 Expected: AI dashboard에 `logfmt` level query가 없어 exit code가 `0`이 아니다.
 
-- [ ] **Step 3: AI error count와 logs query를 변경한다.**
+- [x] **Step 3: AI error count와 logs query를 변경한다.**
 
 ```logql
 sum(count_over_time({project="landit",environment="$environment",aws_log_group="/landit/$environment/worker"} | logfmt | level=~"ERROR|CRITICAL" [$__interval])) or vector(0)
@@ -313,7 +313,7 @@ sum(count_over_time({project="landit",environment="$environment",aws_log_group="
 {project="landit",environment="$environment",aws_log_group="/landit/$environment/worker"} | logfmt | level=~"ERROR|CRITICAL"
 ```
 
-- [ ] **Step 4: Overview의 BE와 AI error target을 분리한다.**
+- [x] **Step 4: Overview의 BE와 AI error target을 분리한다.**
 
 ```logql
 {project="landit",environment="$environment",aws_log_group=~"/landit/$environment/(${service:raw})",aws_log_group="/landit/$environment/api"} |~ "\\s(ERROR|FATAL)\\s"
@@ -323,7 +323,7 @@ sum(count_over_time({project="landit",environment="$environment",aws_log_group="
 {project="landit",environment="$environment",aws_log_group=~"/landit/$environment/(${service:raw})",aws_log_group="/landit/$environment/worker"} | logfmt | level=~"ERROR|CRITICAL"
 ```
 
-- [ ] **Step 5: JSON과 dashboard 계약을 검증한다.**
+- [x] **Step 5: JSON과 dashboard 계약을 검증한다.**
 
 Run: `jq empty grafana/dashboards/landit-ai.json grafana/dashboards/landit-overview.json`
 
@@ -331,7 +331,7 @@ Run: `bash scripts/test-grafana-log-level-queries.sh`
 
 Expected: 두 명령이 exit code `0`이다.
 
-- [ ] **Step 6: dashboard 변경을 커밋한다.**
+- [x] **Step 6: dashboard 변경을 커밋한다.**
 
 ```bash
 git add scripts/test-grafana-log-level-queries.sh \
@@ -350,13 +350,13 @@ git commit -m "fix: Grafana AI 에러 로그를 level로 분류한다"
 - Consumes: prod ALB ARN, AWS account ID, environment와 project name.
 - Produces: 전용 S3 access log bucket, 30일 lifecycle, REGIONAL Web ACL, ALB association.
 
-- [ ] **Step 1: 현재 prod plan에 WAF와 ALB log 리소스가 없어 계약 검사가 실패하는지 확인한다.**
+- [x] **Step 1: 현재 prod plan에 WAF와 ALB log 리소스가 없어 계약 검사가 실패하는지 확인한다.**
 
 Run: `rg -n 'aws_wafv2_web_acl|access_logs|alb_access_log' modules/app-platform environments/prod`
 
 Expected: access log와 WAF 리소스가 없어 필요한 계약을 충족하지 않는다.
 
-- [ ] **Step 2: module 입력값을 추가한다.**
+- [x] **Step 2: module 입력값을 추가한다.**
 
 ```hcl
 variable "alb_access_logs_enabled" {
@@ -384,7 +384,7 @@ variable "waf_rate_limit" {
 }
 ```
 
-- [ ] **Step 3: 전용 S3 bucket과 ALB access log를 추가한다.**
+- [x] **Step 3: 전용 S3 bucket과 ALB access log를 추가한다.**
 
 ```hcl
 resource "aws_s3_bucket" "alb_access_logs" {
@@ -405,7 +405,7 @@ dynamic "access_logs" {
 
 Bucket public access block, SSE-S3, 30일 lifecycle, ALB log delivery service principal의 account prefix `PutObject` policy를 함께 정의한다. `aws_lb.api`는 bucket policy가 적용된 뒤 log delivery를 활성화하도록 dependency를 둔다.
 
-- [ ] **Step 4: Count-only Web ACL과 ALB association을 추가한다.**
+- [x] **Step 4: Count-only Web ACL과 ALB association을 추가한다.**
 
 ```hcl
 resource "aws_wafv2_web_acl" "alb" {
@@ -419,7 +419,7 @@ resource "aws_wafv2_web_acl" "alb" {
 
 Web ACL에는 `AWSManagedRulesCommonRuleSet`, `AWSManagedRulesAmazonIpReputationList`, `aggregate_key_type = "IP"`, `evaluation_window_sec = 300`, `limit = var.waf_rate_limit`인 rate rule을 추가한다. 두 managed rule은 `override_action { count {} }`, rate rule은 `action { count {} }`를 사용한다. 모든 rule과 Web ACL의 CloudWatch metric과 sampled request를 활성화한다.
 
-- [ ] **Step 5: prod만 기능을 활성화한다.**
+- [x] **Step 5: prod만 기능을 활성화한다.**
 
 ```hcl
 alb_access_logs_enabled        = true
@@ -428,7 +428,7 @@ waf_count_enabled              = true
 waf_rate_limit                 = 2000
 ```
 
-- [ ] **Step 6: Terraform format과 validate를 실행한다.**
+- [x] **Step 6: Terraform format과 validate를 실행한다.**
 
 Run: `terraform fmt -recursive`
 
@@ -440,7 +440,7 @@ Run: `AWS_PROFILE=landit terraform -chdir=environments/prod validate`
 
 Expected: 모든 명령이 exit code `0`이다.
 
-- [ ] **Step 7: ALB·WAF 변경을 커밋한다.**
+- [x] **Step 7: ALB·WAF 변경을 커밋한다.**
 
 ```bash
 git add modules/app-platform/main.tf modules/app-platform/variables.tf \
@@ -460,11 +460,11 @@ git commit -m "feat: prod ALB 요청 관측과 WAF Count를 구성한다"
 - Consumes: Tasks 1~4의 verified commit과 live configuration.
 - Produces: saved prod Terraform plan, Grafana sync payload, 종단 검증 기록.
 
-- [ ] **Step 1: 운영 문서의 이전 가정을 교체한다.**
+- [x] **Step 1: 운영 문서의 이전 가정을 교체한다.**
 
 `docs/observability.md`에는 Sentry ingress·delivery 분리, `Sentry-Hook-Signature`, AI logfmt level, prod ALB S3 retention 30일, WAF Count 3개 rule, 7일 관찰 절차를 기록한다. `docs/ssm-parameters.md`에는 `/landit/prod/LANDIT_SENTRY_RELAY_AUTH_TOKEN`이 Sentry App signing secret을 저장하는 legacy-named path임을 기록한다.
 
-- [ ] **Step 2: 전체 정적 검증을 실행한다.**
+- [x] **Step 2: 전체 정적 검증을 실행한다.**
 
 Run: `python3 -m unittest discover -s environments/prod/lambda/tests -v`
 
@@ -482,7 +482,7 @@ Run: `git diff --check`
 
 Expected: 모든 명령이 exit code `0`이다.
 
-- [ ] **Step 3: prod Terraform plan을 저장하고 exact scope를 검사한다.**
+- [x] **Step 3: prod Terraform plan을 저장하고 exact scope를 검사한다.**
 
 Run: `AWS_PROFILE=landit terraform -chdir=environments/prod plan -out=/tmp/lan192-prod-observability.tfplan`
 
@@ -498,7 +498,7 @@ git add docs/observability.md docs/ssm-parameters.md checklist.md context-notes.
 git commit -m "docs: LAN-192 관측성 운영 절차를 반영한다"
 ```
 
-- [ ] **Step 5: 사용자에게 apply와 운영 반영 승인을 요청한다.**
+- [x] **Step 5: 사용자에게 apply와 운영 반영 승인을 요청한다.**
 
 승인 요청에는 Terraform plan add/change/destroy 수, exact resource address, WAF action이 전부 `Count`인 근거, Grafana dashboard 2개 변경, AI 배포 필요성을 포함한다.
 

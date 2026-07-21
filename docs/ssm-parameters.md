@@ -40,7 +40,7 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/OPENROUTER_MODEL` | `String` | 기본 OpenRouter model |
 | `/landit/{environment}/MESSAGE_FEEDBACK_MODEL` | `String` | 메시지 피드백 생성 전용 OpenRouter model |
 | `/landit/{environment}/MESSAGE_FEEDBACK_REVIEW_ENABLED` | `String` | 메시지 피드백 문구 검수 사용 여부, `true` 또는 `false` |
-| `/landit/prod/LANDIT_SENTRY_RELAY_AUTH_TOKEN` | `SecureString` | Sentry Internal Integration과 prod Lambda relay 사이의 고정 header 인증값 |
+| `/landit/prod/LANDIT_SENTRY_RELAY_AUTH_TOKEN` | `SecureString` | legacy 이름을 유지한 Sentry App webhook HMAC signing secret |
 | `/landit/prod/LANDIT_SENTRY_DISCORD_WEBHOOK_URL` | `SecureString` | `#alerts-sentry-prod` 전용 Discord webhook URL |
 
 `{environment}`는 `develop` 또는 `prod`만 사용합니다.

@@ -462,3 +462,12 @@
 - AI는 root·Uvicorn 로그에 logfmt `level` 필드를 추가하고 Grafana AI·Overview가 AI error를 `ERROR|CRITICAL` level로만 조회한다. 기존 workflow log level과 message는 바꾸지 않는다.
 - prod ALB는 전용 비공개 S3 bucket에 access log를 저장하고 30일 뒤 만료한다. WAF는 Common Rule Set, Amazon IP Reputation List, IP당 5분 2,000회 rate rule을 모두 `Count`로 시작하며 develop에는 적용하지 않는다.
 - WAF `Block` 전환은 이번 범위에서 제외한다. 7일간 access log, WAF metric, sampled request를 관찰한 뒤 정상 사용자와 공유 NAT 영향을 검토하고 별도 승인을 받아야 한다.
+- Sentry relay는 공개 ingress에서 서명 형식과 700,000 bytes 제한만 검사하고 자기 Lambda를 비동기 호출한다. 내부 delivery가 SSM signing secret으로 HMAC을 검증하고 prod payload만 Discord로 전달하도록 구현했으며 unit test 12개가 통과했다.
+- relay Terraform은 memory 512 MiB, timeout 10초, reserved concurrency 2, 비동기 최대 event age 300초와 retry 2회, 자기 함수 invoke 권한으로 갱신했다.
+- BE는 Spring Boot 기본 콘솔 포맷이 로그 레벨을 보존하므로 애플리케이션 변경 없이 Grafana에서 레벨 위치를 조회한다.
+- AI `feat/LAN-192`는 root와 Uvicorn 로그를 `level`, `logger`, `message` 형식으로 통합했고 전체 unittest 187개가 통과했다.
+- Grafana AI 에러 패널은 `logfmt`의 `ERROR|CRITICAL`, Overview의 BE 에러 target은 Spring `ERROR|FATAL` 위치만 조회하도록 분리했다. JSON과 dashboard 계약 스크립트가 통과했다.
+- prod module은 ALB access log 전용 SSE-S3 bucket, public access block, 30일 lifecycle과 account·region 제한 log delivery policy를 추가했다.
+- prod WAF Web ACL은 default allow이며 Common Rule Set, Amazon IP Reputation List, IP당 5분 2,000회 rate rule을 모두 Count로 구성했다. develop은 module 기본값으로 비활성 상태를 유지한다.
+- `terraform fmt -recursive -check`, dev·prod `terraform validate`, `git diff --check`가 통과했다. prod plan과 apply, live 검증은 다음 단계에서 수행한다.
+- 저장한 prod plan `/tmp/lan192-prod-observability.tfplan`은 `8 added, 3 changed, 0 destroyed`다. Sentry Lambda·IAM·비동기 설정, ALB access log 속성, 전용 S3 구성, WAF Web ACL과 association만 포함하며 ECS·VPC 교체는 없다.

@@ -10,15 +10,28 @@ Grafana Cloud는 prod BE·AI HTTP 5xx alert를 `#alerts-grafana-prod` Discord we
 Sentry prod issue alert
   -> Sentry Internal Integration alert action
   -> Lambda Function URL
-  -> prod Sentry Discord relay Lambda
+  -> prod Sentry Discord relay Lambda ingress
+  -> 같은 Lambda의 비동기 delivery invocation
   -> #alerts-sentry-prod Discord webhook
 ```
 
-Lambda는 Sentry custom integration의 `X-Landit-Sentry-Token` header를 `/landit/prod/LANDIT_SENTRY_RELAY_AUTH_TOKEN`과 상수 시간 비교합니다. 인증을 통과하고 environment가 명시적으로 `prod`인 payload만 Discord embed로 변환합니다. Discord webhook URL은 `/landit/prod/LANDIT_SENTRY_DISCORD_WEBHOOK_URL`에서 실행 시 복호화해 읽습니다. 두 값은 Standard `SecureString`이며 Terraform 밖에서 작성합니다.
+공개 ingress는 `Sentry-Hook-Signature`가 SHA-256 서명 형식인지와 body 크기만 확인하고 같은 Lambda를 비동기로 호출한 뒤 즉시 `204`를 반환합니다. 공개 Function URL 요청은 `requestContext`가 있으므로 body의 `relayMode` 값으로 내부 delivery를 위조할 수 없습니다. 비동기 delivery는 `/landit/prod/LANDIT_SENTRY_RELAY_AUTH_TOKEN`에 저장된 Sentry App signing secret으로 원문 body의 HMAC-SHA256을 검증합니다. 인증을 통과하고 environment가 명시적으로 `prod`인 payload만 Discord embed로 변환합니다. Discord webhook URL은 `/landit/prod/LANDIT_SENTRY_DISCORD_WEBHOOK_URL`에서 실행 시 복호화해 읽습니다. 두 값은 Standard `SecureString`이며 Terraform 밖에서 작성합니다.
 
-Function URL은 API Gateway 없이 외부에서 호출할 수 있으므로 timeout 5초, reserved concurrency 2로 제한합니다. Lambda 실행 role은 두 SSM parameter의 `ssm:GetParameter`만 추가로 허용합니다. secret 값과 Function URL은 로그에 출력하지 않습니다.
+Function URL은 API Gateway 없이 외부에서 호출할 수 있으므로 body를 700,000 bytes로 제한하고 reserved concurrency를 2로 고정합니다. Lambda는 memory 512 MiB, timeout 10초이며 비동기 event는 최대 5분 동안 2회 재시도합니다. 실행 role은 두 SSM parameter의 `ssm:GetParameters`와 자기 함수의 `lambda:InvokeFunction`만 추가로 허용합니다. secret 값과 Function URL은 로그에 출력하지 않습니다.
 
-Discord webhook을 교체할 때는 새 URL을 prod SSM에 반영하고 test alert 수신을 확인한 뒤 기존 webhook을 폐기합니다. relay token을 교체할 때는 새 값을 SSM과 Sentry Internal Integration header 양쪽에 반영하고 test alert를 확인합니다.
+Discord webhook을 교체할 때는 새 URL을 prod SSM에 반영하고 test alert 수신을 확인한 뒤 기존 webhook을 폐기합니다. Sentry App credential을 교체할 때는 새 signing secret을 SSM에 반영하고 Sentry test alert를 확인합니다. `Sentry-Hook-Signature`는 Sentry가 webhook 원문으로 계산해 자동 전송하므로 custom header를 설정하지 않습니다.
+
+## prod 요청 관측과 WAF Count
+
+prod ALB access log는 전용 S3 bucket의 `alb/` prefix에 저장합니다. bucket은 공개 접근을 모두 차단하고 SSE-S3로 암호화하며 객체를 30일 뒤 만료합니다. ALB log delivery policy는 Landit AWS account의 load balancer가 `alb/AWSLogs/982529430654/` 아래에 쓰는 작업만 허용합니다. develop에서는 access log bucket을 만들지 않습니다.
+
+prod ALB에는 기본 허용인 REGIONAL WAF Web ACL을 연결합니다. 아래 세 규칙은 모두 `Count`이므로 일치 요청을 기록할 뿐 차단하지 않습니다.
+
+- AWS Managed Rules Common Rule Set.
+- AWS Managed Rules Amazon IP Reputation List.
+- 동일 IP가 5분 동안 2,000회를 넘는 rate rule.
+
+적용 후 최소 7일 동안 access log의 client IP·path·status 분포와 WAF CloudWatch metric·sampled request를 확인합니다. 임계치는 정상 사용자의 최고 요청량과 회사·학교·통신사 NAT 공유 영향을 확인한 뒤 조정합니다. `Block` 전환은 이 관찰 결과와 신뢰 IP 예외 범위를 검토하고 별도 승인을 받은 작업에서만 수행합니다.
 
 ## 데이터 흐름
 

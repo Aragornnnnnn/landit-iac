@@ -49,12 +49,19 @@ resource "aws_iam_role_policy" "sentry_discord_relay_ssm" {
       {
         Effect = "Allow"
         Action = [
-          "ssm:GetParameter"
+          "ssm:GetParameters"
         ]
         Resource = [
           "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.sentry_relay_auth_parameter_name}",
           "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.sentry_discord_webhook_parameter_name}",
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "lambda:InvokeFunction"
+        ]
+        Resource = "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${local.sentry_discord_relay_name}"
       }
     ]
   })
@@ -76,8 +83,8 @@ resource "aws_lambda_function" "sentry_discord_relay" {
   filename         = data.archive_file.sentry_discord_relay.output_path
   source_code_hash = data.archive_file.sentry_discord_relay.output_base64sha256
 
-  memory_size                    = 128
-  timeout                        = 5
+  memory_size                    = 512
+  timeout                        = 10
   reserved_concurrent_executions = 2
 
   environment {
@@ -92,6 +99,12 @@ resource "aws_lambda_function" "sentry_discord_relay" {
     aws_iam_role_policy.sentry_discord_relay_ssm,
     aws_iam_role_policy_attachment.sentry_discord_relay_logs,
   ]
+}
+
+resource "aws_lambda_function_event_invoke_config" "sentry_discord_relay" {
+  function_name                = aws_lambda_function.sentry_discord_relay.function_name
+  maximum_event_age_in_seconds = 300
+  maximum_retry_attempts       = 2
 }
 
 resource "aws_lambda_function_url" "sentry_discord_relay" {

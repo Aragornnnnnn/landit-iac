@@ -1,14 +1,28 @@
 # Sentry issue alert를 검증해 prod Discord 장애 채널로 전달한다.
 import base64
 import binascii
+import hashlib
 import hmac
 import json
 import os
+import re
 from urllib import request
 
 
+MAX_RAW_BODY_BYTES = 700_000
+SIGNATURE_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
 _secret_cache = {}
 _ssm_client = None
+_lambda_client = None
+
+
+def get_lambda_client():
+    global _lambda_client
+    if _lambda_client is None:
+        import boto3
+
+        _lambda_client = boto3.client("lambda")
+    return _lambda_client
 
 
 def get_secret(parameter_name):
@@ -21,12 +35,21 @@ def get_secret(parameter_name):
 
         _ssm_client = boto3.client("ssm")
 
-    value = _ssm_client.get_parameter(
-        Name=parameter_name,
+    parameter_names = [
+        os.environ["AUTH_TOKEN_PARAMETER_NAME"],
+        os.environ["DISCORD_WEBHOOK_PARAMETER_NAME"],
+    ]
+    parameters = _ssm_client.get_parameters(
+        Names=parameter_names,
         WithDecryption=True,
-    )["Parameter"]["Value"]
-    _secret_cache[parameter_name] = value
-    return value
+    )["Parameters"]
+    _secret_cache.update(
+        {parameter["Name"]: parameter["Value"] for parameter in parameters}
+    )
+
+    if any(name not in _secret_cache for name in parameter_names):
+        raise RuntimeError("required SSM parameter is missing")
+    return _secret_cache[parameter_name]
 
 
 def send_discord(webhook_url, payload):
@@ -34,7 +57,10 @@ def send_discord(webhook_url, payload):
     webhook_request = request.Request(
         webhook_url,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "Landit-Sentry-Relay/1.0",
+        },
         method="POST",
     )
     with request.urlopen(webhook_request, timeout=4) as response:
@@ -53,6 +79,24 @@ def decode_body(event):
     if event.get("isBase64Encoded"):
         return base64.b64decode(body, validate=True).decode("utf-8")
     return body
+
+
+def dispatch_delivery(body, signature, function_name):
+    payload = json.dumps(
+        {
+            "relayMode": "delivery",
+            "bodyBase64": base64.b64encode(body.encode("utf-8")).decode("ascii"),
+            "signature": signature,
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    result = get_lambda_client().invoke(
+        FunctionName=function_name,
+        InvocationType="Event",
+        Payload=payload,
+    )
+    if result.get("StatusCode") != 202:
+        raise RuntimeError("asynchronous Lambda invocation was not accepted")
 
 
 def extract_event(payload):
@@ -153,16 +197,61 @@ def response(status_code):
     return {"statusCode": status_code, "body": ""}
 
 
-def lambda_handler(event, context):
+def is_delivery_event(event):
+    return (
+        isinstance(event, dict)
+        and event.get("relayMode") == "delivery"
+        and "requestContext" not in event
+    )
+
+
+def handle_ingress(event, context):
     headers = normalize_headers(event.get("headers") or {})
-    expected_token = get_secret(os.environ["AUTH_TOKEN_PARAMETER_NAME"])
-    provided_token = headers.get("x-landit-sentry-token", "")
-    if not hmac.compare_digest(provided_token, expected_token):
+    try:
+        body = decode_body(event)
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        return response(400)
+
+    if len(body.encode("utf-8")) > MAX_RAW_BODY_BYTES:
+        return response(413)
+
+    provided_signature = headers.get("sentry-hook-signature", "")
+    if SIGNATURE_PATTERN.fullmatch(provided_signature) is None:
+        return response(401)
+
+    function_name = getattr(context, "invoked_function_arn", None)
+    if not function_name:
+        raise RuntimeError("invoked function ARN is required")
+    dispatch_delivery(body, provided_signature, function_name)
+    return response(204)
+
+
+def decode_delivery_body(event):
+    body_base64 = event.get("bodyBase64")
+    if not isinstance(body_base64, str):
+        raise ValueError("delivery body is required")
+    return base64.b64decode(body_base64, validate=True).decode("utf-8")
+
+
+def handle_delivery(event):
+    try:
+        body = decode_delivery_body(event)
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        return response(400)
+
+    signing_secret = get_secret(os.environ["AUTH_TOKEN_PARAMETER_NAME"])
+    expected_signature = hmac.new(
+        signing_secret.encode("utf-8"),
+        body.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    provided_signature = event.get("signature", "")
+    if not hmac.compare_digest(provided_signature, expected_signature):
         return response(401)
 
     try:
-        payload = json.loads(decode_body(event))
-    except (ValueError, UnicodeDecodeError, binascii.Error, json.JSONDecodeError):
+        payload = json.loads(body)
+    except json.JSONDecodeError:
         return response(400)
 
     if not isinstance(payload, dict):
@@ -173,3 +262,9 @@ def lambda_handler(event, context):
     webhook_url = get_secret(os.environ["DISCORD_WEBHOOK_PARAMETER_NAME"])
     send_discord(webhook_url, build_discord_payload(payload))
     return response(204)
+
+
+def lambda_handler(event, context):
+    if is_delivery_event(event):
+        return handle_delivery(event)
+    return handle_ingress(event, context)

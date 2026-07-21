@@ -141,11 +141,185 @@ resource "aws_security_group" "ecs_tasks" {
   }
 }
 
+resource "aws_s3_bucket" "alb_access_logs" {
+  count = var.alb_access_logs_enabled ? 1 : 0
+
+  bucket = "${local.name_prefix}-alb-access-${data.aws_caller_identity.current.account_id}"
+}
+
+resource "aws_s3_bucket_public_access_block" "alb_access_logs" {
+  count = var.alb_access_logs_enabled ? 1 : 0
+
+  bucket = aws_s3_bucket.alb_access_logs[0].id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "alb_access_logs" {
+  count = var.alb_access_logs_enabled ? 1 : 0
+
+  bucket = aws_s3_bucket.alb_access_logs[0].id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "alb_access_logs" {
+  count = var.alb_access_logs_enabled ? 1 : 0
+
+  bucket = aws_s3_bucket.alb_access_logs[0].id
+
+  rule {
+    id     = "expire-alb-access-logs"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = var.alb_access_log_retention_days
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "alb_access_logs" {
+  count = var.alb_access_logs_enabled ? 1 : 0
+
+  bucket = aws_s3_bucket.alb_access_logs[0].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowAlbAccessLogDelivery"
+        Effect = "Allow"
+        Principal = {
+          Service = "logdelivery.elasticloadbalancing.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.alb_access_logs[0].arn}/alb/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        Condition = {
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:elasticloadbalancing:${var.aws_region}:${data.aws_caller_identity.current.account_id}:loadbalancer/*"
+          }
+        }
+      }
+    ]
+  })
+}
+
 resource "aws_lb" "api" {
   name               = "${local.name_prefix}-alb"
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
   subnets            = values(aws_subnet.public)[*].id
+
+  dynamic "access_logs" {
+    for_each = var.alb_access_logs_enabled ? [1] : []
+
+    content {
+      bucket  = aws_s3_bucket.alb_access_logs[0].bucket
+      prefix  = "alb"
+      enabled = true
+    }
+  }
+
+  depends_on = [aws_s3_bucket_policy.alb_access_logs]
+}
+
+resource "aws_wafv2_web_acl" "alb" {
+  count = var.waf_count_enabled ? 1 : 0
+
+  name  = "${local.name_prefix}-alb-count"
+  scope = "REGIONAL"
+
+  default_action {
+    allow {}
+  }
+
+  rule {
+    name     = "aws-managed-common"
+    priority = 10
+
+    override_action {
+      count {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesCommonRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-waf-common"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "aws-managed-ip-reputation"
+    priority = 20
+
+    override_action {
+      count {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesAmazonIpReputationList"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-waf-ip-reputation"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "ip-rate-limit"
+    priority = 30
+
+    action {
+      count {}
+    }
+
+    statement {
+      rate_based_statement {
+        aggregate_key_type    = "IP"
+        evaluation_window_sec = 300
+        limit                 = var.waf_rate_limit
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-waf-ip-rate"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "${local.name_prefix}-waf"
+    sampled_requests_enabled   = true
+  }
+}
+
+resource "aws_wafv2_web_acl_association" "alb" {
+  count = var.waf_count_enabled ? 1 : 0
+
+  resource_arn = aws_lb.api.arn
+  web_acl_arn  = aws_wafv2_web_acl.alb[0].arn
 }
 
 resource "aws_lb_target_group" "api" {

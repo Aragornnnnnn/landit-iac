@@ -29,6 +29,11 @@ module "app_platform" {
 
   alb_certificate_arn = var.alb_certificate_arn
 
+  alb_access_logs_enabled       = true
+  alb_access_log_retention_days = 30
+  waf_count_enabled             = true
+  waf_rate_limit                = 2000
+
   grafana_otlp_enabled    = var.grafana_otlp_enabled
   grafana_otlp_endpoint   = var.grafana_otlp_endpoint
   grafana_logs_enabled    = var.grafana_logs_enabled

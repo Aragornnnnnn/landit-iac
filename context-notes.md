@@ -436,3 +436,50 @@
 - 사용자 승인 후 두 plan을 apply했다. develop과 prod 모두 `1 added, 1 changed, 1 destroyed`로 완료됐다.
 - develop worker는 revision `5`, prod worker는 revision `4`가 됐다. 두 revision의 `secrets`에는 환경별 `MESSAGE_FEEDBACK_MODEL`, `MESSAGE_FEEDBACK_REVIEW_ENABLED` SSM path가 포함된다.
 - apply 후 develop·prod worker service는 모두 desired/running `1/1`, PRIMARY deployment `COMPLETED` 상태다.
+
+## 2026-07-22 LAN-192 prod Discord 장애 알림
+
+- Discord 알림은 prod만 대상으로 하고 develop은 제외한다.
+- Sentry와 Grafana 알림은 각각 `#alerts-sentry-prod`, `#alerts-grafana-prod` 채널로 분리한다.
+- Sentry는 prod BE·AI project마다 신규·회귀 rule과 반복 급증 rule을 둔다. 신규·회귀 예외는 즉시 알리고, 같은 issue가 5분 동안 10회 이상 발생하면 급증 알림을 보내며, 같은 rule의 재발송은 issue별 30분 간격으로 제한한다. 개별 반복 event와 resolved 상태는 알리지 않는다.
+- Grafana는 초기에는 prod BE·AI의 HTTP 5xx 장애만 알린다. 5분 동안 5xx가 5건 이상이면서 오류율이 20% 이상인 조건을 1분마다 평가하고, 2분 동안 유지되면 firing한다.
+- Grafana P95 응답시간, 트래픽 없음, 지표 없음, 에러 로그 발생량은 정상 기준이나 수집 공백을 장애와 구분하기 어려워 초기 범위에서 제외한다.
+- Grafana 복구 알림은 incident 종료 확인을 위해 발송한다. Sentry resolved 알림은 제외한다.
+- Grafana는 기본 Discord webhook contact point를 사용한다. contact point test notification이 `#alerts-grafana-prod`에 도착한 것을 확인했다.
+- Sentry 공식 Discord integration은 현재 Saynow 플랜에서 `Requires Team Plan or above`로 차단된다. 현재 조직의 project service hook API도 `unavailable_feature`이므로 직접 webhook 방식은 사용할 수 없다.
+- 사용자는 Sentry Team 업그레이드 대신 prod 전용 AWS Lambda relay 사용을 승인했다. Sentry Internal Integration의 alert rule action이 API Gateway endpoint를 호출하고, Lambda가 payload를 Discord webhook 형식으로 변환해 `#alerts-sentry-prod`로 전달한다.
+- 초기 Function URL ingress가 Sentry 기본 1초 timeout을 안정적으로 충족하지 못해 API Gateway의 비동기 Lambda 통합으로 외부 수신 경로를 변경했다. Sentry custom header는 조직 보안 정책으로 설정할 수 없어 Sentry App의 공식 `Sentry-Hook-Signature` HMAC-SHA256을 검증한다.
+- Discord webhook URL과 Sentry App signing secret은 Terraform 변수나 state에 넣지 않고 `/landit/prod` SSM에 Terraform 밖에서 작성한다. 기존 `/landit/prod/LANDIT_SENTRY_RELAY_AUTH_TOKEN` path에는 signing secret을 저장하고 Terraform은 parameter ARN과 이름만 참조한다.
+- Discord webhook URL과 integration credential은 저장소, Terraform 변수와 state, 문서에 기록하지 않는다.
+- Lambda handler는 invalid signature `401`, malformed JSON `400`, non-prod와 environment 누락 `204` 제외, prod Discord payload 변환, base64 body decode, SSM batch 조회, Discord explicit User-Agent를 unit test로 검증했고 8개 테스트가 통과했다.
+- prod Terraform은 Python 3.13 arm64 Lambda, reserved concurrency 2, 14일 log group, Function URL과 공개 URL 호출에 필요한 두 permission을 추가한다. 실행 role의 secret 권한은 signing secret과 Discord webhook SSM parameter 두 개에 대한 `ssm:GetParameters`다.
+- prod plan은 Lambda relay 관련 리소스만 `8 to add, 0 to change, 0 to destroy`이며 기존 ECS와 네트워크 변경은 없다. Function URL output은 sensitive로 표시되고 secret 값은 plan에 포함되지 않았다.
+- 사용자 승인 후 초기 plan을 apply해 `8 added, 0 changed, 0 destroyed`로 Lambda relay를 생성했다. 후속 apply에서는 SSM batch 조회 IAM과 Discord User-Agent를 Lambda에 반영했다.
+- 실제 Sentry 서명 request에서 invalid signature는 `401`, develop은 `204`, warm prod delivery는 `204`였지만 약 4.07초가 걸렸고 cold prod는 Lambda 5초 timeout으로 `502`가 발생했다.
+- 로컬에서 같은 Python `urllib` Discord request는 약 0.36초였으므로 4초 지연은 Lambda에서 Discord로 나가는 경로에서만 재현됐다.
+- Sentry 공식 소스의 Sentry App webhook 기본 timeout은 1초, hard timeout은 5초다. 사용자는 Sentry ingress가 즉시 응답하고 같은 Lambda의 비동기 invocation이 signature 검증과 Discord delivery를 처리하는 구조를 승인했다.
+- 사용자는 AI WARNING 로그의 `Value error` 문자열 오분류와 prod 미매핑 404 재발 관측도 LAN-192 하나에서 처리하도록 범위를 확장했다.
+- AI는 root·Uvicorn 로그에 logfmt `level` 필드를 추가하고 Grafana AI·Overview가 AI error를 `ERROR|CRITICAL` level로만 조회한다. 기존 workflow log level과 message는 바꾸지 않는다.
+- prod ALB는 전용 비공개 S3 bucket에 access log를 저장하고 30일 뒤 만료한다. WAF는 Common Rule Set, Amazon IP Reputation List, IP당 5분 2,000회 rate rule을 모두 `Count`로 시작하며 develop에는 적용하지 않는다.
+- WAF `Block` 전환은 이번 범위에서 제외한다. 7일간 access log, WAF metric, sampled request를 관찰한 뒤 정상 사용자와 공유 NAT 영향을 검토하고 별도 승인을 받아야 한다.
+- Sentry relay는 공개 ingress에서 서명 형식과 700,000 bytes 제한만 검사하고 자기 Lambda를 비동기 호출한다. 내부 delivery가 SSM signing secret으로 HMAC을 검증하고 prod payload만 Discord로 전달하도록 구현했으며 unit test 12개가 통과했다.
+- relay Terraform은 memory 512 MiB, timeout 10초, reserved concurrency 2, 비동기 최대 event age 300초와 retry 2회, 자기 함수 invoke 권한으로 갱신했다.
+- BE는 Spring Boot 기본 콘솔 포맷이 로그 레벨을 보존하므로 애플리케이션 변경 없이 Grafana에서 레벨 위치를 조회한다.
+- AI `feat/LAN-192`는 root와 Uvicorn 로그를 `level`, `logger`, `message` 형식으로 통합했고 전체 unittest 188개가 통과했다.
+- Grafana AI 에러 패널은 `logfmt`의 `ERROR|CRITICAL`, Overview의 BE 에러 target은 Spring `ERROR|FATAL` 위치만 조회하도록 분리했다. JSON과 dashboard 계약 스크립트가 통과했다.
+- prod module은 ALB access log 전용 SSE-S3 bucket, public access block, 30일 lifecycle과 account·region 제한 log delivery policy를 추가했다.
+- prod WAF Web ACL은 default allow이며 Common Rule Set, Amazon IP Reputation List, IP당 5분 2,000회 rate rule을 모두 Count로 구성했다. develop은 module 기본값으로 비활성 상태를 유지한다.
+- `terraform fmt -recursive -check`, dev·prod `terraform validate`, `git diff --check`가 통과했다. prod plan과 apply, live 검증은 다음 단계에서 수행한다.
+- 저장한 prod plan `/tmp/lan192-prod-observability.tfplan`은 `8 added, 3 changed, 0 destroyed`다. Sentry Lambda·IAM·비동기 설정, ALB access log 속성, 전용 S3 구성, WAF Web ACL과 association만 포함하며 ECS·VPC 교체는 없다.
+- 사용자 승인 후 관측성 plan을 apply해 `8 added, 3 changed, 0 destroyed`를 확인했다. Lambda 설정, ALB access log, 전용 S3 bucket, WAF Web ACL association과 세 Count rule을 live 상태에서 확인했고 실제 ALB `.log.gz` object도 생성됐다.
+- Function URL ingress는 valid request에서 약 1.12~1.41초가 걸렸다. API Gateway 비동기 Lambda integration을 별도 plan `8 added, 0 changed, 0 destroyed`로 적용한 뒤 cold prod 요청은 약 0.10초, warm prod와 develop 요청은 약 0.05초에 `204`를 반환했다.
+- Sentry Internal Integration `Landit Prod Discord Relay`을 API Gateway endpoint로 교체했다. prod BE·AI 각각 신규·회귀 rule과 5분 10회 급증 rule을 생성했고 기존 email rule은 유지했다. 합성 prod BE event에서 Sentry rule trigger 시각과 Lambda ingress·delivery의 오류 없는 실행을 확인했다.
+- 기존 Function URL과 공개 invoke permission 제거 plan은 `0 added, 0 changed, 3 destroyed`였고 적용 결과도 동일했다. 외부 Sentry ingress는 API Gateway 경로만 남았다.
+- AI prod 최신 task의 CloudWatch 로그 44건이 모두 `level`과 `logger` 필드를 포함했다. Grafana `Landit AI`와 `Landit Overview`는 운영본과 저장소 차이가 요청한 네 LogQL target뿐임을 확인한 뒤 각각 version 5와 4로 동기화했다.
+- 반영 뒤 두 dashboard 운영 JSON은 저장소 JSON과 정확히 일치했고 화면에 query error가 없었다. Grafana datasource query API에서 AI `logfmt` query가 오류 없이 20건을 반환했다. 동기화용 임시 Editor service account와 token은 검증 직후 삭제했다.
+- 독립 리뷰에서 공개 API Gateway가 HMAC 검증 전 비동기 큐를 점유할 수 있는 P2를 확인했다. Sentry 공식 US·US2·EU outbound IPv4만 허용하는 resource policy와 초당 1건, burst 5건의 method settings를 추가했다. 일반 사용자 ALB WAF의 Count 정책에는 영향을 주지 않는다.
+- Lambda async 실패 destination과 DLQ가 없어 최대 300초와 재시도 2회를 모두 소진한 이벤트는 폐기되는 P3 위험이 남는다. 별도 SQS와 재처리 운영이 필요한지 관찰 후 결정하고 이번 범위에는 추가하지 않는다.
+- API Gateway 보호 saved plan은 deployment 교체와 policy·stage 갱신만 포함해 `2 added, 2 changed, 1 destroyed`였고 동일하게 적용됐다. 일반 외부 IP는 `403`, Sentry 합성 prod event는 alert 처리 뒤 Lambda ingress·delivery 두 호출과 오류 0건을 확인했다.
+- live API Gateway stage는 초당 1건, burst 5건이며 resource policy는 Sentry outbound IPv4 10개만 Allow한다.
+- AWS가 축약 resource policy ARN을 전체 ARN으로 정규화해 발생한 plan drift는 `aws_api_gateway_rest_api_policy` 분리로 제거했다. 정규화 plan은 `2 added, 1 changed, 1 destroyed`로 적용했고 후속 prod plan은 `No changes`였다.
+- 독립 재리뷰는 Sentry 공식 outbound 10개와 allowlist 일치, POST root 범위, live throttling 연결을 확인했고 criterion-linked P1·P2 blocker가 남지 않았다고 결론냈다. Lambda unit 12개, API 보호 계약, Grafana JSON·LogQL, fmt, diff-check, dev·prod validate와 secret 패턴 검사를 독립적으로 통과했다.

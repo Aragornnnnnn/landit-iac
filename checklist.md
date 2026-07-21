@@ -1,5 +1,20 @@
 # Checklist
 
+## 2026-07-22 LAN-192 prod 관측성과 Discord 장애 알림
+
+- [x] Sentry relay를 ingress와 비동기 delivery로 분리하고 HMAC 검증 테스트를 통과한다.
+- [x] AI 로그가 실제 `WARNING`, `ERROR` 레벨을 보존하도록 수정하고 전체 테스트를 통과한다.
+- [x] BE 로그가 Spring 기본 포맷에서 실제 레벨을 보존하는지 확인한다.
+- [x] Grafana AI·Overview 에러 패널을 실제 레벨 기반으로 변경한다.
+- [x] prod ALB access log용 비공개 S3 bucket과 30일 lifecycle을 구성한다.
+- [x] prod WAF 관리형 규칙 두 개와 IP rate rule을 모두 `Count`로 구성한다.
+- [x] dev·prod Terraform validate를 통과한다.
+- [x] prod Terraform plan에서 변경 범위와 삭제 없음 여부를 확인한다.
+- [x] 저장된 prod plan을 적용하고 Lambda·S3·WAF live 상태를 확인한다.
+- [x] AI prod 배포 후 CloudWatch 로그 레벨과 Grafana dashboard를 검증한다.
+- [x] Sentry prod BE·AI alert rule을 구성하고 Discord 수신을 확인한다.
+- [x] 완료 전 독립 리뷰와 최종 검증을 통과한다.
+
 ## 2026-06-28 Landit IaC 초기 세팅
 
 - [x] 현재 `landit-iac` 레포 파일 상태를 확인한다.
@@ -288,6 +303,34 @@
 - [x] `terraform fmt`, develop/prod `terraform validate`, `terraform plan`을 실행한다.
 - [x] 사용자 승인 후 develop/prod Terraform apply를 실행한다.
 - [x] 새 worker task definition과 ECS deployment에서 두 환경 변수 주입을 확인한다.
+
+## 2026-07-22 LAN-192 prod 관측성과 Discord 장애 알림
+
+- [x] 현재 Sentry·Grafana 수집 범위와 대시보드 쿼리를 확인한다.
+- [x] prod 전용 채널 분리와 장애성 알림 범위를 확정한다.
+- [x] Sentry 신규·회귀·반복 급증 조건과 Grafana 5xx 조건을 확정한다.
+- [x] Discord 연동과 alert rule 설계를 문서화하고 자체 검토한다.
+- [x] 사용자가 설계 문서를 검토한다.
+- [x] Sentry Team 플랜 제한을 확인하고 Lambda relay 방식으로 설계를 변경한다.
+- [x] Lambda handler를 테스트 우선으로 구현한다.
+- [x] prod Terraform에 Lambda Function URL과 최소 IAM 권한을 추가한다.
+- [x] Discord webhook과 Sentry App signing secret을 Terraform 밖의 prod SSM `SecureString`으로 준비한다.
+- [x] `terraform fmt`, prod `terraform validate`, `terraform plan`을 실행한다.
+- [x] 사용자 승인 후 초기 prod Terraform apply를 실행한다.
+- [x] 실제 Sentry 서명 request로 동기 relay의 cold timeout과 Discord 응답 지연을 확인한다.
+- [x] AI 로그 오분류와 prod 미매핑 404 관측 작업을 LAN-192 범위에 포함한다.
+- [x] 비동기 relay, AI level 필드, ALB access log, WAF Count 설계를 문서화하고 자체 검토한다.
+- [x] 사용자가 확장된 LAN-192 설계 문서를 검토한다.
+- [x] Lambda ingress와 delivery를 비동기로 분리하고 API Gateway cold 1초 이내 응답을 검증한다.
+- [x] Sentry Internal Integration과 BE·AI issue alert rule을 relay에 연결한다.
+- [x] 실제 Sentry test alert가 `#alerts-sentry-prod`에 도착하는지 확인한다.
+- [x] Landit AI 로그에 명시적인 level 필드를 추가하고 테스트한다.
+- [x] AI와 Overview Grafana 에러 패널을 AI level 필드 기준으로 변경하고 배포한다.
+- [x] prod ALB access log 전용 S3 bucket과 30일 lifecycle을 추가한다.
+- [x] prod ALB에 AWS managed rule과 IP rate rule을 WAF Count 모드로 연결한다.
+- [x] Terraform plan을 검증하고 승인 뒤 prod apply를 실행한다.
+- [x] 실제 S3 access log object와 WAF Count rule live 상태를 확인한다.
+- [x] 운영 문서와 검증 기록을 최종 반영한다.
 
 ## 아키텍처 결정 전 질문
 

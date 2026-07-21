@@ -2,6 +2,39 @@
 
 Landit은 Sentry로 애플리케이션 오류를 확인하고, Grafana Cloud에서 애플리케이션 지표와 CloudWatch Logs를 함께 조회합니다.
 
+## prod Discord 장애 알림
+
+Grafana Cloud는 prod BE·AI HTTP 5xx alert를 `#alerts-grafana-prod` Discord webhook으로 직접 전송합니다. Sentry 공식 Discord integration은 현재 Saynow 플랜에서 사용할 수 없어 아래 relay 경로를 사용합니다.
+
+```text
+Sentry prod issue alert
+  -> Sentry Internal Integration alert action
+  -> API Gateway async Lambda integration
+  -> prod Sentry Discord relay Lambda ingress
+  -> 같은 Lambda의 비동기 delivery invocation
+  -> #alerts-sentry-prod Discord webhook
+```
+
+API Gateway는 Sentry 요청을 Lambda `Event` invocation으로 접수하고 즉시 `204`를 반환합니다. Lambda ingress는 `Sentry-Hook-Signature`가 SHA-256 서명 형식인지와 body 크기만 확인하고 같은 Lambda의 delivery invocation을 비동기로 호출합니다. 외부 요청은 API Gateway mapping template이 만든 `requestContext`가 있으므로 body의 `relayMode` 값으로 내부 delivery를 위조할 수 없습니다. 비동기 delivery는 `/landit/prod/LANDIT_SENTRY_RELAY_AUTH_TOKEN`에 저장된 Sentry App signing secret으로 원문 body의 HMAC-SHA256을 검증합니다. 인증을 통과하고 environment가 명시적으로 `prod`인 payload만 Discord embed로 변환합니다. Discord webhook URL은 `/landit/prod/LANDIT_SENTRY_DISCORD_WEBHOOK_URL`에서 실행 시 복호화해 읽습니다. 두 값은 Standard `SecureString`이며 Terraform 밖에서 작성합니다.
+
+API Gateway resource policy는 Sentry 공식 문서의 US·US2·EU outbound IP만 허용합니다. stage throttling은 초당 1건, burst 5건으로 제한해 위조 요청이 Lambda 비동기 큐를 점유하는 범위를 줄입니다. Sentry가 outbound IP를 변경하면 공식 [IP Ranges](https://docs.sentry.io/security-legal-pii/security/ip-ranges/#outbound-requests)를 확인해 Terraform 목록을 먼저 갱신합니다.
+
+Lambda ingress는 body를 700,000 bytes로 제한하고 reserved concurrency를 2로 고정합니다. Lambda는 memory 512 MiB, timeout 10초이며 비동기 event는 최대 5분 동안 2회 재시도합니다. 실행 role은 두 SSM parameter의 `ssm:GetParameters`와 자기 함수의 `lambda:InvokeFunction`만 추가로 허용합니다. secret 값과 webhook endpoint는 로그에 출력하지 않습니다. 초기 검증에 사용한 Function URL과 공개 invoke permission은 Sentry Internal Integration을 API Gateway endpoint로 교체하고 test alert 수신을 확인한 뒤 제거했습니다. 실패 destination과 DLQ는 현재 두지 않으므로 최대 event age와 재시도를 모두 소진한 이벤트는 재처리할 수 없습니다. 운영에서 유실 추적이 필요해지면 SQS on-failure destination과 처리 절차를 별도 작업으로 추가합니다.
+
+Discord webhook을 교체할 때는 새 URL을 prod SSM에 반영하고 test alert 수신을 확인한 뒤 기존 webhook을 폐기합니다. Sentry App credential을 교체할 때는 새 signing secret을 SSM에 반영하고 Sentry test alert를 확인합니다. `Sentry-Hook-Signature`는 Sentry가 webhook 원문으로 계산해 자동 전송하므로 custom header를 설정하지 않습니다.
+
+## prod 요청 관측과 WAF Count
+
+prod ALB access log는 전용 S3 bucket의 `alb/` prefix에 저장합니다. bucket은 공개 접근을 모두 차단하고 SSE-S3로 암호화하며 객체를 30일 뒤 만료합니다. ALB log delivery policy는 Landit AWS account의 load balancer가 `alb/AWSLogs/982529430654/` 아래에 쓰는 작업만 허용합니다. develop에서는 access log bucket을 만들지 않습니다.
+
+prod ALB에는 기본 허용인 REGIONAL WAF Web ACL을 연결합니다. 아래 세 규칙은 모두 `Count`이므로 일치 요청을 기록할 뿐 차단하지 않습니다.
+
+- AWS Managed Rules Common Rule Set.
+- AWS Managed Rules Amazon IP Reputation List.
+- 동일 IP가 5분 동안 2,000회를 넘는 rate rule.
+
+적용 후 최소 7일 동안 access log의 client IP·path·status 분포와 WAF CloudWatch metric·sampled request를 확인합니다. 임계치는 정상 사용자의 최고 요청량과 회사·학교·통신사 NAT 공유 영향을 확인한 뒤 조정합니다. `Block` 전환은 이 관찰 결과와 신뢰 IP 예외 범위를 검토하고 별도 승인을 받은 작업에서만 수행합니다.
+
 ## 데이터 흐름
 
 ```text
@@ -28,7 +61,7 @@ Grafana Cloud stack의 표시 이름은 `landitobservability`입니다. 기존 s
 - [Landit BE](https://scarletmyrtle3008.grafana.net/d/landit-be/landit-be). BE endpoint 지표와 JVM heap, GC, thread, API 로그를 확인합니다.
 - [Landit AI](https://scarletmyrtle3008.grafana.net/d/landit-ai/landit-ai). AI endpoint 지표와 process CPU·memory·thread, CPython GC, worker 로그를 확인합니다.
 
-세 dashboard는 `환경` 변수에서 `prod`와 `develop`을 전환합니다. 기본값은 `prod`이며, 시간대는 브라우저 설정과 관계없이 한국 표준시 `Asia/Seoul`로 고정합니다. `로그 본문 검색`을 비워 두면 전체 로그를 표시합니다. BE 에러 로그와 에러 발생량은 `ERROR`, `FATAL` 레벨 줄만 표시합니다. 5xx 오류율과 에러 로그 발생량은 오류가 없을 때 `0`으로 표시하며, 원문 로그 패널은 조회 결과가 없으면 비어 있습니다. Java stack trace의 이어지는 줄은 레벨이 없어 `UNK`로 표시될 수 있으므로 전체 로그 패널에서 확인합니다.
+세 dashboard는 `환경` 변수에서 `prod`와 `develop`을 전환합니다. 기본값은 `prod`이며, 시간대는 브라우저 설정과 관계없이 한국 표준시 `Asia/Seoul`로 고정합니다. `로그 본문 검색`을 비워 두면 전체 로그를 표시합니다. BE 에러 패널은 Spring 콘솔 로그의 `ERROR`, `FATAL` 레벨 줄을 표시하고, AI 에러 패널은 `level` 필드가 `ERROR`, `CRITICAL`인 로그만 표시합니다. 메시지 본문의 `error` 문자열은 오류 분류에 사용하지 않습니다. 5xx 오류율과 에러 로그 발생량은 오류가 없을 때 `0`으로 표시하며, 원문 로그 패널은 조회 결과가 없으면 비어 있습니다. Java stack trace의 이어지는 줄은 레벨이 없어 `UNK`로 표시될 수 있으므로 전체 로그 패널에서 확인합니다.
 
 Dashboard JSON은 `grafana/dashboards/`에서 관리합니다. 수정 후에는 유효 기간을 제한한 Grafana service account token을 환경변수로만 전달해 동기화합니다.
 

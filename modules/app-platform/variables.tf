@@ -124,6 +124,40 @@ variable "alb_certificate_arn" {
   default     = null
 }
 
+variable "alb_access_logs_enabled" {
+  description = "Whether to store ALB access logs in a dedicated S3 bucket."
+  type        = bool
+  default     = false
+}
+
+variable "alb_access_log_retention_days" {
+  description = "Days to retain ALB access log objects."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.alb_access_log_retention_days > 0
+    error_message = "alb_access_log_retention_days must be greater than zero."
+  }
+}
+
+variable "waf_count_enabled" {
+  description = "Whether to associate a Count-only WAF Web ACL with the ALB."
+  type        = bool
+  default     = false
+}
+
+variable "waf_rate_limit" {
+  description = "Requests per source IP per five minutes before WAF Count matches."
+  type        = number
+  default     = 2000
+
+  validation {
+    condition     = var.waf_rate_limit >= 10
+    error_message = "waf_rate_limit must be at least 10."
+  }
+}
+
 variable "grafana_otlp_enabled" {
   description = "Whether to send application metrics directly to Grafana Cloud OTLP."
   type        = bool

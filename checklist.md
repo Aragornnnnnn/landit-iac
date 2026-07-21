@@ -289,6 +289,15 @@
 - [x] 사용자 승인 후 develop/prod Terraform apply를 실행한다.
 - [x] 새 worker task definition과 ECS deployment에서 두 환경 변수 주입을 확인한다.
 
+## 2026-07-22 LAN-192 prod Discord 장애 알림
+
+- [x] 현재 Sentry·Grafana 수집 범위와 대시보드 쿼리를 확인한다.
+- [x] prod 전용 채널 분리와 장애성 알림 범위를 확정한다.
+- [x] Sentry 신규·회귀·반복 급증 조건과 Grafana 5xx 조건을 확정한다.
+- [x] Discord 연동과 alert rule 설계를 문서화하고 자체 검토한다.
+- [ ] 사용자가 설계 문서를 검토한다.
+- [ ] 승인된 설계를 기준으로 구현 계획을 작성한다.
+
 ## 아키텍처 결정 전 질문
 
 - [ ] dev/prod를 별도 Terraform root로 계속 분리할지 결정한다.

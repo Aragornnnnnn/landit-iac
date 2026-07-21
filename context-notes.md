@@ -436,3 +436,14 @@
 - 사용자 승인 후 두 plan을 apply했다. develop과 prod 모두 `1 added, 1 changed, 1 destroyed`로 완료됐다.
 - develop worker는 revision `5`, prod worker는 revision `4`가 됐다. 두 revision의 `secrets`에는 환경별 `MESSAGE_FEEDBACK_MODEL`, `MESSAGE_FEEDBACK_REVIEW_ENABLED` SSM path가 포함된다.
 - apply 후 develop·prod worker service는 모두 desired/running `1/1`, PRIMARY deployment `COMPLETED` 상태다.
+
+## 2026-07-22 LAN-192 prod Discord 장애 알림
+
+- Discord 알림은 prod만 대상으로 하고 develop은 제외한다.
+- Sentry와 Grafana 알림은 각각 `#alerts-sentry-prod`, `#alerts-grafana-prod` 채널로 분리한다.
+- Sentry는 prod BE·AI project마다 신규·회귀 rule과 반복 급증 rule을 둔다. 신규·회귀 예외는 즉시 알리고, 같은 issue가 5분 동안 10회 이상 발생하면 급증 알림을 보내며, 같은 rule의 재발송은 issue별 30분 간격으로 제한한다. 개별 반복 event와 resolved 상태는 알리지 않는다.
+- Grafana는 초기에는 prod BE·AI의 HTTP 5xx 장애만 알린다. 5분 동안 5xx가 5건 이상이면서 오류율이 20% 이상인 조건을 1분마다 평가하고, 2분 동안 유지되면 firing한다.
+- Grafana P95 응답시간, 트래픽 없음, 지표 없음, 에러 로그 발생량은 정상 기준이나 수집 공백을 장애와 구분하기 어려워 초기 범위에서 제외한다.
+- Grafana 복구 알림은 incident 종료 확인을 위해 발송한다. Sentry resolved 알림은 제외한다.
+- Sentry와 Grafana의 기본 Discord integration을 사용하고 별도 중계 서비스를 만들지 않는다.
+- Discord webhook URL과 integration credential은 저장소, Terraform 변수와 state, 문서에 기록하지 않는다.

@@ -4,7 +4,7 @@
 
 **Goal:** Sentry prod 장애를 1초 안에 접수해 Discord로 비동기 전달하고, AI 로그 오분류를 제거하며, prod ALB 미매핑 요청을 access log와 WAF Count로 관찰한다.
 
-**Architecture:** 기존 Sentry Lambda는 Function URL ingress와 자기 함수의 비동기 delivery 경로로 분리한다. Landit AI는 root·Uvicorn 로그에 logfmt `level` 필드를 기록하고 Grafana AI·Overview가 그 필드를 사용한다. prod app-platform module은 선택적인 ALB access log S3 bucket과 `Count` 전용 Web ACL을 제공한다.
+**Architecture:** API Gateway가 Sentry webhook을 Lambda `Event` invocation으로 접수해 1초 안에 응답하고, 기존 Sentry Lambda는 ingress와 자기 함수의 비동기 delivery 경로로 분리한다. Landit AI는 root·Uvicorn 로그에 logfmt `level` 필드를 기록하고 Grafana AI·Overview가 그 필드를 사용한다. prod app-platform module은 선택적인 ALB access log S3 bucket과 `Count` 전용 Web ACL을 제공한다.
 
 **Tech Stack:** Terraform 1.6+, AWS provider, AWS Lambda Python 3.13, Python `unittest`, FastAPI·Uvicorn, Grafana Loki LogQL, S3, AWS WAFv2.
 
@@ -27,6 +27,7 @@
 - Modify: `environments/prod/lambda/sentry_discord_relay.py` — Function URL ingress와 비동기 delivery를 분리한다.
 - Modify: `environments/prod/lambda/tests/test_sentry_discord_relay.py` — dispatch, signature, environment, Discord 변환을 검증한다.
 - Modify: `environments/prod/sentry-discord-relay.tf` — self invoke IAM, memory, timeout, async retry를 정의한다.
+- Modify: `environments/prod/sentry-discord-relay.tf` — API Gateway 비동기 Lambda 통합과 전환 후 Function URL 제거를 정의한다.
 - Modify: `modules/app-platform/main.tf` — 선택적 ALB log bucket과 WAFv2 Web ACL을 정의한다.
 - Modify: `modules/app-platform/variables.tf` — access log와 WAF enable, retention, rate limit 입력을 정의한다.
 - Modify: `environments/prod/main.tf` — prod에서 access log와 WAF Count를 활성화한다.
@@ -490,7 +491,7 @@ Run: `terraform -chdir=environments/prod show -json /tmp/lan192-prod-observabili
 
 Expected: Sentry Lambda update, self invoke IAM, async config, ALB access log S3 resources, ALB attribute, WAF Web ACL과 association만 포함한다. 삭제는 없다.
 
-- [ ] **Step 4: 문서와 검증 기록을 커밋한다.**
+- [x] **Step 4: 문서와 검증 기록을 커밋한다.**
 
 ```bash
 git add docs/observability.md docs/ssm-parameters.md checklist.md context-notes.md \
@@ -502,11 +503,11 @@ git commit -m "docs: LAN-192 관측성 운영 절차를 반영한다"
 
 승인 요청에는 Terraform plan add/change/destroy 수, exact resource address, WAF action이 전부 `Count`인 근거, Grafana dashboard 2개 변경, AI 배포 필요성을 포함한다.
 
-- [ ] **Step 6: 승인 뒤 같은 saved plan을 apply하고 live 상태를 검증한다.**
+- [x] **Step 6: 승인 뒤 같은 saved plan을 apply하고 live 상태를 검증한다.**
 
 Run: `AWS_PROFILE=landit terraform -chdir=environments/prod apply /tmp/lan192-prod-observability.tfplan`
 
-검증은 Lambda cold ingress 1초 이내 2xx, 비동기 Discord 도착, invalid signature·develop 미전달, S3 access log object 생성, Web ACL association, 세 rule의 Count action, post-apply `No changes`를 포함한다.
+기존 Function URL ingress는 cold 상태에서 1초를 넘겨 Sentry 기본 timeout을 충족하지 못했다. API Gateway 비동기 통합을 추가한 뒤 cold 요청 약 0.10초, warm 요청 약 0.05초에 `204`를 확인했다. S3 access log 실제 object, Web ACL association, 세 rule의 Count action도 확인했다. Sentry endpoint 전환과 Discord test alert 뒤 Function URL 제거 및 post-apply `No changes` 검증을 남긴다.
 
 - [ ] **Step 7: AI 배포 뒤 Grafana dashboard를 동기화하고 렌더링을 검증한다.**
 

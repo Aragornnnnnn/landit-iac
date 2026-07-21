@@ -9,15 +9,15 @@ Grafana Cloud는 prod BE·AI HTTP 5xx alert를 `#alerts-grafana-prod` Discord we
 ```text
 Sentry prod issue alert
   -> Sentry Internal Integration alert action
-  -> Lambda Function URL
+  -> API Gateway async Lambda integration
   -> prod Sentry Discord relay Lambda ingress
   -> 같은 Lambda의 비동기 delivery invocation
   -> #alerts-sentry-prod Discord webhook
 ```
 
-공개 ingress는 `Sentry-Hook-Signature`가 SHA-256 서명 형식인지와 body 크기만 확인하고 같은 Lambda를 비동기로 호출한 뒤 즉시 `204`를 반환합니다. 공개 Function URL 요청은 `requestContext`가 있으므로 body의 `relayMode` 값으로 내부 delivery를 위조할 수 없습니다. 비동기 delivery는 `/landit/prod/LANDIT_SENTRY_RELAY_AUTH_TOKEN`에 저장된 Sentry App signing secret으로 원문 body의 HMAC-SHA256을 검증합니다. 인증을 통과하고 environment가 명시적으로 `prod`인 payload만 Discord embed로 변환합니다. Discord webhook URL은 `/landit/prod/LANDIT_SENTRY_DISCORD_WEBHOOK_URL`에서 실행 시 복호화해 읽습니다. 두 값은 Standard `SecureString`이며 Terraform 밖에서 작성합니다.
+API Gateway는 Sentry 요청을 Lambda `Event` invocation으로 접수하고 즉시 `204`를 반환합니다. Lambda ingress는 `Sentry-Hook-Signature`가 SHA-256 서명 형식인지와 body 크기만 확인하고 같은 Lambda의 delivery invocation을 비동기로 호출합니다. 외부 요청은 API Gateway mapping template이 만든 `requestContext`가 있으므로 body의 `relayMode` 값으로 내부 delivery를 위조할 수 없습니다. 비동기 delivery는 `/landit/prod/LANDIT_SENTRY_RELAY_AUTH_TOKEN`에 저장된 Sentry App signing secret으로 원문 body의 HMAC-SHA256을 검증합니다. 인증을 통과하고 environment가 명시적으로 `prod`인 payload만 Discord embed로 변환합니다. Discord webhook URL은 `/landit/prod/LANDIT_SENTRY_DISCORD_WEBHOOK_URL`에서 실행 시 복호화해 읽습니다. 두 값은 Standard `SecureString`이며 Terraform 밖에서 작성합니다.
 
-Function URL은 API Gateway 없이 외부에서 호출할 수 있으므로 body를 700,000 bytes로 제한하고 reserved concurrency를 2로 고정합니다. Lambda는 memory 512 MiB, timeout 10초이며 비동기 event는 최대 5분 동안 2회 재시도합니다. 실행 role은 두 SSM parameter의 `ssm:GetParameters`와 자기 함수의 `lambda:InvokeFunction`만 추가로 허용합니다. secret 값과 Function URL은 로그에 출력하지 않습니다.
+Lambda ingress는 body를 700,000 bytes로 제한하고 reserved concurrency를 2로 고정합니다. Lambda는 memory 512 MiB, timeout 10초이며 비동기 event는 최대 5분 동안 2회 재시도합니다. 실행 role은 두 SSM parameter의 `ssm:GetParameters`와 자기 함수의 `lambda:InvokeFunction`만 추가로 허용합니다. secret 값과 webhook endpoint는 로그에 출력하지 않습니다. 기존 Function URL은 Sentry Internal Integration을 API Gateway endpoint로 교체하고 test alert 수신을 확인한 뒤 제거합니다.
 
 Discord webhook을 교체할 때는 새 URL을 prod SSM에 반영하고 test alert 수신을 확인한 뒤 기존 webhook을 폐기합니다. Sentry App credential을 교체할 때는 새 signing secret을 SSM에 반영하고 Sentry test alert를 확인합니다. `Sentry-Hook-Signature`는 Sentry가 webhook 원문으로 계산해 자동 전송하므로 custom header를 설정하지 않습니다.
 

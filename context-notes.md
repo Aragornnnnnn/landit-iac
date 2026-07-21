@@ -447,8 +447,8 @@
 - Grafana 복구 알림은 incident 종료 확인을 위해 발송한다. Sentry resolved 알림은 제외한다.
 - Grafana는 기본 Discord webhook contact point를 사용한다. contact point test notification이 `#alerts-grafana-prod`에 도착한 것을 확인했다.
 - Sentry 공식 Discord integration은 현재 Saynow 플랜에서 `Requires Team Plan or above`로 차단된다. 현재 조직의 project service hook API도 `unavailable_feature`이므로 직접 webhook 방식은 사용할 수 없다.
-- 사용자는 Sentry Team 업그레이드 대신 prod 전용 AWS Lambda relay 사용을 승인했다. Sentry Internal Integration의 alert rule action이 Lambda Function URL을 호출하고, Lambda가 payload를 Discord webhook 형식으로 변환해 `#alerts-sentry-prod`로 전달한다.
-- Lambda Function URL에는 별도 API Gateway를 두지 않는다. Sentry custom header는 조직 보안 정책으로 설정할 수 없어 Sentry App의 공식 `Sentry-Hook-Signature` HMAC-SHA256을 검증한다.
+- 사용자는 Sentry Team 업그레이드 대신 prod 전용 AWS Lambda relay 사용을 승인했다. Sentry Internal Integration의 alert rule action이 API Gateway endpoint를 호출하고, Lambda가 payload를 Discord webhook 형식으로 변환해 `#alerts-sentry-prod`로 전달한다.
+- 초기 Function URL ingress가 Sentry 기본 1초 timeout을 안정적으로 충족하지 못해 API Gateway의 비동기 Lambda 통합으로 외부 수신 경로를 변경했다. Sentry custom header는 조직 보안 정책으로 설정할 수 없어 Sentry App의 공식 `Sentry-Hook-Signature` HMAC-SHA256을 검증한다.
 - Discord webhook URL과 Sentry App signing secret은 Terraform 변수나 state에 넣지 않고 `/landit/prod` SSM에 Terraform 밖에서 작성한다. 기존 `/landit/prod/LANDIT_SENTRY_RELAY_AUTH_TOKEN` path에는 signing secret을 저장하고 Terraform은 parameter ARN과 이름만 참조한다.
 - Discord webhook URL과 integration credential은 저장소, Terraform 변수와 state, 문서에 기록하지 않는다.
 - Lambda handler는 invalid signature `401`, malformed JSON `400`, non-prod와 environment 누락 `204` 제외, prod Discord payload 변환, base64 body decode, SSM batch 조회, Discord explicit User-Agent를 unit test로 검증했고 8개 테스트가 통과했다.
@@ -471,3 +471,6 @@
 - prod WAF Web ACL은 default allow이며 Common Rule Set, Amazon IP Reputation List, IP당 5분 2,000회 rate rule을 모두 Count로 구성했다. develop은 module 기본값으로 비활성 상태를 유지한다.
 - `terraform fmt -recursive -check`, dev·prod `terraform validate`, `git diff --check`가 통과했다. prod plan과 apply, live 검증은 다음 단계에서 수행한다.
 - 저장한 prod plan `/tmp/lan192-prod-observability.tfplan`은 `8 added, 3 changed, 0 destroyed`다. Sentry Lambda·IAM·비동기 설정, ALB access log 속성, 전용 S3 구성, WAF Web ACL과 association만 포함하며 ECS·VPC 교체는 없다.
+- 사용자 승인 후 관측성 plan을 apply해 `8 added, 3 changed, 0 destroyed`를 확인했다. Lambda 설정, ALB access log, 전용 S3 bucket, WAF Web ACL association과 세 Count rule을 live 상태에서 확인했고 실제 ALB `.log.gz` object도 생성됐다.
+- Function URL ingress는 valid request에서 약 1.12~1.41초가 걸렸다. API Gateway 비동기 Lambda integration을 별도 plan `8 added, 0 changed, 0 destroyed`로 적용한 뒤 cold prod 요청은 약 0.10초, warm prod와 develop 요청은 약 0.05초에 `204`를 반환했다.
+- Sentry Internal Integration을 API Gateway endpoint로 교체하고 Discord test alert를 확인한 뒤 기존 Function URL과 공개 invoke permission을 제거한다.

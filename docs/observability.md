@@ -17,7 +17,9 @@ Sentry prod issue alert
 
 API Gateway는 Sentry 요청을 Lambda `Event` invocation으로 접수하고 즉시 `204`를 반환합니다. Lambda ingress는 `Sentry-Hook-Signature`가 SHA-256 서명 형식인지와 body 크기만 확인하고 같은 Lambda의 delivery invocation을 비동기로 호출합니다. 외부 요청은 API Gateway mapping template이 만든 `requestContext`가 있으므로 body의 `relayMode` 값으로 내부 delivery를 위조할 수 없습니다. 비동기 delivery는 `/landit/prod/LANDIT_SENTRY_RELAY_AUTH_TOKEN`에 저장된 Sentry App signing secret으로 원문 body의 HMAC-SHA256을 검증합니다. 인증을 통과하고 environment가 명시적으로 `prod`인 payload만 Discord embed로 변환합니다. Discord webhook URL은 `/landit/prod/LANDIT_SENTRY_DISCORD_WEBHOOK_URL`에서 실행 시 복호화해 읽습니다. 두 값은 Standard `SecureString`이며 Terraform 밖에서 작성합니다.
 
-Lambda ingress는 body를 700,000 bytes로 제한하고 reserved concurrency를 2로 고정합니다. Lambda는 memory 512 MiB, timeout 10초이며 비동기 event는 최대 5분 동안 2회 재시도합니다. 실행 role은 두 SSM parameter의 `ssm:GetParameters`와 자기 함수의 `lambda:InvokeFunction`만 추가로 허용합니다. secret 값과 webhook endpoint는 로그에 출력하지 않습니다. 기존 Function URL은 Sentry Internal Integration을 API Gateway endpoint로 교체하고 test alert 수신을 확인한 뒤 제거합니다.
+API Gateway resource policy는 Sentry 공식 문서의 US·US2·EU outbound IP만 허용합니다. stage throttling은 초당 1건, burst 5건으로 제한해 위조 요청이 Lambda 비동기 큐를 점유하는 범위를 줄입니다. Sentry가 outbound IP를 변경하면 공식 [IP Ranges](https://docs.sentry.io/security-legal-pii/security/ip-ranges/#outbound-requests)를 확인해 Terraform 목록을 먼저 갱신합니다.
+
+Lambda ingress는 body를 700,000 bytes로 제한하고 reserved concurrency를 2로 고정합니다. Lambda는 memory 512 MiB, timeout 10초이며 비동기 event는 최대 5분 동안 2회 재시도합니다. 실행 role은 두 SSM parameter의 `ssm:GetParameters`와 자기 함수의 `lambda:InvokeFunction`만 추가로 허용합니다. secret 값과 webhook endpoint는 로그에 출력하지 않습니다. 초기 검증에 사용한 Function URL과 공개 invoke permission은 Sentry Internal Integration을 API Gateway endpoint로 교체하고 test alert 수신을 확인한 뒤 제거했습니다. 실패 destination과 DLQ는 현재 두지 않으므로 최대 event age와 재시도를 모두 소진한 이벤트는 재처리할 수 없습니다. 운영에서 유실 추적이 필요해지면 SQS on-failure destination과 처리 절차를 별도 작업으로 추가합니다.
 
 Discord webhook을 교체할 때는 새 URL을 prod SSM에 반영하고 test alert 수신을 확인한 뒤 기존 webhook을 폐기합니다. Sentry App credential을 교체할 때는 새 signing secret을 SSM에 반영하고 Sentry test alert를 확인합니다. `Sentry-Hook-Signature`는 Sentry가 webhook 원문으로 계산해 자동 전송하므로 custom header를 설정하지 않습니다.
 

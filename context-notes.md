@@ -465,7 +465,7 @@
 - Sentry relay는 공개 ingress에서 서명 형식과 700,000 bytes 제한만 검사하고 자기 Lambda를 비동기 호출한다. 내부 delivery가 SSM signing secret으로 HMAC을 검증하고 prod payload만 Discord로 전달하도록 구현했으며 unit test 12개가 통과했다.
 - relay Terraform은 memory 512 MiB, timeout 10초, reserved concurrency 2, 비동기 최대 event age 300초와 retry 2회, 자기 함수 invoke 권한으로 갱신했다.
 - BE는 Spring Boot 기본 콘솔 포맷이 로그 레벨을 보존하므로 애플리케이션 변경 없이 Grafana에서 레벨 위치를 조회한다.
-- AI `feat/LAN-192`는 root와 Uvicorn 로그를 `level`, `logger`, `message` 형식으로 통합했고 전체 unittest 187개가 통과했다.
+- AI `feat/LAN-192`는 root와 Uvicorn 로그를 `level`, `logger`, `message` 형식으로 통합했고 전체 unittest 188개가 통과했다.
 - Grafana AI 에러 패널은 `logfmt`의 `ERROR|CRITICAL`, Overview의 BE 에러 target은 Spring `ERROR|FATAL` 위치만 조회하도록 분리했다. JSON과 dashboard 계약 스크립트가 통과했다.
 - prod module은 ALB access log 전용 SSE-S3 bucket, public access block, 30일 lifecycle과 account·region 제한 log delivery policy를 추가했다.
 - prod WAF Web ACL은 default allow이며 Common Rule Set, Amazon IP Reputation List, IP당 5분 2,000회 rate rule을 모두 Count로 구성했다. develop은 module 기본값으로 비활성 상태를 유지한다.
@@ -473,4 +473,13 @@
 - 저장한 prod plan `/tmp/lan192-prod-observability.tfplan`은 `8 added, 3 changed, 0 destroyed`다. Sentry Lambda·IAM·비동기 설정, ALB access log 속성, 전용 S3 구성, WAF Web ACL과 association만 포함하며 ECS·VPC 교체는 없다.
 - 사용자 승인 후 관측성 plan을 apply해 `8 added, 3 changed, 0 destroyed`를 확인했다. Lambda 설정, ALB access log, 전용 S3 bucket, WAF Web ACL association과 세 Count rule을 live 상태에서 확인했고 실제 ALB `.log.gz` object도 생성됐다.
 - Function URL ingress는 valid request에서 약 1.12~1.41초가 걸렸다. API Gateway 비동기 Lambda integration을 별도 plan `8 added, 0 changed, 0 destroyed`로 적용한 뒤 cold prod 요청은 약 0.10초, warm prod와 develop 요청은 약 0.05초에 `204`를 반환했다.
-- Sentry Internal Integration을 API Gateway endpoint로 교체하고 Discord test alert를 확인한 뒤 기존 Function URL과 공개 invoke permission을 제거한다.
+- Sentry Internal Integration `Landit Prod Discord Relay`을 API Gateway endpoint로 교체했다. prod BE·AI 각각 신규·회귀 rule과 5분 10회 급증 rule을 생성했고 기존 email rule은 유지했다. 합성 prod BE event에서 Sentry rule trigger 시각과 Lambda ingress·delivery의 오류 없는 실행을 확인했다.
+- 기존 Function URL과 공개 invoke permission 제거 plan은 `0 added, 0 changed, 3 destroyed`였고 적용 결과도 동일했다. 외부 Sentry ingress는 API Gateway 경로만 남았다.
+- AI prod 최신 task의 CloudWatch 로그 44건이 모두 `level`과 `logger` 필드를 포함했다. Grafana `Landit AI`와 `Landit Overview`는 운영본과 저장소 차이가 요청한 네 LogQL target뿐임을 확인한 뒤 각각 version 5와 4로 동기화했다.
+- 반영 뒤 두 dashboard 운영 JSON은 저장소 JSON과 정확히 일치했고 화면에 query error가 없었다. Grafana datasource query API에서 AI `logfmt` query가 오류 없이 20건을 반환했다. 동기화용 임시 Editor service account와 token은 검증 직후 삭제했다.
+- 독립 리뷰에서 공개 API Gateway가 HMAC 검증 전 비동기 큐를 점유할 수 있는 P2를 확인했다. Sentry 공식 US·US2·EU outbound IPv4만 허용하는 resource policy와 초당 1건, burst 5건의 method settings를 추가했다. 일반 사용자 ALB WAF의 Count 정책에는 영향을 주지 않는다.
+- Lambda async 실패 destination과 DLQ가 없어 최대 300초와 재시도 2회를 모두 소진한 이벤트는 폐기되는 P3 위험이 남는다. 별도 SQS와 재처리 운영이 필요한지 관찰 후 결정하고 이번 범위에는 추가하지 않는다.
+- API Gateway 보호 saved plan은 deployment 교체와 policy·stage 갱신만 포함해 `2 added, 2 changed, 1 destroyed`였고 동일하게 적용됐다. 일반 외부 IP는 `403`, Sentry 합성 prod event는 alert 처리 뒤 Lambda ingress·delivery 두 호출과 오류 0건을 확인했다.
+- live API Gateway stage는 초당 1건, burst 5건이며 resource policy는 Sentry outbound IPv4 10개만 Allow한다.
+- AWS가 축약 resource policy ARN을 전체 ARN으로 정규화해 발생한 plan drift는 `aws_api_gateway_rest_api_policy` 분리로 제거했다. 정규화 plan은 `2 added, 1 changed, 1 destroyed`로 적용했고 후속 prod plan은 `No changes`였다.
+- 독립 재리뷰는 Sentry 공식 outbound 10개와 allowlist 일치, POST root 범위, live throttling 연결을 확인했고 criterion-linked P1·P2 blocker가 남지 않았다고 결론냈다. Lambda unit 12개, API 보호 계약, Grafana JSON·LogQL, fmt, diff-check, dev·prod validate와 secret 패턴 검사를 독립적으로 통과했다.

@@ -507,12 +507,12 @@ git commit -m "docs: LAN-192 관측성 운영 절차를 반영한다"
 
 Run: `AWS_PROFILE=landit terraform -chdir=environments/prod apply /tmp/lan192-prod-observability.tfplan`
 
-기존 Function URL ingress는 cold 상태에서 1초를 넘겨 Sentry 기본 timeout을 충족하지 못했다. API Gateway 비동기 통합을 추가한 뒤 cold 요청 약 0.10초, warm 요청 약 0.05초에 `204`를 확인했다. S3 access log 실제 object, Web ACL association, 세 rule의 Count action도 확인했다. Sentry endpoint 전환과 Discord test alert 뒤 Function URL 제거 및 post-apply `No changes` 검증을 남긴다.
+기존 Function URL ingress는 cold 상태에서 1초를 넘겨 Sentry 기본 timeout을 충족하지 못했다. API Gateway 비동기 통합을 추가한 뒤 cold 요청 약 0.10초, warm 요청 약 0.05초에 `204`를 확인했다. S3 access log 실제 object, Web ACL association, 세 rule의 Count action도 확인했다. Sentry endpoint 전환과 Discord test alert 뒤 Function URL과 공개 invoke permission을 제거했다. 제거 plan은 `0 added, 0 changed, 3 destroyed`였고 적용 결과도 동일했다.
 
-- [ ] **Step 7: AI 배포 뒤 Grafana dashboard를 동기화하고 렌더링을 검증한다.**
+- [x] **Step 7: AI 배포 뒤 Grafana dashboard를 동기화하고 렌더링을 검증한다.**
 
-AI prod log에서 `level=WARNING`과 `level=ERROR`를 확인한 뒤 단기 Grafana service account token으로 `scripts/sync-grafana-dashboards.sh`를 실행한다. Landit AI·Overview에서 WARNING `Value error` 제외, 실제 ERROR 포함, query error 없음, service variable BE·AI 분리를 확인하고 token을 폐기한다.
+AI prod의 최신 task 로그 44건이 모두 `level`과 `logger` 필드를 포함하는 것을 확인했다. 단기 Grafana service account token으로 Landit AI와 Overview만 동기화했고 운영 JSON exact match, 화면 렌더링, Loki `logfmt` query 20건을 확인한 뒤 service account와 token을 폐기했다. 실제 ERROR가 없는 검증 시점에는 ERROR 표시 여부를 합성 장애로 확인하지 않고 dashboard query 계약 테스트로 보완했다.
 
-- [ ] **Step 8: 완료 전 독립 리뷰와 최종 검증을 실행한다.**
+- [x] **Step 8: 완료 전 독립 리뷰와 최종 검증을 실행한다.**
 
-Reviewer는 코드·Terraform diff, unit test, saved plan, live AWS·Grafana·Discord 근거를 구현자와 독립적으로 확인한다. criterion-linked blocker가 있으면 수정 후 관련 검증을 다시 실행한다.
+독립 reviewer가 코드·Terraform diff, unit test, saved plan, live AWS·Grafana·Sentry 근거를 확인했다. 공개 API Gateway의 비동기 큐 점유 P2는 Sentry outbound IP allowlist와 stage throttling으로 수정했으며 재검토에서 criterion-linked P1·P2 blocker가 남지 않았다. 실패 destination과 DLQ가 없는 P3는 운영 문서에 남긴 제외 범위다.

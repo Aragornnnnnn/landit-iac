@@ -9,12 +9,45 @@ data "archive_file" "sentry_discord_relay" {
 
 locals {
   sentry_discord_relay_name = "${local.name_prefix}-sentry-discord-relay"
+  sentry_outbound_ipv4_cidrs = [
+    "35.184.238.160/32",
+    "104.155.159.182/32",
+    "104.155.149.19/32",
+    "130.211.230.102/32",
+    "34.125.65.3/32",
+    "34.125.58.72/32",
+    "8.228.7.8/32",
+    "34.141.31.19/32",
+    "34.141.4.162/32",
+    "35.234.78.236/32",
+  ]
   sentry_relay_auth_parameter_name = (
     "${var.parameter_store_path}/LANDIT_SENTRY_RELAY_AUTH_TOKEN"
   )
   sentry_discord_webhook_parameter_name = (
     "${var.parameter_store_path}/LANDIT_SENTRY_DISCORD_WEBHOOK_URL"
   )
+}
+
+data "aws_iam_policy_document" "sentry_discord_relay_api" {
+  statement {
+    sid     = "AllowSentryOutboundRequests"
+    effect  = "Allow"
+    actions = ["execute-api:Invoke"]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    resources = ["${aws_api_gateway_rest_api.sentry_discord_relay.execution_arn}/*/POST/"]
+
+    condition {
+      test     = "IpAddress"
+      variable = "aws:SourceIp"
+      values   = local.sentry_outbound_ipv4_cidrs
+    }
+  }
 }
 
 resource "aws_iam_role" "sentry_discord_relay" {
@@ -115,6 +148,11 @@ resource "aws_api_gateway_rest_api" "sentry_discord_relay" {
   }
 }
 
+resource "aws_api_gateway_rest_api_policy" "sentry_discord_relay" {
+  rest_api_id = aws_api_gateway_rest_api.sentry_discord_relay.id
+  policy      = data.aws_iam_policy_document.sentry_discord_relay_api.json
+}
+
 resource "aws_api_gateway_method" "sentry_discord_relay" {
   rest_api_id   = aws_api_gateway_rest_api.sentry_discord_relay.id
   resource_id   = aws_api_gateway_rest_api.sentry_discord_relay.root_resource_id
@@ -177,6 +215,7 @@ resource "aws_api_gateway_deployment" "sentry_discord_relay" {
   triggers = {
     redeployment = sha1(jsonencode({
       integration_id   = aws_api_gateway_integration.sentry_discord_relay.id
+      resource_policy  = data.aws_iam_policy_document.sentry_discord_relay_api.json
       request_template = aws_api_gateway_integration.sentry_discord_relay.request_templates
       response_id      = aws_api_gateway_integration_response.sentry_discord_relay.id
     }))
@@ -185,6 +224,8 @@ resource "aws_api_gateway_deployment" "sentry_discord_relay" {
   lifecycle {
     create_before_destroy = true
   }
+
+  depends_on = [aws_api_gateway_rest_api_policy.sentry_discord_relay]
 }
 
 resource "aws_api_gateway_stage" "sentry_discord_relay" {
@@ -193,31 +234,21 @@ resource "aws_api_gateway_stage" "sentry_discord_relay" {
   stage_name    = "prod"
 }
 
+resource "aws_api_gateway_method_settings" "sentry_discord_relay" {
+  rest_api_id = aws_api_gateway_rest_api.sentry_discord_relay.id
+  stage_name  = aws_api_gateway_stage.sentry_discord_relay.stage_name
+  method_path = "*/*"
+
+  settings {
+    throttling_rate_limit  = 1
+    throttling_burst_limit = 5
+  }
+}
+
 resource "aws_lambda_permission" "sentry_discord_relay_api_gateway" {
   statement_id  = "AllowApiGatewayInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.sentry_discord_relay.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.sentry_discord_relay.execution_arn}/*/POST/"
-}
-
-resource "aws_lambda_function_url" "sentry_discord_relay" {
-  function_name      = aws_lambda_function.sentry_discord_relay.function_name
-  authorization_type = "NONE"
-}
-
-resource "aws_lambda_permission" "sentry_discord_relay_url" {
-  statement_id           = "AllowPublicFunctionUrl"
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = aws_lambda_function.sentry_discord_relay.function_name
-  principal              = "*"
-  function_url_auth_type = "NONE"
-}
-
-resource "aws_lambda_permission" "sentry_discord_relay_invoke" {
-  statement_id             = "AllowPublicInvokeViaFunctionUrl"
-  action                   = "lambda:InvokeFunction"
-  function_name            = aws_lambda_function.sentry_discord_relay.function_name
-  principal                = "*"
-  invoked_via_function_url = true
 }

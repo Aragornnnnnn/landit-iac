@@ -168,7 +168,7 @@ BE는 `status=~"5.."`, AI는 `http_response_status_code=~"5.."` label로 5xx를 
 - 비동기 delivery 오류는 Lambda async invocation의 기본 재시도 범위 안에서 최대 두 번 재시도한다.
 - Lambda memory는 512MB, timeout은 10초, reserved concurrency는 2로 제한한다. 외부 cold request가 1초 안에 응답하는지는 실제 API Gateway endpoint 검증으로 확인한다.
 
-API Gateway는 HMAC secret을 읽기 전에 ingress invocation을 만들기 때문에 위조 request도 Lambda invocation을 만들 수 있다. delivery에서 HMAC을 반드시 검증해 Discord 오발송을 막고, 필수 signature header·signature 형식 검사·body 크기 제한·reserved concurrency로 비용과 자원 오용 범위를 제한한다. 실제 API Gateway 검증에서 cold 요청은 약 0.10초, warm 요청은 약 0.05초에 `204`를 반환했다.
+API Gateway는 HMAC secret을 읽기 전에 ingress invocation을 만들기 때문에 형식만 맞춘 위조 request도 Lambda invocation을 만들 수 있다. delivery에서 HMAC을 반드시 검증해 Discord 오발송을 막는다. 공개 ingress는 Sentry 공식 US·US2·EU outbound IP만 허용하고 초당 1건, burst 5건으로 제한한다. 필수 signature header·signature 형식 검사·body 크기 제한과 Lambda reserved concurrency는 이 경계 뒤에서 추가 방어로 사용한다. 실제 API Gateway 검증에서 cold 요청은 약 0.10초, warm 요청은 약 0.05초에 `204`를 반환했다.
 
 ### 비밀값
 

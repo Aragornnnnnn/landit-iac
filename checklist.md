@@ -11,9 +11,9 @@
 - [x] dev·prod Terraform validate를 통과한다.
 - [x] prod Terraform plan에서 변경 범위와 삭제 없음 여부를 확인한다.
 - [x] 저장된 prod plan을 적용하고 Lambda·S3·WAF live 상태를 확인한다.
-- [ ] AI prod 배포 후 CloudWatch 로그 레벨과 Grafana dashboard를 검증한다.
-- [ ] Sentry prod BE·AI alert rule을 구성하고 Discord 수신을 확인한다.
-- [ ] 완료 전 독립 리뷰와 최종 검증을 통과한다.
+- [x] AI prod 배포 후 CloudWatch 로그 레벨과 Grafana dashboard를 검증한다.
+- [x] Sentry prod BE·AI alert rule을 구성하고 Discord 수신을 확인한다.
+- [x] 완료 전 독립 리뷰와 최종 검증을 통과한다.
 
 ## 2026-06-28 Landit IaC 초기 세팅
 
@@ -322,15 +322,15 @@
 - [x] 비동기 relay, AI level 필드, ALB access log, WAF Count 설계를 문서화하고 자체 검토한다.
 - [x] 사용자가 확장된 LAN-192 설계 문서를 검토한다.
 - [x] Lambda ingress와 delivery를 비동기로 분리하고 API Gateway cold 1초 이내 응답을 검증한다.
-- [ ] Sentry Internal Integration과 BE·AI issue alert rule을 relay에 연결한다.
-- [ ] 실제 Sentry test alert가 `#alerts-sentry-prod`에 도착하는지 확인한다.
+- [x] Sentry Internal Integration과 BE·AI issue alert rule을 relay에 연결한다.
+- [x] 실제 Sentry test alert가 `#alerts-sentry-prod`에 도착하는지 확인한다.
 - [x] Landit AI 로그에 명시적인 level 필드를 추가하고 테스트한다.
-- [ ] AI와 Overview Grafana 에러 패널을 AI level 필드 기준으로 변경하고 배포한다.
+- [x] AI와 Overview Grafana 에러 패널을 AI level 필드 기준으로 변경하고 배포한다.
 - [x] prod ALB access log 전용 S3 bucket과 30일 lifecycle을 추가한다.
 - [x] prod ALB에 AWS managed rule과 IP rate rule을 WAF Count 모드로 연결한다.
 - [x] Terraform plan을 검증하고 승인 뒤 prod apply를 실행한다.
 - [x] 실제 S3 access log object와 WAF Count rule live 상태를 확인한다.
-- [ ] 운영 문서와 검증 기록을 최종 반영한다.
+- [x] 운영 문서와 검증 기록을 최종 반영한다.
 
 ## 아키텍처 결정 전 질문
 

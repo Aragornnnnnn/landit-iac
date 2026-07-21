@@ -448,9 +448,17 @@
 - Grafana는 기본 Discord webhook contact point를 사용한다. contact point test notification이 `#alerts-grafana-prod`에 도착한 것을 확인했다.
 - Sentry 공식 Discord integration은 현재 Saynow 플랜에서 `Requires Team Plan or above`로 차단된다. 현재 조직의 project service hook API도 `unavailable_feature`이므로 직접 webhook 방식은 사용할 수 없다.
 - 사용자는 Sentry Team 업그레이드 대신 prod 전용 AWS Lambda relay 사용을 승인했다. Sentry Internal Integration의 alert rule action이 Lambda Function URL을 호출하고, Lambda가 payload를 Discord webhook 형식으로 변환해 `#alerts-sentry-prod`로 전달한다.
-- Lambda Function URL에는 별도 API Gateway를 두지 않는다. Sentry custom integration의 고정 header와 prod SSM `SecureString`의 relay token을 상수 시간 비교하고, prod가 아닌 payload는 전달하지 않는다.
-- Discord webhook URL과 relay token은 Terraform 변수나 state에 넣지 않고 `/landit/prod` SSM에 Terraform 밖에서 작성한다. Terraform은 parameter ARN과 이름만 참조한다.
+- Lambda Function URL에는 별도 API Gateway를 두지 않는다. Sentry custom header는 조직 보안 정책으로 설정할 수 없어 Sentry App의 공식 `Sentry-Hook-Signature` HMAC-SHA256을 검증한다.
+- Discord webhook URL과 Sentry App signing secret은 Terraform 변수나 state에 넣지 않고 `/landit/prod` SSM에 Terraform 밖에서 작성한다. 기존 `/landit/prod/LANDIT_SENTRY_RELAY_AUTH_TOKEN` path에는 signing secret을 저장하고 Terraform은 parameter ARN과 이름만 참조한다.
 - Discord webhook URL과 integration credential은 저장소, Terraform 변수와 state, 문서에 기록하지 않는다.
-- Lambda handler는 invalid token `401`, malformed JSON `400`, non-prod와 environment 누락 `204` 제외, prod Discord payload 변환, base64 body decode를 unit test로 검증했다. 테스트는 구현 파일 부재와 environment 누락 허용 동작으로 각각 먼저 실패한 뒤 구현 후 6개 모두 통과했다.
-- prod Terraform은 Python 3.13 arm64 Lambda 128MB, timeout 5초, reserved concurrency 2, 14일 log group, Function URL과 공개 URL 호출에 필요한 두 permission을 추가한다. 실행 role의 추가 권한은 prod relay token과 Discord webhook SSM parameter 두 개에 대한 `ssm:GetParameter`뿐이다.
+- Lambda handler는 invalid signature `401`, malformed JSON `400`, non-prod와 environment 누락 `204` 제외, prod Discord payload 변환, base64 body decode, SSM batch 조회, Discord explicit User-Agent를 unit test로 검증했고 8개 테스트가 통과했다.
+- prod Terraform은 Python 3.13 arm64 Lambda, reserved concurrency 2, 14일 log group, Function URL과 공개 URL 호출에 필요한 두 permission을 추가한다. 실행 role의 secret 권한은 signing secret과 Discord webhook SSM parameter 두 개에 대한 `ssm:GetParameters`다.
 - prod plan은 Lambda relay 관련 리소스만 `8 to add, 0 to change, 0 to destroy`이며 기존 ECS와 네트워크 변경은 없다. Function URL output은 sensitive로 표시되고 secret 값은 plan에 포함되지 않았다.
+- 사용자 승인 후 초기 plan을 apply해 `8 added, 0 changed, 0 destroyed`로 Lambda relay를 생성했다. 후속 apply에서는 SSM batch 조회 IAM과 Discord User-Agent를 Lambda에 반영했다.
+- 실제 Sentry 서명 request에서 invalid signature는 `401`, develop은 `204`, warm prod delivery는 `204`였지만 약 4.07초가 걸렸고 cold prod는 Lambda 5초 timeout으로 `502`가 발생했다.
+- 로컬에서 같은 Python `urllib` Discord request는 약 0.36초였으므로 4초 지연은 Lambda에서 Discord로 나가는 경로에서만 재현됐다.
+- Sentry 공식 소스의 Sentry App webhook 기본 timeout은 1초, hard timeout은 5초다. 사용자는 Sentry ingress가 즉시 응답하고 같은 Lambda의 비동기 invocation이 signature 검증과 Discord delivery를 처리하는 구조를 승인했다.
+- 사용자는 AI WARNING 로그의 `Value error` 문자열 오분류와 prod 미매핑 404 재발 관측도 LAN-192 하나에서 처리하도록 범위를 확장했다.
+- AI는 root·Uvicorn 로그에 logfmt `level` 필드를 추가하고 Grafana AI·Overview가 AI error를 `ERROR|CRITICAL` level로만 조회한다. 기존 workflow log level과 message는 바꾸지 않는다.
+- prod ALB는 전용 비공개 S3 bucket에 access log를 저장하고 30일 뒤 만료한다. WAF는 Common Rule Set, Amazon IP Reputation List, IP당 5분 2,000회 rate rule을 모두 `Count`로 시작하며 develop에는 적용하지 않는다.
+- WAF `Block` 전환은 이번 범위에서 제외한다. 7일간 access log, WAF metric, sampled request를 관찰한 뒤 정상 사용자와 공유 NAT 영향을 검토하고 별도 승인을 받아야 한다.

@@ -289,7 +289,7 @@
 - [x] 사용자 승인 후 develop/prod Terraform apply를 실행한다.
 - [x] 새 worker task definition과 ECS deployment에서 두 환경 변수 주입을 확인한다.
 
-## 2026-07-22 LAN-192 prod Discord 장애 알림
+## 2026-07-22 LAN-192 prod 관측성과 Discord 장애 알림
 
 - [x] 현재 Sentry·Grafana 수집 범위와 대시보드 쿼리를 확인한다.
 - [x] prod 전용 채널 분리와 장애성 알림 범위를 확정한다.
@@ -299,11 +299,23 @@
 - [x] Sentry Team 플랜 제한을 확인하고 Lambda relay 방식으로 설계를 변경한다.
 - [x] Lambda handler를 테스트 우선으로 구현한다.
 - [x] prod Terraform에 Lambda Function URL과 최소 IAM 권한을 추가한다.
-- [ ] Discord webhook과 relay 인증값을 Terraform 밖의 prod SSM `SecureString`으로 준비한다.
+- [x] Discord webhook과 Sentry App signing secret을 Terraform 밖의 prod SSM `SecureString`으로 준비한다.
 - [x] `terraform fmt`, prod `terraform validate`, `terraform plan`을 실행한다.
-- [ ] 사용자 승인 후 prod Terraform apply를 실행한다.
+- [x] 사용자 승인 후 초기 prod Terraform apply를 실행한다.
+- [x] 실제 Sentry 서명 request로 동기 relay의 cold timeout과 Discord 응답 지연을 확인한다.
+- [x] AI 로그 오분류와 prod 미매핑 404 관측 작업을 LAN-192 범위에 포함한다.
+- [x] 비동기 relay, AI level 필드, ALB access log, WAF Count 설계를 문서화하고 자체 검토한다.
+- [ ] 사용자가 확장된 LAN-192 설계 문서를 검토한다.
+- [ ] Lambda ingress와 delivery를 비동기로 분리하고 cold 1초 이내 응답을 검증한다.
 - [ ] Sentry Internal Integration과 BE·AI issue alert rule을 relay에 연결한다.
 - [ ] 실제 Sentry test alert가 `#alerts-sentry-prod`에 도착하는지 확인한다.
+- [ ] Landit AI 로그에 명시적인 level 필드를 추가하고 테스트한다.
+- [ ] AI와 Overview Grafana 에러 패널을 AI level 필드 기준으로 변경하고 배포한다.
+- [ ] prod ALB access log 전용 S3 bucket과 30일 lifecycle을 추가한다.
+- [ ] prod ALB에 AWS managed rule과 IP rate rule을 WAF Count 모드로 연결한다.
+- [ ] Terraform plan을 검증하고 별도 승인 뒤 prod apply를 실행한다.
+- [ ] 실제 S3 access log object와 WAF Count metric·sampled request를 확인한다.
+- [ ] 운영 문서와 검증 기록을 최종 반영한다.
 
 ## 아키텍처 결정 전 질문
 

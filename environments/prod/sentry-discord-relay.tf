@@ -107,6 +107,100 @@ resource "aws_lambda_function_event_invoke_config" "sentry_discord_relay" {
   maximum_retry_attempts       = 2
 }
 
+resource "aws_api_gateway_rest_api" "sentry_discord_relay" {
+  name = local.sentry_discord_relay_name
+
+  endpoint_configuration {
+    types = ["REGIONAL"]
+  }
+}
+
+resource "aws_api_gateway_method" "sentry_discord_relay" {
+  rest_api_id   = aws_api_gateway_rest_api.sentry_discord_relay.id
+  resource_id   = aws_api_gateway_rest_api.sentry_discord_relay.root_resource_id
+  http_method   = "POST"
+  authorization = "NONE"
+
+  request_parameters = {
+    "method.request.header.Sentry-Hook-Signature" = true
+  }
+}
+
+resource "aws_api_gateway_integration" "sentry_discord_relay" {
+  rest_api_id             = aws_api_gateway_rest_api.sentry_discord_relay.id
+  resource_id             = aws_api_gateway_rest_api.sentry_discord_relay.root_resource_id
+  http_method             = aws_api_gateway_method.sentry_discord_relay.http_method
+  integration_http_method = "POST"
+  type                    = "AWS"
+  uri                     = aws_lambda_function.sentry_discord_relay.invoke_arn
+  passthrough_behavior    = "NEVER"
+
+  request_parameters = {
+    "integration.request.header.X-Amz-Invocation-Type" = "'Event'"
+  }
+
+  request_templates = {
+    "application/json" = <<-VTL
+      {
+        "headers": {
+          "Sentry-Hook-Signature": "$util.escapeJavaScript($input.params('Sentry-Hook-Signature'))"
+        },
+        "body": "$util.base64Encode($input.body)",
+        "isBase64Encoded": true,
+        "requestContext": {
+          "source": "api-gateway"
+        }
+      }
+    VTL
+  }
+}
+
+resource "aws_api_gateway_method_response" "sentry_discord_relay" {
+  rest_api_id = aws_api_gateway_rest_api.sentry_discord_relay.id
+  resource_id = aws_api_gateway_rest_api.sentry_discord_relay.root_resource_id
+  http_method = aws_api_gateway_method.sentry_discord_relay.http_method
+  status_code = "204"
+}
+
+resource "aws_api_gateway_integration_response" "sentry_discord_relay" {
+  rest_api_id = aws_api_gateway_rest_api.sentry_discord_relay.id
+  resource_id = aws_api_gateway_rest_api.sentry_discord_relay.root_resource_id
+  http_method = aws_api_gateway_method.sentry_discord_relay.http_method
+  status_code = aws_api_gateway_method_response.sentry_discord_relay.status_code
+
+  depends_on = [aws_api_gateway_integration.sentry_discord_relay]
+}
+
+resource "aws_api_gateway_deployment" "sentry_discord_relay" {
+  rest_api_id = aws_api_gateway_rest_api.sentry_discord_relay.id
+
+  triggers = {
+    redeployment = sha1(jsonencode({
+      integration_id   = aws_api_gateway_integration.sentry_discord_relay.id
+      request_template = aws_api_gateway_integration.sentry_discord_relay.request_templates
+      response_id      = aws_api_gateway_integration_response.sentry_discord_relay.id
+    }))
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_api_gateway_stage" "sentry_discord_relay" {
+  rest_api_id   = aws_api_gateway_rest_api.sentry_discord_relay.id
+  deployment_id = aws_api_gateway_deployment.sentry_discord_relay.id
+  stage_name    = "prod"
+}
+
+resource "aws_lambda_permission" "sentry_discord_relay_api_gateway" {
+  statement_id  = "AllowApiGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.sentry_discord_relay.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.sentry_discord_relay.execution_arn}/*/POST/"
+}
+
 resource "aws_lambda_function_url" "sentry_discord_relay" {
   function_name      = aws_lambda_function.sentry_discord_relay.function_name
   authorization_type = "NONE"

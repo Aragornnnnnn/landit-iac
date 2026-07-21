@@ -44,3 +44,9 @@ output "sentry_discord_relay_function_url" {
   value       = aws_lambda_function_url.sentry_discord_relay.function_url
   sensitive   = true
 }
+
+output "sentry_discord_relay_webhook_url" {
+  description = "Sentry webhook endpoint backed by asynchronous API Gateway integration."
+  value       = "${aws_api_gateway_stage.sentry_discord_relay.invoke_url}/"
+  sensitive   = true
+}

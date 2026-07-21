@@ -43,9 +43,8 @@
 - Create: `app/core/logging.py` — root·Uvicorn handler에 공통 logfmt formatter를 설정한다.
 - Modify: `app/main.py` — 앱 초기화 전에 logging을 설정한다.
 - Create: `tests/test_logging.py` — WARNING과 ERROR의 명시적 level 필드를 검증한다.
-- Modify: `docs/observability.md` — stdout log field 계약을 기록한다.
-- Modify: `checklist.md` — LAN-192 AI 변경과 검증 상태를 기록한다.
-- Modify: `context-notes.md` — logging 결정과 테스트 결과를 기록한다.
+- Create: `docs/tasks/LAN-192/design.md` — 승인된 AI stdout level 계약을 기록한다.
+- Create: `docs/tasks/LAN-192/plan.md` — 구현 순서와 검증 결과를 기록한다.
 
 ---
 
@@ -191,9 +190,8 @@ git commit -m "fix: Sentry Discord 전달을 비동기로 분리한다"
 - Create: `app/core/logging.py`
 - Modify: `app/main.py`
 - Create: `tests/test_logging.py`
-- Modify: `docs/observability.md`
-- Modify: `checklist.md`
-- Modify: `context-notes.md`
+- Create: `docs/tasks/LAN-192/design.md`
+- Create: `docs/tasks/LAN-192/plan.md`
 
 **Interfaces:**
 - Consumes: Python `logging` root logger와 Uvicorn handler.
@@ -265,11 +263,11 @@ Run: `.venv/bin/python -m compileall -q app tests`
 
 Expected: 모든 테스트와 compileall이 exit code `0`이다.
 
-- [ ] **Step 6: AI 운영 문서와 기록을 갱신하고 커밋한다.**
+- [ ] **Step 6: AI 이슈 문서와 검증 기록을 작성하고 커밋한다.**
 
 ```bash
 git add app/core/logging.py app/main.py tests/test_logging.py \
-  docs/observability.md checklist.md context-notes.md
+  docs/tasks/LAN-192/design.md docs/tasks/LAN-192/plan.md
 git commit -m "fix: AI 로그에 명시적인 level 필드를 추가한다"
 ```
 

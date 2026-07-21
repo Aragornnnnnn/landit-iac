@@ -305,7 +305,7 @@
 - [x] 실제 Sentry 서명 request로 동기 relay의 cold timeout과 Discord 응답 지연을 확인한다.
 - [x] AI 로그 오분류와 prod 미매핑 404 관측 작업을 LAN-192 범위에 포함한다.
 - [x] 비동기 relay, AI level 필드, ALB access log, WAF Count 설계를 문서화하고 자체 검토한다.
-- [ ] 사용자가 확장된 LAN-192 설계 문서를 검토한다.
+- [x] 사용자가 확장된 LAN-192 설계 문서를 검토한다.
 - [ ] Lambda ingress와 delivery를 비동기로 분리하고 cold 1초 이내 응답을 검증한다.
 - [ ] Sentry Internal Integration과 BE·AI issue alert rule을 relay에 연결한다.
 - [ ] 실제 Sentry test alert가 `#alerts-sentry-prod`에 도착하는지 확인한다.

@@ -483,3 +483,16 @@
 - live API Gateway stage는 초당 1건, burst 5건이며 resource policy는 Sentry outbound IPv4 10개만 Allow한다.
 - AWS가 축약 resource policy ARN을 전체 ARN으로 정규화해 발생한 plan drift는 `aws_api_gateway_rest_api_policy` 분리로 제거했다. 정규화 plan은 `2 added, 1 changed, 1 destroyed`로 적용했고 후속 prod plan은 `No changes`였다.
 - 독립 재리뷰는 Sentry 공식 outbound 10개와 allowlist 일치, POST root 범위, live throttling 연결을 확인했고 criterion-linked P1·P2 blocker가 남지 않았다고 결론냈다. Lambda unit 12개, API 보호 계약, Grafana JSON·LogQL, fmt, diff-check, dev·prod validate와 secret 패턴 검사를 독립적으로 통과했다.
+- 기존 Grafana 단일 5xx 조건은 `4/4`처럼 오류율이 높아도 5건 미만이면 알리지 않고, 요청 metric No Data를 Normal로 처리해 관측 공백을 놓치는 사각지대가 있다.
+- 사용자는 알림 노이즈와 탐지 속도를 함께 고려하는 균형형 개선안을 승인했다. BE·AI에 최근 2분 3건·50%를 1분 유지하는 CRITICAL, 최근 10분 10건·20%를 3분 유지하는 WARNING, runtime metric이 10분간 사라진 상태를 5분 유지하는 MONITORING rule을 각각 둔다.
+- 5xx 오류율에서는 BE `/actuator` 계열과 AI `/health`를 제외한다. 알림은 `service`, `severity`로 그룹화하고 group wait 30초, group interval 5분, repeat interval 1시간을 적용하며 Firing과 Resolved를 모두 `#alerts-grafana-prod`로 보낸다.
+- MONITORING은 BE `jvm_threads_live`, AI `process_thread_count`를 사용한다. 관측 공백은 서비스 장애와 수집 장애를 단정하지 않고 두 상태를 함께 확인해야 하는 운영 신호로 표시한다.
+- Grafana live rule group `landit-observability/prod-incidents-1m`은 BE·AI CRITICAL, WARNING, MONITORING의 6개 규칙으로 교체했다. CRITICAL은 2분 3건·50%를 1분 유지하고, WARNING은 10분 10건·20%를 3분 유지하며, MONITORING은 runtime metric 10분 부재를 5분 유지한다.
+- 모든 규칙에서 직접 receiver 설정을 제거하고 `alert_scope=landit_incident` notification policy가 `discord-prod-incidents`로 전달하도록 했다. policy는 `service`, `severity`로 그룹화하고 30초 대기, 5분 그룹 간격, 1시간 재발송을 적용한다.
+- Grafana Alerting provisioning API의 policy route matcher 필드는 `matchers`가 아니라 `object_matchers`여야 한다. 전자는 HTTP 400이었고 후자로 적용한 뒤 live policy를 다시 조회해 확인했다.
+- prod Prometheus query API에서 BE·AI 5xx CRITICAL·WARNING PromQL은 모두 parse error 없이 성공했고 현재 결과 시계열은 없었다. `jvm_threads_live`와 `process_thread_count`는 각각 1개 시계열을 반환해 두 MONITORING 규칙이 정상 상태임을 확인했다.
+- 임시 policy-route 검증 rule은 Firing 상태가 Grafana Alertmanager에 등록된 것을 확인한 뒤 삭제했다. 이후 active alert와 rule group에서 임시 rule이 사라진 것을 확인해 Resolved 경로까지 검증했다.
+- 동기화와 검증에만 사용한 Grafana Admin service account와 token은 검증 직후 폐기했다. token 값은 저장소와 문서에 남기지 않았다.
+- Grafana 기본 Discord 메시지는 raw label, source·silence URL, Grafana version이 본문 대부분을 차지해 장애 판단이 늦다. `landit.discord.title`, `landit.discord.message` template group을 추가하고 `discord-prod-incidents` contact point의 title·message에 연결했다.
+- Firing 제목은 심각도별 emoji와 `environment · service`를 표시한다. 본문은 상태, `summary`, `description`, Grafana 상세 링크만 표시하고 Firing·Resolved 모두 같은 형식을 사용한다.
+- AI CRITICAL 조건을 `vector(1)`으로 고정한 1회성 검증 rule은 Alertmanager active 상태를 확인한 뒤 삭제했다. 삭제 후 active alert 목록은 비었고 rule 조회는 `404`였다. Discord에는 새 Firing·Resolved 형식의 검증 메시지가 전송됐다.

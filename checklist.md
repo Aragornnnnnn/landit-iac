@@ -25,6 +25,7 @@
 - [x] Discord notification policy의 그룹화와 반복 주기를 반영한다.
 - [x] 단기 검증 rule로 Firing·Resolved·관측 공백 알림을 확인한다.
 - [x] 운영 규칙과 문서의 최종 상태를 비교한다.
+- [x] Discord 제목과 본문을 심각도·서비스·조건 중심 템플릿으로 바꾸고 Firing·Resolved 수신을 확인한다.
 
 ## 2026-06-28 Landit IaC 초기 세팅
 

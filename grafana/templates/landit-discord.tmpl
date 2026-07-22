@@ -1,0 +1,28 @@
+{{ define "landit.discord.title" -}}
+{{- $alert := index .Alerts 0 -}}
+{{- $severity := index $alert.Labels "severity" -}}
+{{- $service := index $alert.Labels "service" -}}
+{{- $environment := index $alert.Labels "environment" -}}
+{{- if eq .Status "resolved" -}}✅ [RESOLVED]
+{{- else if eq $severity "critical" -}}🚨 [CRITICAL]
+{{- else if eq $severity "warning" -}}⚠️ [WARNING]
+{{- else -}}🔍 [MONITORING]
+{{- end -}} {{ $environment }} · {{ if eq $service "be" }}BE{{ else if eq $service "ai" }}AI{{ else }}{{ $service }}{{ end }}
+{{- end }}
+
+{{ define "landit.discord.message" -}}
+{{- $alert := index .Alerts 0 -}}
+{{- $severity := index $alert.Labels "severity" -}}
+{{- if eq .Status "resolved" -}}
+상태: 복구 완료
+{{- else if eq $severity "critical" -}}
+상태: 장애 진행 중
+{{- else if eq $severity "warning" -}}
+상태: 관찰 필요
+{{- else -}}
+상태: 서비스 또는 지표 수집 경로 확인 필요
+{{- end }}
+문제: {{ index $alert.Annotations "summary" }}
+조건: {{ index $alert.Annotations "description" }}
+대응: [Grafana 알림 상세 확인]({{ $alert.GeneratorURL }})
+{{- end }}

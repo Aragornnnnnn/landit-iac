@@ -493,3 +493,6 @@
 - prod Prometheus query API에서 BE·AI 5xx CRITICAL·WARNING PromQL은 모두 parse error 없이 성공했고 현재 결과 시계열은 없었다. `jvm_threads_live`와 `process_thread_count`는 각각 1개 시계열을 반환해 두 MONITORING 규칙이 정상 상태임을 확인했다.
 - 임시 policy-route 검증 rule은 Firing 상태가 Grafana Alertmanager에 등록된 것을 확인한 뒤 삭제했다. 이후 active alert와 rule group에서 임시 rule이 사라진 것을 확인해 Resolved 경로까지 검증했다.
 - 동기화와 검증에만 사용한 Grafana Admin service account와 token은 검증 직후 폐기했다. token 값은 저장소와 문서에 남기지 않았다.
+- Grafana 기본 Discord 메시지는 raw label, source·silence URL, Grafana version이 본문 대부분을 차지해 장애 판단이 늦다. `landit.discord.title`, `landit.discord.message` template group을 추가하고 `discord-prod-incidents` contact point의 title·message에 연결했다.
+- Firing 제목은 심각도별 emoji와 `environment · service`를 표시한다. 본문은 상태, `summary`, `description`, Grafana 상세 링크만 표시하고 Firing·Resolved 모두 같은 형식을 사용한다.
+- AI CRITICAL 조건을 `vector(1)`으로 고정한 1회성 검증 rule은 Alertmanager active 상태를 확인한 뒤 삭제했다. 삭제 후 active alert 목록은 비었고 rule 조회는 `404`였다. Discord에는 새 Firing·Resolved 형식의 검증 메시지가 전송됐다.

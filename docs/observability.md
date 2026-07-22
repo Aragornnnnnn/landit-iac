@@ -21,6 +21,23 @@ Grafana Cloud는 prod 장애 규칙을 notification policy로 `#alerts-grafana-p
 
 규칙은 `environment=prod`, `service`, `severity`, `alert_scope=landit_incident` label을 갖습니다. notification policy는 `alert_scope=landit_incident`만 수신하고 `service`, `severity`로 그룹화합니다. 첫 알림은 30초 뒤 보내고 같은 그룹의 추가 알림은 5분 간격으로 묶으며, 계속 Firing인 그룹은 1시간마다 재발송합니다. Firing과 Resolved는 모두 같은 Discord 채널로 전송합니다.
 
+### Grafana Discord 메시지
+
+`discord-prod-incidents` contact point는 `landit.discord.title`, `landit.discord.message` 템플릿을 사용합니다. 제목은 상태와 심각도, 환경, 서비스를 한 줄에 표시합니다. 예를 들어 Firing CRITICAL은 `🚨 [CRITICAL] prod · AI`로, 복구는 `✅ [RESOLVED] prod · AI`로 표시됩니다.
+
+본문은 원본 query value, 전체 label 목록, Grafana 버전 대신 아래 정보만 표시합니다.
+
+- 상태. 장애 진행 중, 관찰 필요, 수집 경로 확인 필요, 또는 복구 완료.
+- 문제. 규칙의 `summary` annotation.
+- 조건. 규칙의 `description` annotation.
+- 대응. Grafana 알림 상세 링크.
+
+템플릿 원본은 `grafana/templates/landit-discord.tmpl`에서 관리합니다. 실제 설정을 가져온 뒤에는 아래 계약 스크립트로 template과 contact point 연결을 확인합니다.
+
+```bash
+./scripts/test-grafana-discord-template-contract.sh <notification-template.json> <contact-point.json>
+```
+
 실제 설정을 가져온 뒤에는 아래 계약 스크립트로 규칙 수, 상태 정책, 경로 제외, Discord policy를 함께 확인합니다.
 
 ```bash

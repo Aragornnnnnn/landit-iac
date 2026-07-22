@@ -20,11 +20,11 @@
 - [x] 기존 단일 5xx 조건의 저트래픽 장애와 관측 공백 사각지대를 검토한다.
 - [x] 사용자가 균형형 다단계 알림 설계를 승인한다.
 - [x] CRITICAL·WARNING·MONITORING 조건과 알림 그룹화 정책을 설계 문서에 반영한다.
-- [ ] prod 실제 지표에서 각 PromQL이 반환하는 시계열과 값을 검증한다.
-- [ ] BE·AI Grafana alert rule을 다단계 조건으로 교체한다.
-- [ ] Discord notification policy의 그룹화와 반복 주기를 반영한다.
-- [ ] 단기 검증 rule로 Firing·Resolved·관측 공백 알림을 확인한다.
-- [ ] 운영 규칙과 문서의 최종 상태를 비교한다.
+- [x] prod 실제 지표에서 각 PromQL이 반환하는 시계열과 값을 검증한다.
+- [x] BE·AI Grafana alert rule을 다단계 조건으로 교체한다.
+- [x] Discord notification policy의 그룹화와 반복 주기를 반영한다.
+- [x] 단기 검증 rule로 Firing·Resolved·관측 공백 알림을 확인한다.
+- [x] 운영 규칙과 문서의 최종 상태를 비교한다.
 
 ## 2026-06-28 Landit IaC 초기 세팅
 

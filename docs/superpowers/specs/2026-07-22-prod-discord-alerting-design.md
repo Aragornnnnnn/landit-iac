@@ -117,42 +117,78 @@ Landit Overview는 서비스 선택 변수를 유지하면서 BE와 AI query를 
 
 ### 대상 alert rule
 
-BE와 AI를 별도 rule로 만든다.
+BE와 AI에 CRITICAL, WARNING, MONITORING rule을 각각 둔다. 기존 단일 5xx rule 두 개는 아래 여섯 rule로 교체한다.
 
-| Rule | 서비스 | 기준 지표 |
-| --- | --- | --- |
-| `prod-be-http-5xx-incident` | BE | `http_server_requests_milliseconds_count` |
-| `prod-ai-http-5xx-incident` | AI | `http_server_request_duration_seconds_count` |
+| Rule | 서비스 | 심각도 | 기준 지표 |
+| --- | --- | --- | --- |
+| `prod-be-http-5xx-critical` | BE | CRITICAL | `http_server_requests_milliseconds_count` |
+| `prod-ai-http-5xx-critical` | AI | CRITICAL | `http_server_request_duration_seconds_count` |
+| `prod-be-http-5xx-warning` | BE | WARNING | `http_server_requests_milliseconds_count` |
+| `prod-ai-http-5xx-warning` | AI | WARNING | `http_server_request_duration_seconds_count` |
+| `prod-be-telemetry-missing` | BE | MONITORING | `jvm_threads_live` |
+| `prod-ai-telemetry-missing` | AI | MONITORING | `process_thread_count` |
 
-두 rule 모두 `deployment_environment_name="prod"`를 쿼리에 고정한다. Dashboard 변수에 의존하지 않는다.
+모든 rule은 `deployment_environment_name="prod"`를 쿼리에 고정하며 Dashboard 변수에 의존하지 않는다. 사용자 요청의 성공률을 계산할 때 BE의 `/actuator` 계열과 AI의 `/health` 경로를 분모와 분자에서 모두 제외한다. ALB health check가 반환하는 2xx가 사용자 요청의 5xx 비율을 낮추지 않게 하기 위함이다.
 
 ### 장애 조건
 
-최근 5분 동안 아래 두 조건을 모두 만족하면 장애 후보로 판단한다.
+CRITICAL은 급격한 가용성 저하를 빠르게 감지한다.
 
-- 5xx 응답 5건 이상.
-- 전체 요청 중 5xx 비율 20% 이상.
+- 최근 2분간 5xx 응답 3건 이상.
+- 같은 기간 전체 사용자 요청 중 5xx 비율 50% 이상.
+- 두 조건을 모두 만족한 상태가 1분간 유지되면 Firing한다.
 
-BE는 `status=~"5.."`, AI는 `http_response_status_code=~"5.."` label로 5xx를 계산한다. 누적 counter의 5분 증가량은 PromQL `increase()`로 계산한다. 오류 건수와 오류율을 함께 사용해 요청 한두 건의 실패가 바로 장애 알림으로 이어지지 않게 한다.
+WARNING은 급격하지 않지만 지속되는 부분 장애를 감지한다.
+
+- 최근 10분간 5xx 응답 10건 이상.
+- 같은 기간 전체 사용자 요청 중 5xx 비율 20% 이상.
+- 두 조건을 모두 만족한 상태가 3분간 유지되면 Firing한다.
+
+BE는 `status=~"5.."`, AI는 `http_response_status_code=~"5.."` label로 5xx를 계산한다. 누적 counter의 증가량은 PromQL `increase()`로 계산한다. 건수와 비율을 AND로 결합해 단발성 오류와 대량 트래픽의 낮은 오류율을 장애에서 제외한다.
+
+MONITORING은 사용자 트래픽과 무관하게 계속 수집되어야 하는 서비스 runtime metric을 감시한다.
+
+- BE `jvm_threads_live` 또는 AI `process_thread_count`가 10분간 완전히 사라지면 조건을 충족한다.
+- 조건이 5분간 유지되면 Firing한다.
+- 이 rule의 query evaluation이 5분간 계속 실패해 Error 상태가 되어도 같은 MONITORING 경로로 알린다.
+
+MONITORING은 서비스 중단과 OTLP·Mimir 수집 장애를 확정적으로 구분하지 않는다. 메시지에 `관측 공백`으로 표시하고 담당자가 서비스 health와 collector 상태를 함께 확인하도록 한다.
 
 ### 평가와 상태 전이
 
-- Evaluation interval은 1분이다.
-- Pending period는 2분이다.
+- 모든 rule의 Evaluation interval은 1분이다.
+- CRITICAL Pending period는 1분이다.
+- WARNING Pending period는 3분이다.
+- MONITORING Pending period는 5분이다.
 - Keep firing for는 5분이다.
-- No Data 상태는 Normal로 처리한다.
-- Error 상태는 Keep Last State로 처리한다.
+- 5xx rule의 No Data는 트래픽 없음으로 보고 Normal로 처리한다.
+- 5xx rule의 Error는 일시적인 query 실패가 장애로 오인되지 않게 Keep Last State로 처리한다.
+- MONITORING rule은 runtime metric 존재 여부를 `absent_over_time()`으로 평가한다. metric이 존재할 때의 빈 결과는 Normal로 처리하고 query Error는 Error 상태로 전환한다.
 - Firing과 Resolved 전환을 Discord로 보낸다.
 
-현재 트래픽이 없거나 OTLP 시계열이 잠시 비는 상황을 서비스 장애로 단정할 수 없으므로 No Data는 알리지 않는다. alert query 자체의 평가 실패도 초기 장애 채널에는 보내지 않는다. 이 선택은 alert pipeline 장애를 Discord에서 놓칠 수 있는 위험이 있으므로 운영 안정화 뒤 별도 관측성 상태 알림으로 재검토한다.
+5xx rule과 관측 상태 rule을 분리해 무트래픽을 장애로 오인하지 않으면서 장기 수집 공백은 놓치지 않는다. 상태가 잠깐 정상으로 돌아왔다가 다시 나빠지는 알림 플래핑은 Keep firing for로 완화한다.
+
+### 알림 라우팅과 반복 억제
+
+- 모든 Grafana rule은 `environment=prod`, `service=be|ai`, `severity=critical|warning|monitoring` label을 가진다.
+- notification policy는 `service`, `severity`로 alert instance를 그룹화한다.
+- Group wait는 30초, Group interval은 5분, Repeat interval은 1시간이다.
+- 같은 서비스의 여러 instance가 동시에 Firing해도 동일 severity면 Discord 메시지 한 건으로 묶는다.
+- CRITICAL과 WARNING이 동시에 Firing하면 서로 다른 severity이므로 각각 한 건을 보낸다.
+- Firing과 Resolved는 모두 `#alerts-grafana-prod`로 보낸다.
 
 ### 메시지 필수 정보
 
-- `[FIRING][PROD][BE]` 또는 `[FIRING][PROD][AI]` 제목.
-- 최근 5분 5xx 건수와 오류율.
+- `[FIRING][CRITICAL|WARNING|MONITORING][PROD][BE|AI]` 제목.
+- CRITICAL과 WARNING은 평가 기간의 5xx 건수와 오류율.
+- MONITORING은 사라진 metric 이름과 관측 공백 시간 또는 datasource Error 상태.
 - 임계치와 firing 시작 시각.
 - 해당 서비스 Grafana dashboard 링크.
 - Resolved 메시지에는 복구 시각과 firing 지속 시간을 표시.
+
+### 운영 보정
+
+초기 임계치는 균형형 기본값이다. 적용 후 7일 동안 Firing·Pending 이력과 실제 요청량을 확인한다. 정상 트래픽에서 Pending이 반복되면 건수 또는 Pending period를 올리고, 실제 장애가 늦게 감지되면 CRITICAL 기간과 건수를 낮춘다. SLO 목표와 충분한 트래픽 기준이 생기기 전에는 오류 예산 burn-rate rule을 추가하지 않는다.
 
 ## Lambda relay 설계
 

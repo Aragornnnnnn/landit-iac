@@ -483,3 +483,7 @@
 - live API Gateway stage는 초당 1건, burst 5건이며 resource policy는 Sentry outbound IPv4 10개만 Allow한다.
 - AWS가 축약 resource policy ARN을 전체 ARN으로 정규화해 발생한 plan drift는 `aws_api_gateway_rest_api_policy` 분리로 제거했다. 정규화 plan은 `2 added, 1 changed, 1 destroyed`로 적용했고 후속 prod plan은 `No changes`였다.
 - 독립 재리뷰는 Sentry 공식 outbound 10개와 allowlist 일치, POST root 범위, live throttling 연결을 확인했고 criterion-linked P1·P2 blocker가 남지 않았다고 결론냈다. Lambda unit 12개, API 보호 계약, Grafana JSON·LogQL, fmt, diff-check, dev·prod validate와 secret 패턴 검사를 독립적으로 통과했다.
+- 기존 Grafana 단일 5xx 조건은 `4/4`처럼 오류율이 높아도 5건 미만이면 알리지 않고, 요청 metric No Data를 Normal로 처리해 관측 공백을 놓치는 사각지대가 있다.
+- 사용자는 알림 노이즈와 탐지 속도를 함께 고려하는 균형형 개선안을 승인했다. BE·AI에 최근 2분 3건·50%를 1분 유지하는 CRITICAL, 최근 10분 10건·20%를 3분 유지하는 WARNING, runtime metric이 10분간 사라진 상태를 5분 유지하는 MONITORING rule을 각각 둔다.
+- 5xx 오류율에서는 BE `/actuator` 계열과 AI `/health`를 제외한다. 알림은 `service`, `severity`로 그룹화하고 group wait 30초, group interval 5분, repeat interval 1시간을 적용하며 Firing과 Resolved를 모두 `#alerts-grafana-prod`로 보낸다.
+- MONITORING은 BE `jvm_threads_live`, AI `process_thread_count`를 사용한다. 관측 공백은 서비스 장애와 수집 장애를 단정하지 않고 두 상태를 함께 확인해야 하는 운영 신호로 표시한다.

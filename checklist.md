@@ -2,20 +2,9 @@
 
 ## 2026-07-24 LAN-184 Push 알림 인프라 계획
 
-- [x] `feat/LAN-184`가 최신 `origin/main`에서 분기됐는지 확인한다.
-- [x] 기존 AI jobs Queue, API·Worker Task Role, API Task Definition 구조를 확인한다.
-- [x] BE `docs/tasks/LAN-184`의 Queue 메시지와 Consumer 계약을 확인한다.
-- [x] Push 전용 Queue·DLQ, API IAM·환경 변수, Scheduler, CloudWatch alarm의 파일별 구현 계획을 작성한다.
-- [x] 별도 Push Worker를 추가하지 않고 기존 API ECS Service가 소비하는 구조로 제한한다.
-- [x] Scheduler가 동적 `reviewDate`를 만들 수 없는 계약 차이를 BE 전달 사항으로 기록한다.
-- [ ] Asia/Seoul 기준 복습 리마인더 발송 시각을 확정한다.
-- [ ] Scheduler 생성 환경과 초기 활성화 상태를 확정한다.
-- [ ] CloudWatch alarm의 외부 수신 대상 또는 상태 전용 운영을 확정한다.
-- [x] Push main queue와 DLQ, redrive policy를 구현한다.
-- [x] API Task Role과 API 컨테이너에 Push Queue 계약을 연결한다.
-- [x] EventBridge Scheduler와 CloudWatch alarm을 구현한다.
-- [x] Terraform fmt, 정적 계약 테스트, dev·prod validate와 plan을 실행한다.
-- [x] 사용자 승인 전에는 Terraform apply를 실행하지 않는다.
+- [x] dev·prod에 매일 20시 `Asia/Seoul` Scheduler, Push Queue·DLQ, API 연결, 상태 전용 Alarm을 구성했다.
+- [x] 두 환경 Scheduler의 최초 state를 `DISABLED`로 확정하고 Terraform 구현·정적 계약·saved plan 검증을 마쳤다.
+- [ ] Terraform apply와 Scheduler 활성화는 사용자 승인 및 prod Athena·Glue 4개 범위 밖 create의 분리 또는 정합화 전까지 보류한다.
 
 ## 2026-07-22 LAN-192 prod 관측성과 Discord 장애 알림
 

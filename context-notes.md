@@ -2,49 +2,10 @@
 
 ## 2026-07-24 LAN-184 Push 알림 인프라 계획
 
-### 확정된 구조
-
-- 별도 Push Worker ECS Service, Fargate Task, ECR repository, log group은 추가하지 않는다.
-- EventBridge Scheduler가 Push 전용 SQS Standard Queue에 메시지를 발행하고 기존 API ECS Service 내부 SQS Consumer가 처리한다.
-- 기존 `${local.name_prefix}-jobs` Queue와 Push Queue는 공유하지 않는다.
-- Push main queue와 DLQ를 환경별 app-platform module에 추가하고 redrive policy로 연결한다.
-- API Task Role은 Push main queue에 `ReceiveMessage`, `DeleteMessage`, `ChangeMessageVisibility`, `GetQueueAttributes`, `SendMessage`만 허용한다.
-- API 컨테이너에는 `SQS_PUSH_NOTIFICATIONS_QUEUE_URL`과 `LANDIT_NOTIFICATION_CONSUMER_ENABLED=true`를 일반 환경 변수로 주입한다.
-- Receipt 확인 메시지의 900초 delay와 Consumer 동시성 2는 BE 애플리케이션이 관리한다.
-
-### 현재 저장소 구조에서 확인한 사실
-
-- 기존 AI jobs DLQ와 main queue는 `modules/app-platform/main.tf`의 `aws_sqs_queue.jobs_dlq`, `aws_sqs_queue.jobs`로 정의돼 있다.
-- 기존 jobs main queue visibility timeout은 300초, redrive `maxReceiveCount`는 3, DLQ retention은 14일이다.
-- API Task Role은 기존 jobs queue에 `GetQueueAttributes`, `SendMessage`만 허용한다.
-- AI Worker Task Role은 기존 jobs queue에 `ChangeMessageVisibility`, `DeleteMessage`, `GetQueueAttributes`, `GetQueueUrl`, `ReceiveMessage`를 허용한다.
-- API와 AI Worker Task Definition은 모두 기존 `SQS_JOBS_QUEUE_URL`을 받지만 Push queue는 API에만 연결해야 한다.
-- 현재 module에는 EventBridge Scheduler와 SQS CloudWatch alarm resource가 없다.
-- 현재 AWS provider schema에서 `aws_scheduler_schedule`의 timezone, state, flexible time window, target input과 role ARN을 사용할 수 있음을 확인했다.
-
-### BE 전달 계약
-
-- Scheduler target input은 `messageId=<aws.scheduler.execution-id>`, `occurredAt=<aws.scheduler.scheduled-time>`, `messageType=REVIEW_REMINDER_BATCH`, 빈 payload를 사용한다.
-- Scheduler execution ID는 UUID 형식을 보장하지 않으므로 BE는 문자열로 처리한다.
-- EventBridge Scheduler는 매 실행마다 `payload.reviewDate`를 `YYYY-MM-DD`로 동적 포맷하지 못한다.
-- BE는 Scheduler의 `occurredAt`을 `Asia/Seoul`로 변환해 review date를 계산해야 한다.
-- API가 발행하는 `PUSH_RECEIPT_CHECK`는 같은 main queue를 사용하고 `DelaySeconds=900`을 요청별로 지정한다.
-- SQS Standard Queue의 중복 전달과 순서 변경을 전제로 두 message type 모두 멱등 처리한다.
-- 처리 시간이 초기 visibility timeout 300초를 넘으면 BE가 `ChangeMessageVisibility`로 연장하거나 배치 크기를 줄여야 한다.
-
-### 미확정 사항과 안전한 배포 순서
-
-- Asia/Seoul 기준 복습 리마인더 발송 시각은 제품 결정이 필요하다.
-- Scheduler를 production에만 만들지, development에도 비활성 상태로 만들지 결정이 필요하다.
-- CloudWatch alarm의 외부 notification action으로 연결할 SNS topic이 정해지지 않았다. action 없이 만들면 CloudWatch 상태만 생기고 운영 채널 알림은 전달되지 않는다.
-- 첫 인프라 반영에서는 Scheduler를 비활성 상태로 두고 Queue, IAM, API 환경 변수부터 준비한다.
-- BE Consumer를 development에 배포한 뒤 수동 메시지, 멱등성, Receipt delay, DLQ 이동을 확인한다.
-- 제품 시각 확정과 BE 검증 뒤 production Scheduler 활성화 plan을 별도 검토하고 승인받는다.
-- Task 1에서 Push Queue·DLQ, API Task Role·환경 변수, Scheduler, CloudWatch alarm을 구현했고 Task 2에서 dev·prod root input과 output을 연결했다.
-- Task 2의 `terraform fmt -recursive -check`, 정적 계약 테스트, dev·prod `validate`, 저장 plan 생성은 통과했다. Terraform provider는 sandbox에서 stdout을 열지 못해 검증과 plan은 scoped escalation으로 실행했다.
-- 저장 plan JSON에서는 dev `8 add, 2 change, 1 destroy`, prod `12 add, 2 change, 1 destroy`로 집계됐다. API Task Definition `delete,create` revision과 API ECS Service in-place update는 LAN-184 수용 기준상 허용된다. ECS Service delete 또는 replace, Worker IAM·Task Definition·Service, jobs Queue·DLQ 변경은 없었다.
-- prod plan에는 Push 작업과 무관한 ALB access-log Athena·Glue resource 4개 create도 포함된다. remote state 또는 별도 작업의 미반영 변경인지 apply 전 분리해야 한다.
-- Terraform apply는 실행하지 않았다.
+- dev와 prod는 모두 `cron(0 20 * * ? *)`, `Asia/Seoul`, 최초 Scheduler `DISABLED`를 사용한다. Queue는 main 4일, DLQ 14일, visibility timeout 300초, redrive `maxReceiveCount=3`이며 Alarm은 외부 action 없는 상태 전용이다.
+- 저장 plan JSON 집계는 dev `8 add, 2 change, 1 destroy`, prod `12 add, 2 change, 1 destroy`다. API Task Definition `delete,create` 새 revision과 API ECS Service in-place `update`는 허용 범위다.
+- ECS Service delete 또는 replace, Worker IAM·Task Definition·Service 변경, 기존 jobs Queue·DLQ 변경은 없다.
+- prod plan의 ALB access-log Athena·Glue 4개 create는 LAN-184 범위 밖 apply blocker다. 분리 또는 정합화와 사용자 승인 전에는 apply하지 않는다.
 
 ## 2026-06-28 Landit IaC 초기 세팅
 

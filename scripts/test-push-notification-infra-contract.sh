@@ -129,15 +129,31 @@ api_push_statement="$(statement_with_resource "$api_policy" 'aws_sqs_queue\.push
   echo "expected exactly one API Push queue policy statement" >&2
   exit 1
 }
-api_push_actions="$(grep -Eo '"sqs:[A-Za-z]+"' <<<"$api_push_statement" | tr -d '"' | sort -u)"
+api_push_actions="$(
+  awk '
+    /^[[:space:]]*actions[[:space:]]*=[[:space:]]*\[/ { in_actions = 1 }
+    in_actions {
+      print
+      if ($0 ~ /\]/) exit
+    }
+  ' <<<"$api_push_statement" |
+    grep -Eo '"[^"]+"' |
+    tr -d '"' |
+    sort -u
+)"
 [[ "$api_push_actions" == $'sqs:ChangeMessageVisibility\nsqs:DeleteMessage\nsqs:GetQueueAttributes\nsqs:ReceiveMessage\nsqs:SendMessage' ]] || {
   echo "unexpected API Push queue actions: $api_push_actions" >&2
   exit 1
 }
-forbid_text 'sqs:GetQueueUrl|push_notifications_dlq' "$api_push_statement" "API Push queue policy statement"
+forbid_text 'push_notifications_dlq' "$api_policy" "API task policy"
 
 api_task="$(block 'resource "aws_ecs_task_definition" "api"' "$MAIN_FILE")"
-grep -q 'SQS_PUSH_NOTIFICATIONS_QUEUE_URL' <<<"$api_task"
+push_queue_env_entries="$(grep -E '\{[[:space:]]*name[[:space:]]*=[[:space:]]*"SQS_PUSH_NOTIFICATIONS_QUEUE_URL"' <<<"$api_task")"
+[[ "$(wc -l <<<"$push_queue_env_entries" | tr -d ' ')" -eq 1 ]] || {
+  echo "expected exactly one SQS_PUSH_NOTIFICATIONS_QUEUE_URL API environment entry" >&2
+  exit 1
+}
+require_text 'value[[:space:]]*=[[:space:]]*aws_sqs_queue\.push_notifications\.url' "$push_queue_env_entries" "API Push queue URL environment entry"
 grep -q 'LANDIT_NOTIFICATION_CONSUMER_ENABLED", value = "true"' <<<"$api_task"
 worker_task="$(block 'resource "aws_ecs_task_definition" "worker"' "$MAIN_FILE")"
 ! grep -q 'PUSH_NOTIFICATIONS' <<<"$worker_task"
@@ -171,6 +187,9 @@ require 'schedule_expression[[:space:]]*=[[:space:]]*var.review_reminder_schedul
 require 'schedule_expression_timezone[[:space:]]*=[[:space:]]*"Asia/Seoul"' "$PUSH_FILE"
 require 'state[[:space:]]*=[[:space:]]*var.review_reminder_schedule_enabled \? "ENABLED" : "DISABLED"' "$PUSH_FILE"
 require 'mode[[:space:]]*=[[:space:]]*"OFF"' "$PUSH_FILE"
+scheduler_target="$(block '^[[:space:]]*target[[:space:]]*\{' "$PUSH_FILE")"
+require_text 'arn[[:space:]]*=[[:space:]]*aws_sqs_queue\.push_notifications\.arn' "$scheduler_target" "review reminder scheduler target"
+require_text 'role_arn[[:space:]]*=[[:space:]]*aws_iam_role\.review_reminder_scheduler\.arn' "$scheduler_target" "review reminder scheduler target"
 for value in 'version[[:space:]]*=[[:space:]]*1' '<aws.scheduler.execution-id>' 'REVIEW_REMINDER_BATCH' '<aws.scheduler.scheduled-time>' 'payload[[:space:]]*=[[:space:]]*\{\}'; do
   grep -Eq "$value" "$PUSH_FILE"
 done
@@ -178,20 +197,26 @@ done
 require 'resource "aws_cloudwatch_metric_alarm" "push_notifications_backlog"' "$PUSH_FILE"
 require 'resource "aws_cloudwatch_metric_alarm" "push_notifications_dlq"' "$PUSH_FILE"
 backlog_alarm="$(block 'resource "aws_cloudwatch_metric_alarm" "push_notifications_backlog"' "$PUSH_FILE")"
+require_text 'comparison_operator[[:space:]]*=[[:space:]]*"GreaterThanOrEqualToThreshold"' "$backlog_alarm" "Push backlog alarm"
 require_text 'metric_name[[:space:]]*=[[:space:]]*"ApproximateAgeOfOldestMessage"' "$backlog_alarm" "Push backlog alarm"
+require_text 'namespace[[:space:]]*=[[:space:]]*"AWS/SQS"' "$backlog_alarm" "Push backlog alarm"
 require_text 'statistic[[:space:]]*=[[:space:]]*"Maximum"' "$backlog_alarm" "Push backlog alarm"
 require_text 'period[[:space:]]*=[[:space:]]*300' "$backlog_alarm" "Push backlog alarm"
 require_text 'evaluation_periods[[:space:]]*=[[:space:]]*1' "$backlog_alarm" "Push backlog alarm"
 require_text 'threshold[[:space:]]*=[[:space:]]*300' "$backlog_alarm" "Push backlog alarm"
 require_text 'treat_missing_data[[:space:]]*=[[:space:]]*"notBreaching"' "$backlog_alarm" "Push backlog alarm"
+require_text 'QueueName[[:space:]]*=[[:space:]]*aws_sqs_queue\.push_notifications\.name' "$backlog_alarm" "Push backlog alarm"
 forbid_text 'alarm_actions|ok_actions|insufficient_data_actions' "$backlog_alarm" "Push backlog alarm"
 dlq_alarm="$(block 'resource "aws_cloudwatch_metric_alarm" "push_notifications_dlq"' "$PUSH_FILE")"
+require_text 'comparison_operator[[:space:]]*=[[:space:]]*"GreaterThanOrEqualToThreshold"' "$dlq_alarm" "Push DLQ alarm"
 require_text 'metric_name[[:space:]]*=[[:space:]]*"ApproximateNumberOfMessagesVisible"' "$dlq_alarm" "Push DLQ alarm"
+require_text 'namespace[[:space:]]*=[[:space:]]*"AWS/SQS"' "$dlq_alarm" "Push DLQ alarm"
 require_text 'statistic[[:space:]]*=[[:space:]]*"Maximum"' "$dlq_alarm" "Push DLQ alarm"
 require_text 'period[[:space:]]*=[[:space:]]*300' "$dlq_alarm" "Push DLQ alarm"
 require_text 'evaluation_periods[[:space:]]*=[[:space:]]*1' "$dlq_alarm" "Push DLQ alarm"
 require_text 'threshold[[:space:]]*=[[:space:]]*1' "$dlq_alarm" "Push DLQ alarm"
 require_text 'treat_missing_data[[:space:]]*=[[:space:]]*"notBreaching"' "$dlq_alarm" "Push DLQ alarm"
+require_text 'QueueName[[:space:]]*=[[:space:]]*aws_sqs_queue\.push_notifications_dlq\.name' "$dlq_alarm" "Push DLQ alarm"
 forbid_text 'alarm_actions|ok_actions|insufficient_data_actions' "$dlq_alarm" "Push DLQ alarm"
 
 require 'output "push_notifications_queue_url"' "$OUTPUTS_FILE"

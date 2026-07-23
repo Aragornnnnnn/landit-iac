@@ -11,11 +11,11 @@
 - [ ] Asia/Seoul 기준 복습 리마인더 발송 시각을 확정한다.
 - [ ] Scheduler 생성 환경과 초기 활성화 상태를 확정한다.
 - [ ] CloudWatch alarm의 외부 수신 대상 또는 상태 전용 운영을 확정한다.
-- [ ] Push main queue와 DLQ, redrive policy를 구현한다.
-- [ ] API Task Role과 API 컨테이너에 Push Queue 계약을 연결한다.
-- [ ] EventBridge Scheduler와 CloudWatch alarm을 구현한다.
-- [ ] Terraform fmt, 정적 계약 테스트, dev·prod validate와 plan을 실행한다.
-- [ ] 사용자 승인 전에는 Terraform apply를 실행하지 않는다.
+- [x] Push main queue와 DLQ, redrive policy를 구현한다.
+- [x] API Task Role과 API 컨테이너에 Push Queue 계약을 연결한다.
+- [x] EventBridge Scheduler와 CloudWatch alarm을 구현한다.
+- [x] Terraform fmt, 정적 계약 테스트, dev·prod validate와 plan을 실행한다.
+- [x] 사용자 승인 전에는 Terraform apply를 실행하지 않는다.
 
 ## 2026-07-22 LAN-192 prod 관측성과 Discord 장애 알림
 

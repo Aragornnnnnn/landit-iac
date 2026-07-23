@@ -7,6 +7,12 @@ PUSH_FILE="${MODULE_DIR}/push-notifications.tf"
 MAIN_FILE="${MODULE_DIR}/main.tf"
 VARIABLES_FILE="${MODULE_DIR}/variables.tf"
 OUTPUTS_FILE="${MODULE_DIR}/outputs.tf"
+DEV_MAIN_FILE="environments/dev/main.tf"
+DEV_VARIABLES_FILE="environments/dev/variables.tf"
+DEV_OUTPUTS_FILE="environments/dev/outputs.tf"
+PROD_MAIN_FILE="environments/prod/main.tf"
+PROD_VARIABLES_FILE="environments/prod/variables.tf"
+PROD_OUTPUTS_FILE="environments/prod/outputs.tf"
 
 require() {
   grep -Eq "$1" "$2" || {
@@ -191,3 +197,27 @@ forbid_text 'alarm_actions|ok_actions|insufficient_data_actions' "$dlq_alarm" "P
 require 'output "push_notifications_queue_url"' "$OUTPUTS_FILE"
 require 'output "push_notifications_dlq_url"' "$OUTPUTS_FILE"
 require 'output "review_reminder_scheduler_arn"' "$OUTPUTS_FILE"
+
+for environment in dev prod; do
+  environment_upper="$(tr '[:lower:]' '[:upper:]' <<<"$environment")"
+  main_file_var="${environment_upper}_MAIN_FILE"
+  variables_file_var="${environment_upper}_VARIABLES_FILE"
+  outputs_file_var="${environment_upper}_OUTPUTS_FILE"
+  main_file="${!main_file_var}"
+  variables_file="${!variables_file_var}"
+  outputs_file="${!outputs_file_var}"
+
+  schedule_expression_variable="$(block 'variable "review_reminder_schedule_expression"' "$variables_file")"
+  require_text 'default[[:space:]]*=[[:space:]]*"cron\(0 20 \* \* \? \*\)"' "$schedule_expression_variable" "$environment review reminder schedule expression root variable"
+  schedule_enabled_variable="$(block 'variable "review_reminder_schedule_enabled"' "$variables_file")"
+  require_text 'default[[:space:]]*=[[:space:]]*false' "$schedule_enabled_variable" "$environment review reminder schedule enabled root variable"
+
+  app_platform_module="$(block 'module "app_platform"' "$main_file")"
+  require_text 'review_reminder_schedule_expression[[:space:]]*=[[:space:]]*var.review_reminder_schedule_expression' "$app_platform_module" "$environment app platform module input"
+  require_text 'review_reminder_schedule_enabled[[:space:]]*=[[:space:]]*var.review_reminder_schedule_enabled' "$app_platform_module" "$environment app platform module input"
+
+  for output_name in push_notifications_queue_url push_notifications_dlq_url review_reminder_scheduler_arn; do
+    root_output="$(block "output \"${output_name}\"" "$outputs_file")"
+    require_text "value[[:space:]]*=[[:space:]]*module.app_platform.${output_name}" "$root_output" "$environment root output"
+  done
+done

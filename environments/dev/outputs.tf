@@ -34,6 +34,21 @@ output "jobs_queue_url" {
   value       = module.app_platform.jobs_queue_url
 }
 
+output "push_notifications_queue_url" {
+  description = "Development Push notifications SQS queue URL."
+  value       = module.app_platform.push_notifications_queue_url
+}
+
+output "push_notifications_dlq_url" {
+  description = "Development Push notifications dead-letter queue URL."
+  value       = module.app_platform.push_notifications_dlq_url
+}
+
+output "review_reminder_scheduler_arn" {
+  description = "Development review reminder EventBridge Scheduler ARN."
+  value       = module.app_platform.review_reminder_scheduler_arn
+}
+
 output "app_bucket_name" {
   description = "Development private application S3 bucket name."
   value       = module.app_platform.app_bucket_name

@@ -40,7 +40,11 @@
 - 첫 인프라 반영에서는 Scheduler를 비활성 상태로 두고 Queue, IAM, API 환경 변수부터 준비한다.
 - BE Consumer를 development에 배포한 뒤 수동 메시지, 멱등성, Receipt delay, DLQ 이동을 확인한다.
 - 제품 시각 확정과 BE 검증 뒤 production Scheduler 활성화 plan을 별도 검토하고 승인받는다.
-- 이번 작업에서는 Terraform 구현, plan, apply를 실행하지 않았다.
+- Task 1에서 Push Queue·DLQ, API Task Role·환경 변수, Scheduler, CloudWatch alarm을 구현했고 Task 2에서 dev·prod root input과 output을 연결했다.
+- Task 2의 `terraform fmt -recursive -check`, 정적 계약 테스트, dev·prod `validate`, 저장 plan 생성은 통과했다. Terraform provider는 sandbox에서 stdout을 열지 못해 검증과 plan은 scoped escalation으로 실행했다.
+- 저장 plan JSON에서는 dev `8 add, 2 change, 1 destroy`, prod `12 add, 2 change, 1 destroy`로 집계됐다. API Task Definition `delete,create` revision과 API ECS Service in-place update는 LAN-184 수용 기준상 허용된다. ECS Service delete 또는 replace, Worker IAM·Task Definition·Service, jobs Queue·DLQ 변경은 없었다.
+- prod plan에는 Push 작업과 무관한 ALB access-log Athena·Glue resource 4개 create도 포함된다. remote state 또는 별도 작업의 미반영 변경인지 apply 전 분리해야 한다.
+- Terraform apply는 실행하지 않았다.
 
 ## 2026-06-28 Landit IaC 초기 세팅
 

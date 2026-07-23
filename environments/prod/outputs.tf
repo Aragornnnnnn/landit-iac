@@ -34,6 +34,21 @@ output "jobs_queue_url" {
   value       = module.app_platform.jobs_queue_url
 }
 
+output "push_notifications_queue_url" {
+  description = "Production Push notifications SQS queue URL."
+  value       = module.app_platform.push_notifications_queue_url
+}
+
+output "push_notifications_dlq_url" {
+  description = "Production Push notifications dead-letter queue URL."
+  value       = module.app_platform.push_notifications_dlq_url
+}
+
+output "review_reminder_scheduler_arn" {
+  description = "Production review reminder EventBridge Scheduler ARN."
+  value       = module.app_platform.review_reminder_scheduler_arn
+}
+
 output "alb_access_logs_athena_workgroup" {
   description = "Production Athena workgroup for ALB access log analysis."
   value       = module.app_platform.alb_access_logs_athena_workgroup

@@ -27,6 +27,9 @@ module "app_platform" {
   api_desired_count    = var.api_desired_count
   worker_desired_count = var.worker_desired_count
 
+  review_reminder_schedule_expression = var.review_reminder_schedule_expression
+  review_reminder_schedule_enabled    = var.review_reminder_schedule_enabled
+
   alb_certificate_arn = var.alb_certificate_arn
 
   grafana_otlp_enabled    = var.grafana_otlp_enabled

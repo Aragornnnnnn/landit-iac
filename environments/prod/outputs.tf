@@ -34,6 +34,16 @@ output "jobs_queue_url" {
   value       = module.app_platform.jobs_queue_url
 }
 
+output "alb_access_logs_athena_workgroup" {
+  description = "Production Athena workgroup for ALB access log analysis."
+  value       = module.app_platform.alb_access_logs_athena_workgroup
+}
+
+output "alb_access_logs_athena_named_query_id" {
+  description = "Production Athena named query ID for recent ALB 4xx analysis."
+  value       = module.app_platform.alb_access_logs_athena_named_query_id
+}
+
 output "app_bucket_name" {
   description = "Production private application S3 bucket name."
   value       = module.app_platform.app_bucket_name

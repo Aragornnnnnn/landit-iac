@@ -34,6 +34,16 @@ output "jobs_queue_url" {
   value       = aws_sqs_queue.jobs.url
 }
 
+output "alb_access_logs_athena_workgroup" {
+  description = "Athena workgroup for ALB access log analysis."
+  value       = try(aws_athena_workgroup.alb_access_logs[0].name, null)
+}
+
+output "alb_access_logs_athena_named_query_id" {
+  description = "Athena named query ID for recent ALB 4xx analysis."
+  value       = try(aws_athena_named_query.alb_4xx_analysis[0].id, null)
+}
+
 output "app_bucket_name" {
   description = "Private application S3 bucket name."
   value       = aws_s3_bucket.app.bucket

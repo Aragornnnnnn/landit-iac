@@ -1,5 +1,47 @@
 # Context Notes
 
+## 2026-07-24 LAN-184 Push 알림 인프라 계획
+
+### 확정된 구조
+
+- 별도 Push Worker ECS Service, Fargate Task, ECR repository, log group은 추가하지 않는다.
+- EventBridge Scheduler가 Push 전용 SQS Standard Queue에 메시지를 발행하고 기존 API ECS Service 내부 SQS Consumer가 처리한다.
+- 기존 `${local.name_prefix}-jobs` Queue와 Push Queue는 공유하지 않는다.
+- Push main queue와 DLQ를 환경별 app-platform module에 추가하고 redrive policy로 연결한다.
+- API Task Role은 Push main queue에 `ReceiveMessage`, `DeleteMessage`, `ChangeMessageVisibility`, `GetQueueAttributes`, `SendMessage`만 허용한다.
+- API 컨테이너에는 `SQS_PUSH_NOTIFICATIONS_QUEUE_URL`과 `LANDIT_NOTIFICATION_CONSUMER_ENABLED=true`를 일반 환경 변수로 주입한다.
+- Receipt 확인 메시지의 900초 delay와 Consumer 동시성 2는 BE 애플리케이션이 관리한다.
+
+### 현재 저장소 구조에서 확인한 사실
+
+- 기존 AI jobs DLQ와 main queue는 `modules/app-platform/main.tf`의 `aws_sqs_queue.jobs_dlq`, `aws_sqs_queue.jobs`로 정의돼 있다.
+- 기존 jobs main queue visibility timeout은 300초, redrive `maxReceiveCount`는 3, DLQ retention은 14일이다.
+- API Task Role은 기존 jobs queue에 `GetQueueAttributes`, `SendMessage`만 허용한다.
+- AI Worker Task Role은 기존 jobs queue에 `ChangeMessageVisibility`, `DeleteMessage`, `GetQueueAttributes`, `GetQueueUrl`, `ReceiveMessage`를 허용한다.
+- API와 AI Worker Task Definition은 모두 기존 `SQS_JOBS_QUEUE_URL`을 받지만 Push queue는 API에만 연결해야 한다.
+- 현재 module에는 EventBridge Scheduler와 SQS CloudWatch alarm resource가 없다.
+- 현재 AWS provider schema에서 `aws_scheduler_schedule`의 timezone, state, flexible time window, target input과 role ARN을 사용할 수 있음을 확인했다.
+
+### BE 전달 계약
+
+- Scheduler target input은 `messageId=<aws.scheduler.execution-id>`, `occurredAt=<aws.scheduler.scheduled-time>`, `messageType=REVIEW_REMINDER_BATCH`, 빈 payload를 사용한다.
+- Scheduler execution ID는 UUID 형식을 보장하지 않으므로 BE는 문자열로 처리한다.
+- EventBridge Scheduler는 매 실행마다 `payload.reviewDate`를 `YYYY-MM-DD`로 동적 포맷하지 못한다.
+- BE는 Scheduler의 `occurredAt`을 `Asia/Seoul`로 변환해 review date를 계산해야 한다.
+- API가 발행하는 `PUSH_RECEIPT_CHECK`는 같은 main queue를 사용하고 `DelaySeconds=900`을 요청별로 지정한다.
+- SQS Standard Queue의 중복 전달과 순서 변경을 전제로 두 message type 모두 멱등 처리한다.
+- 처리 시간이 초기 visibility timeout 300초를 넘으면 BE가 `ChangeMessageVisibility`로 연장하거나 배치 크기를 줄여야 한다.
+
+### 미확정 사항과 안전한 배포 순서
+
+- Asia/Seoul 기준 복습 리마인더 발송 시각은 제품 결정이 필요하다.
+- Scheduler를 production에만 만들지, development에도 비활성 상태로 만들지 결정이 필요하다.
+- CloudWatch alarm의 외부 notification action으로 연결할 SNS topic이 정해지지 않았다. action 없이 만들면 CloudWatch 상태만 생기고 운영 채널 알림은 전달되지 않는다.
+- 첫 인프라 반영에서는 Scheduler를 비활성 상태로 두고 Queue, IAM, API 환경 변수부터 준비한다.
+- BE Consumer를 development에 배포한 뒤 수동 메시지, 멱등성, Receipt delay, DLQ 이동을 확인한다.
+- 제품 시각 확정과 BE 검증 뒤 production Scheduler 활성화 plan을 별도 검토하고 승인받는다.
+- 이번 작업에서는 Terraform 구현, plan, apply를 실행하지 않았다.
+
 ## 2026-06-28 Landit IaC 초기 세팅
 
 ### 이번 초기화의 목적

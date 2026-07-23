@@ -998,6 +998,17 @@ data "aws_iam_policy_document" "api_task" {
 
   statement {
     actions = [
+      "sqs:ReceiveMessage",
+      "sqs:DeleteMessage",
+      "sqs:ChangeMessageVisibility",
+      "sqs:GetQueueAttributes",
+      "sqs:SendMessage"
+    ]
+    resources = [aws_sqs_queue.push_notifications.arn]
+  }
+
+  statement {
+    actions = [
       "s3:DeleteObject",
       "s3:GetObject",
       "s3:PutObject"
@@ -1083,7 +1094,9 @@ resource "aws_ecs_task_definition" "api" {
         { name = "SPRING_FLYWAY_BASELINE_ON_MIGRATE", value = "true" },
         { name = "SPRING_PROFILES_ACTIVE", value = var.environment },
         { name = "S3_BUCKET_NAME", value = aws_s3_bucket.app.bucket },
-        { name = "SQS_JOBS_QUEUE_URL", value = aws_sqs_queue.jobs.url }
+        { name = "SQS_JOBS_QUEUE_URL", value = aws_sqs_queue.jobs.url },
+        { name = "SQS_PUSH_NOTIFICATIONS_QUEUE_URL", value = aws_sqs_queue.push_notifications.url },
+        { name = "LANDIT_NOTIFICATION_CONSUMER_ENABLED", value = "true" }
         ], var.grafana_otlp_enabled ? [
         { name = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", value = "${trimsuffix(var.grafana_otlp_endpoint, "/")}/v1/metrics" },
         { name = "OTEL_TRACES_EXPORTER", value = "none" },

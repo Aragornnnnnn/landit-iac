@@ -34,6 +34,21 @@ output "jobs_queue_url" {
   value       = aws_sqs_queue.jobs.url
 }
 
+output "push_notifications_queue_url" {
+  description = "Push notifications SQS queue URL."
+  value       = aws_sqs_queue.push_notifications.url
+}
+
+output "push_notifications_dlq_url" {
+  description = "Push notifications dead-letter queue URL."
+  value       = aws_sqs_queue.push_notifications_dlq.url
+}
+
+output "review_reminder_scheduler_arn" {
+  description = "Review reminder EventBridge Scheduler ARN."
+  value       = aws_scheduler_schedule.review_reminder.arn
+}
+
 output "alb_access_logs_athena_workgroup" {
   description = "Athena workgroup for ALB access log analysis."
   value       = try(aws_athena_workgroup.alb_access_logs[0].name, null)

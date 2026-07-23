@@ -11,7 +11,7 @@
   "refresh": "30s",
   "time": {"from": "now-1h", "to": "now"},
   "annotations": {"list": [
-    {"name": "BE·AI 배포", "datasource": {"uid": "grafanacloud-logs", "type": "loki"}, "enable": true, "hide": false, "iconColor": "blue", "target": {"expr": "{project=\"landit\",environment=\"$environment\",aws_log_group=~\"/landit/$environment/(api|worker)\"} |= \"workflow=deployment_started\"", "queryType": "range", "refId": "deployment"}, "type": "dashboard"}
+    {"name": "BE·AI 배포", "datasource": {"uid": "grafanacloud-logs", "type": "loki"}, "enable": true, "hide": false, "iconColor": "blue", "expr": "{project=\"landit\",environment=\"$environment\",aws_log_group=~\"/landit/$environment/(api|worker)\"} |= \"workflow=deployment_started\"", "queryType": "range", "type": "dashboard"}
   ]},
   "links": [
     {"title": "BE 상세 보기", "url": "/d/landit-be/landit-be?var-environment=${environment}", "includeVars": true, "keepTime": true},

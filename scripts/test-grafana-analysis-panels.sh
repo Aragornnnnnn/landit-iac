@@ -13,12 +13,16 @@ jq -e '
   any(.panels[]; .title == "Tomcat 요청 스레드" and
     any(.targets[]; .expr | contains("tomcat_threads_busy_threads"))) and
   any(.annotations.list[]; .name == "BE 배포" and
-    (.target.expr | contains("workflow=deployment_started")))
+    (.datasource.type == "loki") and
+    (.expr | contains("workflow=deployment_started")) and
+    (.target.expr? == null))
 ' "${BE_DASHBOARD}" >/dev/null
 
 jq -e '
   any(.annotations.list[]; .name == "AI 배포" and
-    (.target.expr | contains("workflow=deployment_started")))
+    (.datasource.type == "loki") and
+    (.expr | contains("workflow=deployment_started")) and
+    (.target.expr? == null))
 ' "${AI_DASHBOARD}" >/dev/null
 
 jq -e '
@@ -28,5 +32,7 @@ jq -e '
   any(.panels[]; .title == "P99 응답시간 현재·7일 전" and
     any(.targets[]; .expr | contains("offset 7d"))) and
   any(.annotations.list[]; .name == "BE·AI 배포" and
-    (.target.expr | contains("workflow=deployment_started")))
+    (.datasource.type == "loki") and
+    (.expr | contains("workflow=deployment_started")) and
+    (.target.expr? == null))
 ' "${OVERVIEW_DASHBOARD}" >/dev/null

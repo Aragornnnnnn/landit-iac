@@ -11,7 +11,7 @@
   "refresh": "30s",
   "time": {"from": "now-1h", "to": "now"},
   "annotations": {"list": [
-    {"name": "AI 배포", "datasource": {"uid": "grafanacloud-logs", "type": "loki"}, "enable": true, "hide": false, "iconColor": "blue", "target": {"expr": "{project=\"landit\",environment=\"$environment\",aws_log_group=\"/landit/$environment/worker\"} |= \"workflow=deployment_started\"", "queryType": "range", "refId": "deployment"}, "type": "dashboard"}
+    {"name": "AI 배포", "datasource": {"uid": "grafanacloud-logs", "type": "loki"}, "enable": true, "hide": false, "iconColor": "blue", "expr": "{project=\"landit\",environment=\"$environment\",aws_log_group=\"/landit/$environment/worker\"} |= \"workflow=deployment_started\"", "queryType": "range", "type": "dashboard"}
   ]},
   "templating": {"list": [
     {"name": "environment", "label": "환경", "type": "custom", "query": "prod,develop", "current": {"text": "prod", "value": "prod"}, "options": [{"text": "prod", "value": "prod", "selected": true}, {"text": "develop", "value": "develop", "selected": false}], "includeAll": false, "multi": false, "hide": 0},

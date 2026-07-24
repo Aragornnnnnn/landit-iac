@@ -476,6 +476,7 @@ resource "aws_athena_named_query" "alb_4xx_analysis" {
 resource "aws_lb" "api" {
   name               = "${local.name_prefix}-alb"
   load_balancer_type = "application"
+  idle_timeout       = 70
   security_groups    = [aws_security_group.alb.id]
   subnets            = values(aws_subnet.public)[*].id
 

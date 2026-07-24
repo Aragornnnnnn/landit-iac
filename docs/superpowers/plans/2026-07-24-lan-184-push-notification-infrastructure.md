@@ -254,7 +254,8 @@ git commit -m "docs: Push 알림 인프라 운영 절차를 정리한다"
 
 ## 현재 보류 사항
 
-- 실제 Terraform apply.
 - dev와 prod Scheduler 활성화.
 - SNS, Discord 등 CloudWatch Alarm 외부 전달.
 - Scheduler 자체 전송 실패용 별도 DLQ 또는 `TargetErrorCount` 경보.
+
+2026-07-24 사용자 승인 후 dev와 prod saved plan을 적용했다. 두 환경 post-apply plan은 `No changes`이고 Scheduler는 모두 `DISABLED`다.

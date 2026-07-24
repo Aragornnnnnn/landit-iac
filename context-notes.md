@@ -5,7 +5,8 @@
 - dev와 prod는 모두 `cron(0 20 * * ? *)`, `Asia/Seoul`, 최초 Scheduler `DISABLED`를 사용한다. Queue는 main 4일, DLQ 14일, visibility timeout 300초, redrive `maxReceiveCount=3`이며 Alarm은 외부 action 없는 상태 전용이다.
 - 저장 plan JSON 집계는 dev `8 add, 2 change, 1 destroy`, prod `12 add, 2 change, 1 destroy`다. API Task Definition `delete,create` 새 revision과 API ECS Service in-place `update`는 허용 범위다.
 - ECS Service delete 또는 replace, Worker IAM·Task Definition·Service 변경, 기존 jobs Queue·DLQ 변경은 없다.
-- prod plan의 ALB access-log Athena·Glue 4개 create는 LAN-184 범위 밖 apply blocker다. 분리 또는 정합화와 사용자 승인 전에는 apply하지 않는다.
+- 사용자가 prod ALB access-log Athena·Glue 4개 create를 포함한 적용을 승인해 dev·prod saved plan을 적용했다. 두 환경 post-apply plan은 `No changes`이고 API ECS Service는 각각 revision 8과 5에서 안정화됐다.
+- Queue·DLQ·IAM·환경 변수·Scheduler·Alarm과 prod Athena·Glue 실상태를 확인했으며, 두 Scheduler는 dev BE E2E 전까지 `DISABLED`로 유지한다.
 
 ## 2026-06-28 Landit IaC 초기 세팅
 

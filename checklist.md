@@ -4,7 +4,8 @@
 
 - [x] dev·prod에 매일 20시 `Asia/Seoul` Scheduler, Push Queue·DLQ, API 연결, 상태 전용 Alarm을 구성했다.
 - [x] 두 환경 Scheduler의 최초 state를 `DISABLED`로 확정하고 Terraform 구현·정적 계약·saved plan 검증을 마쳤다.
-- [ ] Terraform apply와 Scheduler 활성화는 사용자 승인 및 prod Athena·Glue 4개 범위 밖 create의 분리 또는 정합화 전까지 보류한다.
+- [x] 사용자 승인 후 dev·prod saved plan을 적용하고 post-apply `No changes`와 API ECS Service 안정화를 확인했다.
+- [ ] dev BE Consumer 배포와 E2E 검증 전까지 두 환경 Scheduler 활성화를 보류한다.
 
 ## 2026-07-22 LAN-192 prod 관측성과 Discord 장애 알림
 

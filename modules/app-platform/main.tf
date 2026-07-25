@@ -546,7 +546,7 @@ resource "aws_glue_catalog_table" "waf_logs" {
     EXTERNAL                            = "TRUE"
     "projection.enabled"                = "true"
     "projection.log_time.type"          = "date"
-    "projection.log_time.range"         = "2026/07/25,NOW"
+    "projection.log_time.range"         = "2026/07/25/00/00,NOW"
     "projection.log_time.format"        = "yyyy/MM/dd/HH/mm"
     "projection.log_time.interval"      = "1"
     "projection.log_time.interval.unit" = "MINUTES"

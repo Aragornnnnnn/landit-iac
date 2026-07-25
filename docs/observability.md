@@ -76,7 +76,7 @@ AWS_PROFILE=landit terraform -chdir=environments/prod output alb_access_logs_ath
 
 Athena Console에서 출력된 workgroup을 선택하고 저장 쿼리를 실행합니다. 원본 URL에는 query string이 포함될 수 있으므로 결과를 metric label이나 로그 label로 복제하지 않고 운영 분석 시에만 제한적으로 확인합니다.
 
-prod ALB에는 기본 허용인 REGIONAL WAF Web ACL을 연결합니다. AWS Managed Rules Common Rule Set과 Amazon IP Reputation List는 `Count`를 유지해 일치 요청을 기록만 합니다. 동일 IP가 5분 동안 2,000회를 넘는 `ip-rate-limit`은 `Block`으로 차단합니다.
+현재 live prod ALB에는 기본 허용인 REGIONAL WAF Web ACL이 연결되어 있고, Common Rule Set·Amazon IP Reputation List·`ip-rate-limit`은 모두 `Count`입니다. 이 브랜치의 Terraform 구성은 Common Rule Set과 Amazon IP Reputation List는 `Count`로 유지하고, `ip-rate-limit`만 `Block`으로 전환할 준비를 합니다. 사용자 승인과 prod apply가 끝난 뒤 동일 IP가 5분 동안 2,000회를 넘으면 `ip-rate-limit`이 차단합니다.
 
 2026-07-22 02:58:52부터 2026-07-25 14:59:54 KST까지 prod ALB access log를 분석한 결과, 운영 서버의 `Java-http-client/21.0.11`에서 `ai.landit.im`의 `/api/v1/conversation/`으로 향한 요청은 5분 최고 42건이었고, 정상 모바일 `/api/v1/` 요청은 5분 최고 21건이었습니다. 외부 스캐너 두 출발지 IP는 각각 5분 최고 2,654건과 5,986건으로 rate limit을 초과했습니다. 2,000회는 관측된 운영 서버·정상 사용자 최고치보다 각각 약 48배와 95배 높습니다. 회사·학교·통신사 NAT 공유도 같은 공인 IP 기준으로 이미 집계된 값입니다.
 

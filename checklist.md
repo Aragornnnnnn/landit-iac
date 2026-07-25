@@ -9,7 +9,7 @@
 - [x] 최신 `origin/main`을 기준으로 Wiki 전체 페이지를 갱신한다.
 - [x] `Incident Response Runbook`과 Push 알림 운영 페이지를 추가한다.
 - [x] 내부 링크, 민감정보, 기준 소스, Markdown을 검증한다.
-- [ ] Wiki `master`에 게시하고 공개 렌더링을 확인한다.
+- [x] Wiki `master`에 게시하고 공개 렌더링을 확인한다.
 
 ## 2026-07-24 LAN-184 Push 알림 인프라 계획
 

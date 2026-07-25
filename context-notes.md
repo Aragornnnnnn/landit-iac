@@ -24,6 +24,9 @@
 - 게시 전 Wiki `HEAD`는 `9658ab5`이며 기존 10개 파일을 다시 쓰고 `Incident-Response-Runbook.md`, `Push-Notifications.md`를 추가해 총 12개 Markdown 파일로 구성했다.
 - 본문 11개 파일의 H1은 하나이고 GitHub Wiki 특수 파일 `_Sidebar.md`는 H1 없이 `##`부터 시작한다. 내부 페이지와 앵커, code fence, whitespace, 미완성 표시, secret·내부 resource 식별자 패턴 검사를 통과했다.
 - `.github/workflows/terraform.yml`, `docs/observability.md`, `docs/push-notifications.md`와 Wiki를 대조해 shared·develop·production target, CRITICAL·WARNING·MONITORING, Push Scheduler `DISABLED`, visibility 300초와 `maxReceiveCount=3` 계약이 일치함을 확인했다.
+- Wiki `master`는 `0f52816`에서 `9658ab55ef23df052b64cafd296780a01ae36b4f`로 게시됐고 원격 SHA와 로컬 Wiki `HEAD`가 일치한다.
+- Home과 10개 본문 페이지의 공개 URL은 모두 `HTTP 200`을 반환했다. GitHub 게시본에서 Sidebar의 역할별 링크, Incident Response Runbook의 승인 경계와 상황 공유 형식, Troubleshooting의 Push 앵커가 렌더링되는 것을 확인했다.
+- Infrastructure Architecture의 root·요청·관측 흐름과 Push Notifications의 Queue·DLQ Mermaid가 화면에 렌더링됐고 Mermaid syntax error는 확인되지 않았다.
 
 ## 2026-07-24 LAN-184 Push 알림 인프라 계획
 

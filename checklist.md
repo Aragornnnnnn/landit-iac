@@ -1,5 +1,13 @@
 # Checklist
 
+## 2026-07-26 LAN-184 dev 수동 리마인더 테스트 API
+
+- [x] 공통 모듈의 테스트 API 활성화 기본값을 `false`로 둔다.
+- [x] dev API 컨테이너에만 `LANDIT_NOTIFICATION_TEST_API_ENABLED=true`를 주입한다.
+- [x] prod API 컨테이너에는 테스트 API 환경 변수를 주입하지 않는다.
+- [x] 정적 계약 테스트와 dev·prod Terraform validate·plan을 검증한다.
+- [x] 실제 Terraform apply 없이 변경 범위를 확인한다.
+
 ## 2026-07-25 IaC Wiki 장애 대응 중심 개편
 
 - [x] 사용자가 이슈 번호 없이 진행하도록 승인했다.

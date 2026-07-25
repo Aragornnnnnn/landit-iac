@@ -130,6 +130,12 @@ variable "review_reminder_schedule_enabled" {
   default     = false
 }
 
+variable "notification_test_api_enabled" {
+  description = "Whether to expose the manual notification test API."
+  type        = bool
+  default     = false
+}
+
 variable "alb_certificate_arn" {
   description = "Optional ACM certificate ARN. When set, ALB enables HTTPS and redirects HTTP to HTTPS."
   type        = string

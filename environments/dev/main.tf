@@ -29,6 +29,7 @@ module "app_platform" {
 
   review_reminder_schedule_expression = var.review_reminder_schedule_expression
   review_reminder_schedule_enabled    = var.review_reminder_schedule_enabled
+  notification_test_api_enabled       = true
 
   alb_certificate_arn = var.alb_certificate_arn
 

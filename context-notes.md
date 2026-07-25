@@ -1,5 +1,18 @@
 # Context Notes
 
+## 2026-07-26 LAN-184 dev 수동 리마인더 테스트 API
+
+- BE의 수동 복습 리마인더 Controller는 기본 비활성화되고 dev에서만 생성돼야 한다.
+- 공통 Terraform 모듈의 활성화 변수 기본값은 `false`로 두고 dev root만 `true`를 전달한다.
+- dev API 컨테이너에는 `LANDIT_NOTIFICATION_TEST_API_ENABLED=true`를 주입하고 prod에는 환경 변수 자체를 주입하지 않는다.
+- 실제 AWS 변경은 별도 승인 전까지 적용하지 않는다.
+- 정적 계약 테스트와 dev·prod `terraform validate`는 통과했다.
+- dev plan은 `1 add, 2 change, 1 destroy`이며 API Task Definition 교체, API ECS Service 갱신, 기존 브랜치의 ALB idle timeout 70초 갱신으로 구성된다.
+- dev planned API 컨테이너에는 consumer와 test API 환경 변수가 모두 `true`로 포함된다.
+- prod planned API 컨테이너에는 consumer 환경 변수만 있고 test API 환경 변수는 없다.
+- prod plan은 `0 add, 2 change, 9 destroy`이며 현재 `origin/main`에 없는 LAN-210 WAF logging·Athena 리소스가 state에 존재해 삭제가 계획됐다.
+- prod saved plan은 요청 범위를 벗어나므로 적용하지 않았으며, main과 production state의 소스 정합성 복구 전에는 사용하면 안 된다.
+
 ## 2026-07-25 IaC Wiki 장애 대응 중심 개편
 
 - 사용자는 이번 작업을 이슈 번호 없이 진행하도록 승인했다.

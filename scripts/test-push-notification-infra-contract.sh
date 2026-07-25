@@ -155,13 +155,30 @@ push_queue_env_entries="$(grep -E '\{[[:space:]]*name[[:space:]]*=[[:space:]]*"S
 }
 require_text 'value[[:space:]]*=[[:space:]]*aws_sqs_queue\.push_notifications\.url' "$push_queue_env_entries" "API Push queue URL environment entry"
 grep -q 'LANDIT_NOTIFICATION_CONSUMER_ENABLED", value = "true"' <<<"$api_task"
+require 'variable "notification_test_api_enabled"' "$VARIABLES_FILE"
+test_api_enabled_variable="$(block 'variable "notification_test_api_enabled"' "$VARIABLES_FILE")"
+require_text 'type[[:space:]]*=[[:space:]]*bool' "$test_api_enabled_variable" "notification test API enabled variable"
+require_text 'default[[:space:]]*=[[:space:]]*false' "$test_api_enabled_variable" "notification test API enabled variable"
+test_api_env_entries="$(grep -E '\{[[:space:]]*name[[:space:]]*=[[:space:]]*"LANDIT_NOTIFICATION_TEST_API_ENABLED"' <<<"$api_task")"
+[[ "$(wc -l <<<"$test_api_env_entries" | tr -d ' ')" -eq 1 ]] || {
+  echo "expected exactly one LANDIT_NOTIFICATION_TEST_API_ENABLED API environment entry" >&2
+  exit 1
+}
+require_text 'value[[:space:]]*=[[:space:]]*"true"' "$test_api_env_entries" "notification test API environment entry"
+require_text 'var\.notification_test_api_enabled[[:space:]]*\?[[:space:]]*\[' "$api_task" "notification test API conditional environment"
 worker_task="$(block 'resource "aws_ecs_task_definition" "worker"' "$MAIN_FILE")"
 ! grep -q 'PUSH_NOTIFICATIONS' <<<"$worker_task"
+! grep -q 'LANDIT_NOTIFICATION_TEST_API_ENABLED' <<<"$worker_task"
 worker_policy="$(block 'data "aws_iam_policy_document" "worker_task"' "$MAIN_FILE")"
 forbid_text 'aws_sqs_queue\.push_notifications' "$worker_policy" "Worker IAM policy"
 for resource_type in aws_ecs_task_definition aws_ecs_service aws_ecr_repository aws_cloudwatch_log_group; do
   forbid_push_resource "$resource_type"
 done
+
+dev_app_platform_module="$(block 'module "app_platform"' "$DEV_MAIN_FILE")"
+require_text 'notification_test_api_enabled[[:space:]]*=[[:space:]]*true' "$dev_app_platform_module" "dev app platform module input"
+prod_app_platform_module="$(block 'module "app_platform"' "$PROD_MAIN_FILE")"
+forbid_text 'notification_test_api_enabled' "$prod_app_platform_module" "prod app platform module input"
 
 require 'variable "review_reminder_schedule_expression"' "$VARIABLES_FILE"
 require 'variable "review_reminder_schedule_enabled"' "$VARIABLES_FILE"

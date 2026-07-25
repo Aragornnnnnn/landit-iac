@@ -559,3 +559,12 @@
 - sandbox 안에서는 AWS provider와 archive provider가 plugin stdout을 열지 못해 Terraform validate가 실패했다. provider binary의 arm64 아키텍처와 실행 권한을 확인한 뒤 sandbox 밖에서 같은 `AWS_PROFILE=landit terraform -chdir=environments/dev|prod validate`를 재실행해 두 환경 모두 성공했다.
 - `AWS_PROFILE=landit terraform -chdir=environments/prod plan -out=/tmp/lan210-rate-block-prod.tfplan` 결과는 `0 added, 1 changed, 0 destroyed`다. 변경 대상은 기존 `prod-landit-alb-count` Web ACL 한 건이며 `ip-rate-limit`만 Count에서 Block으로 바뀐다. Common·IP Reputation Count, limit 2,000, 평가 구간 300초, ALB idle timeout 70초와 나머지 인프라는 유지된다.
 - 사용자 승인 후 saved plan을 적용해 `0 added, 1 changed, 0 destroyed`로 완료했다. live WAF는 Common·IP Reputation Count, `ip-rate-limit` Block, limit 2,000, 평가 구간 300초이며 ALB idle timeout은 70초다. `https://api.landit.im/actuator/health`와 `https://ai.landit.im/health`가 정상 응답했고 post-apply prod plan은 `No changes`다.
+
+## 2026-07-25 LAN-210 WAF logging, Athena parser, Actuator 최소 노출 설계
+
+- 사용자는 WAF logging을 `aws-waf-logs-` 전용 S3에 직접 저장하는 권장안을 승인했다. prod에서만 private SSE-S3 bucket과 30일 lifecycle을 두고 `BLOCK`·`COUNT` action만 저장한다.
+- WAF 로그에서는 `Authorization`, `Cookie`, `X-Api-Key` header와 query string을 redaction한다. client IP, URI path, method, User-Agent는 규칙별 보안 분석을 위해 유지한다.
+- 2026-07-25 partition의 실제 Athena query는 전체 1,015행, 파싱된 `type` 0행, 파싱된 `client_ip` 0행이었다. 최신 실제 ALB log 10행은 34개 원본 필드이고 기존 regex 자체는 행 문자열에 매칭되지만 Glue table 34개 컬럼과 regex 35개 capture group이 달라 RegexSerDe 결과가 모두 `NULL`이다.
+- 최신 transform 필드 `transformed_host`, `transformed_uri`, `request_transform_status`를 table과 regex에 추가하고 future trailing field를 non-capturing 처리하면 37개 컬럼과 37개 capture group이 일치하며 실제 임시 sample 10행이 모두 매칭됐다. sample 원본은 저장소와 문서에 남기지 않는다.
+- prod BE의 Grafana metric은 `/actuator` scrape가 아니라 30초 주기의 Micrometer OTLP push를 사용한다. `/actuator/health`만 ALB health check에 필요하므로 prod에서는 health만 노출하고 discovery와 info endpoint를 비활성화한다.
+- 실제 apply와 BE·AI 운영 배포는 구현·테스트와 prod saved plan 검토 뒤 별도 사용자 승인을 받아 진행한다.

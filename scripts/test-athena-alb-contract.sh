@@ -18,6 +18,9 @@ grep -q 'name = "transformed_host"' "${MODULE_FILE}"
 grep -q 'name = "transformed_uri"' "${MODULE_FILE}"
 grep -q 'name = "request_transform_status"' "${MODULE_FILE}"
 grep -q 'INTERVAL '\''1'\'' MINUTE' "${MODULE_FILE}"
+if rg -q '"input.regex"[[:space:]]*=[[:space:]]*<<-' "${MODULE_FILE}"; then
+  exit 1
+fi
 grep -q 'output "alb_access_logs_athena_workgroup"' "${OUTPUT_FILE}"
 grep -q 'output "alb_access_logs_athena_named_query_id"' "${OUTPUT_FILE}"
 grep -q 'output "alb_access_logs_athena_rate_named_query_id"' "${OUTPUT_FILE}"

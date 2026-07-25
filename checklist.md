@@ -406,5 +406,6 @@
 - [x] IaC 계약 검사와 Terraform 구현을 완료한다.
 - [x] BE prod Actuator integration test와 설정 변경을 완료한다.
 - [x] dev·prod validate, prod saved plan, BE 전체 검증을 완료한다.
-- [ ] 사용자 승인 뒤 prod apply와 BE·AI 배포를 실행한다.
+- [x] 사용자 승인 뒤 prod WAF logging·Athena Terraform apply를 실행한다.
+- [ ] BE·AI PR을 병합·prod 배포한다.
 - [ ] live WAF log redaction, Athena query, 운영 endpoint와 사용자 흐름을 확인한다.

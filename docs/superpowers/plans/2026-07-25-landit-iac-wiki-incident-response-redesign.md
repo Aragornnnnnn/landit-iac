@@ -460,11 +460,11 @@ Expected: 기존 10개 파일과 새 2개 페이지만 있고 Wiki 작업트리�
 Run:
 
 ```bash
-ruby -e 'files=Dir["/tmp/landit-iac-wiki-authoring-20260725/*.md"]; abort("H1") unless files.all?{|f| File.readlines(f).count{|l| l.start_with?("# ")}==1}; names=files.map{|f| File.basename(f,".md")}; links=files.flat_map{|f| File.read(f).scan(/\]\(([A-Za-z0-9_-]+)(?:#[^)]+)?\)/).flatten}; missing=links.uniq-names; abort("missing: #{missing.join(",")}") unless missing.empty?'
+ruby -e 'files=Dir["/tmp/landit-iac-wiki-authoring-20260725/*.md"]; abort("H1") unless files.all?{|f| expected=File.basename(f)=="_Sidebar.md" ? 0 : 1; File.readlines(f).count{|l| l.start_with?("# ")}==expected}; names=files.map{|f| File.basename(f,".md")}; links=files.flat_map{|f| File.read(f).scan(/\]\(([A-Za-z0-9_-]+)(?:#[^)]+)?\)/).flatten}; missing=links.uniq-names; abort("missing: #{missing.join(",")}") unless missing.empty?'
 git -C /tmp/landit-iac-wiki-authoring-20260725 diff --check HEAD~4..HEAD
 ```
 
-Expected: 모든 Markdown 파일에 H1이 하나 있고 내부 링크 대상 파일이 존재하며 whitespace 오류가 없다.
+Expected: 본문 Markdown 파일에는 H1이 하나 있고 특수 파일 `_Sidebar.md`에는 H1이 없으며, 내부 링크 대상 파일이 존재하고 whitespace 오류가 없다.
 
 - [ ] **Step 3: 미완성 문구와 민감정보 패턴을 검사한다.**
 
@@ -490,9 +490,9 @@ rg -n 'CRITICAL|WARNING|MONITORING|terraform-apply-|DISABLED|maxReceiveCount|DLQ
 
 Expected: workflow, 관측성, Push 계약과 Wiki 표현이 일치한다.
 
-- [ ] **Step 5: source 작업 기록을 완료 상태로 갱신한다.**
+- [ ] **Step 5: source 작업 기록을 게시 전 상태로 갱신한다.**
 
-`checklist.md`의 이번 작업 항목을 실제 결과에 맞게 갱신한다. `context-notes.md`에는 Wiki commit 범위, 검증 명령, 게시 전 Wiki SHA를 기록한다.
+`checklist.md`에서 Wiki 작성과 검증 항목만 완료로 갱신하고 게시 항목은 미완료로 둔다. `context-notes.md`에는 Wiki commit 범위, 검증 명령, 게시 전 Wiki SHA를 기록한다.
 
 - [ ] **Step 6: source 기록을 검증하고 커밋한다.**
 
@@ -501,7 +501,7 @@ Run:
 ```bash
 git diff --check
 git status --short
-git add checklist.md context-notes.md
+git add checklist.md context-notes.md docs/superpowers/plans/2026-07-25-landit-iac-wiki-incident-response-redesign.md
 git commit -m "docs: IaC Wiki 개편 실행과 검증을 기록한다"
 ```
 
@@ -533,13 +533,27 @@ curl -L --fail --silent --show-error -o /dev/null -w '%{http_code}\n' https://gi
 
 Expected: 네 URL이 모두 HTTP `200`을 반환한다. 공개 페이지의 Sidebar에서 새 페이지와 기존 페이지 링크가 보이는지 함께 확인한다.
 
-- [ ] **Step 9: 최종 source와 Wiki 상태를 확인한다.**
+- [ ] **Step 9: source에 게시 결과를 기록하고 커밋한다.**
+
+`checklist.md`의 게시 항목을 완료로 갱신한다. `context-notes.md`에는 원격 Wiki SHA, 공개 URL의 HTTP 결과와 렌더링 확인 결과를 기록한다.
+
+Run:
+
+```bash
+git diff --check
+git add checklist.md context-notes.md
+git commit -m "docs: IaC Wiki 게시 결과를 기록한다"
+```
+
+Expected: 성공한 게시 결과만 source 기록에 추가된다.
+
+- [ ] **Step 10: 최종 source와 Wiki 상태를 확인한다.**
 
 Run:
 
 ```bash
 git status --short
-git log -2 --oneline
+git log -5 --oneline
 git -C /tmp/landit-iac-wiki-authoring-20260725 status --short
 git -C /tmp/landit-iac-wiki-authoring-20260725 log -5 --oneline
 ```

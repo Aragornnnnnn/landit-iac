@@ -13,7 +13,17 @@
 - 페이지 구조는 시작하기, 구조 이해하기, 변경하고 운영하기, 장애 대응하기, 저장소 바로가기 순서로 구성한다.
 - 사용자가 확정 설계와 이후 실행을 모두 승인했다.
 - 구현 계획은 `docs/superpowers/plans/2026-07-25-landit-iac-wiki-incident-response-redesign.md`에서 탐색 구조, 정상 운영, 관측성과 알림, 장애 대응의 네 Wiki 커밋으로 나눠 실행한다.
+- 실행 시작 시 source `origin/main`은 `a2729e1`, Wiki `master`는 `0f52816`이다.
+- AWS read-only 확인에서 prod BE·AI ECS Service는 desired/running `1/1`, PRIMARY deployment `COMPLETED`였고 두 public health endpoint는 `HTTP 200`이었다.
+- prod Push Scheduler는 `DISABLED`, `cron(0 20 * * ? *)`, `Asia/Seoul`이며 main Queue와 DLQ의 설정은 코드·운영 문서와 일치하고 조회 시점 메시지 수는 모두 `0`이었다.
+- prod Sentry relay Lambda는 `Active`, production WAF와 ALB는 존재하며 shared 콘텐츠 CloudFront distribution은 `Deployed`, `Enabled`였다.
+- shared Terraform output 조회는 현재 worktree의 backend가 초기화되지 않아 중단됐고, CloudFront 적용 상태는 AWS API로 대체 확인했다. state나 resource는 변경하지 않았다.
+- Grafana와 Sentry의 live rule은 임시 credential을 새로 만들지 않고 `docs/observability.md`, 계약 스크립트와 기존 검증 기록을 기준으로 작성한다. Wiki에는 조회하지 않은 현재 alert state를 단정하지 않는다.
 - 이번 작업은 Wiki와 소스 문서만 변경하며 Terraform apply, AWS 리소스 변경, SSM 값 변경, Grafana 설정 변경은 수행하지 않는다.
+- Wiki는 `49be8c4`, `c629a38`, `7d40a96`, `9658ab5`의 네 논리 커밋으로 탐색 구조, 정상 운영, 관측성과 알림, 장애 대응을 나눠 개편했다.
+- 게시 전 Wiki `HEAD`는 `9658ab5`이며 기존 10개 파일을 다시 쓰고 `Incident-Response-Runbook.md`, `Push-Notifications.md`를 추가해 총 12개 Markdown 파일로 구성했다.
+- 본문 11개 파일의 H1은 하나이고 GitHub Wiki 특수 파일 `_Sidebar.md`는 H1 없이 `##`부터 시작한다. 내부 페이지와 앵커, code fence, whitespace, 미완성 표시, secret·내부 resource 식별자 패턴 검사를 통과했다.
+- `.github/workflows/terraform.yml`, `docs/observability.md`, `docs/push-notifications.md`와 Wiki를 대조해 shared·develop·production target, CRITICAL·WARNING·MONITORING, Push Scheduler `DISABLED`, visibility 300초와 `maxReceiveCount=3` 계약이 일치함을 확인했다.
 
 ## 2026-07-24 LAN-184 Push 알림 인프라 계획
 

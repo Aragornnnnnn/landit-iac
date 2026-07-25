@@ -11,6 +11,8 @@
 - IaC Wiki는 기존 10개 파일을 최신 기준으로 다시 쓰고 `Incident-Response-Runbook.md`, `Push-Notifications.md`를 추가한다.
 - Runbook은 production 장애 대응을 기준으로 하며 develop은 재현과 검증 용도로만 사용한다.
 - 페이지 구조는 시작하기, 구조 이해하기, 변경하고 운영하기, 장애 대응하기, 저장소 바로가기 순서로 구성한다.
+- 사용자가 확정 설계와 이후 실행을 모두 승인했다.
+- 구현 계획은 `docs/superpowers/plans/2026-07-25-landit-iac-wiki-incident-response-redesign.md`에서 탐색 구조, 정상 운영, 관측성과 알림, 장애 대응의 네 Wiki 커밋으로 나눠 실행한다.
 - 이번 작업은 Wiki와 소스 문서만 변경하며 Terraform apply, AWS 리소스 변경, SSM 값 변경, Grafana 설정 변경은 수행하지 않는다.
 
 ## 2026-07-24 LAN-184 Push 알림 인프라 계획

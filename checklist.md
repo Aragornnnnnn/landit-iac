@@ -7,6 +7,8 @@
 - [x] prod API 컨테이너에는 테스트 API 환경 변수를 주입하지 않는다.
 - [x] 정적 계약 테스트와 dev·prod Terraform validate·plan을 검증한다.
 - [x] 실제 Terraform apply 없이 변경 범위를 확인한다.
+- [x] 사용자 승인 후 dev saved plan만 적용하고 ECS 안정화와 post-apply `No changes`를 확인한다.
+- [x] 요청 범위 외 삭제가 포함된 prod saved plan은 적용하지 않는다.
 
 ## 2026-07-25 IaC Wiki 장애 대응 중심 개편
 

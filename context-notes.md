@@ -568,3 +568,4 @@
 - 최신 transform 필드 `transformed_host`, `transformed_uri`, `request_transform_status`를 table과 regex에 추가하고 future trailing field를 non-capturing 처리하면 37개 컬럼과 37개 capture group이 일치하며 실제 임시 sample 10행이 모두 매칭됐다. sample 원본은 저장소와 문서에 남기지 않는다.
 - prod BE의 Grafana metric은 `/actuator` scrape가 아니라 30초 주기의 Micrometer OTLP push를 사용한다. `/actuator/health`만 ALB health check에 필요하므로 prod에서는 health만 노출하고 discovery와 info endpoint를 비활성화한다.
 - 실제 apply와 BE·AI 운영 배포는 구현·테스트와 prod saved plan 검토 뒤 별도 사용자 승인을 받아 진행한다.
+- 사용자가 설계 문서를 검토하고 구현을 승인했다. 구현 계획은 docs/superpowers/plans/2026-07-25-lan-210-waf-logging-athena-actuator.md에 기록한다. IaC와 BE는 테스트 우선으로 구현하고 apply와 운영 배포 권한은 포함하지 않는다.

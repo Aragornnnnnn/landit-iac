@@ -401,8 +401,8 @@
 - [x] 전용 S3 직접 저장, `BLOCK`·`COUNT` 필터, 민감 필드 redaction 설계를 확정한다.
 - [x] 실제 ALB 로그와 Athena query로 기존 parser 실패 원인을 확인한다.
 - [x] WAF logging, Athena parser, prod Actuator 최소 노출 설계를 문서화한다.
-- [ ] 사용자가 설계 문서를 검토한다.
-- [ ] 상세 구현 계획을 작성한다.
+- [x] 사용자가 설계 문서를 검토한다.
+- [x] 상세 구현 계획을 작성한다.
 - [ ] IaC 계약 검사와 Terraform 구현을 완료한다.
 - [ ] BE prod Actuator integration test와 설정 변경을 완료한다.
 - [ ] dev·prod validate, prod saved plan, BE 전체 검증을 완료한다.

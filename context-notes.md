@@ -587,3 +587,9 @@
 - 사용자 승인 뒤 `aws-managed-ip-reputation`의 outer `override_action`만 `count`에서 `none`으로 바꿨다. 이는 Rule Group을 비활성화하는 것이 아니라 AWS 관리형 IP Reputation List의 기본 action을 복원한다. Common은 Count, `ip-rate-limit`은 5분 2,000회 Block을 유지한다.
 - `terraform fmt -recursive`, WAF와 logging contract, dev·prod validate가 통과했다. prod saved plan과 apply는 모두 `0 added, 1 changed, 0 destroyed`였고, 기존 Web ACL 한 건만 in-place 변경했다. live WAF는 Common Count, IP Reputation None, rate limit Block이며 API `/actuator/health`는 UP, AI `/health`는 ok, post-apply prod plan은 No changes다.
 - WAF raw sample에서 Authorization·Cookie·query string은 REDACTED였다. `waf_logs` Athena table은 `projection.log_time.range`가 분 단위 format과 맞지 않아 조회가 실패하므로 별도 Terraform 수정이 필요하다.
+
+## 2026-07-26 LAN-210 WAF Athena 시간 파티션 수정
+
+- `waf_logs`의 `projection.log_time.format`은 `yyyy/MM/dd/HH/mm`인데 range 시작값이 `2026/07/25`여서 Athena가 index 10에서 파싱 실패했다. range 시작값을 `2026/07/25/00/00`으로 맞추고 contract에 format과 range를 함께 검증하도록 추가했다.
+- `terraform fmt -recursive`, rate limit·WAF logging contract, dev·prod validate가 통과했다. prod saved plan과 apply는 모두 Glue `waf_logs` table 한 건의 in-place 변경으로 `0 added, 1 changed, 0 destroyed`였다.
+- apply 뒤 2026-07-25 07:45~15:40 UTC를 조회한 Athena 집계는 전체 3,539행과 action, client IP, URI, terminating rule 파싱 행이 모두 3,539행으로 일치했다.

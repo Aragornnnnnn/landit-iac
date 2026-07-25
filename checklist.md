@@ -417,3 +417,4 @@
 - [x] Terraform fmt, WAF 계약 검사, dev·prod validate, prod saved plan을 검증한다.
 - [x] 사용자 승인 후 prod apply, live WAF action, API·AI health, post-apply no-change plan을 확인한다.
 - [x] 분석 근거, 결정, 롤백 절차를 Obsidian Landit 운영 노트에 기록한다.
+- [x] WAF Athena partition projection을 수정하고 실제 WAF 로그 주요 컬럼 파싱을 검증한다.

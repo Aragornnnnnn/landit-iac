@@ -394,4 +394,4 @@
 - [x] rate rule만 Count에서 Block으로 전환하고 Common·IP Reputation은 Count로 유지한다.
 - [x] 계약 테스트와 Terraform 정적 검증을 실행한다.
 - [x] prod saved plan이 WAF Web ACL 1건의 in-place 변경만 포함하고 추가·삭제가 없음을 확인한다.
-- [ ] 사용자 승인 후 prod apply와 live WAF 상태를 확인한다.
+- [x] 사용자 승인 후 prod apply와 live WAF Block 상태를 확인한다.

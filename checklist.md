@@ -387,3 +387,11 @@
 - [ ] VPC, DB, cache, object storage, CDN 사용 여부를 결정한다.
 - [x] 초기 secret은 Terraform 밖에서 SSM에 작성한다.
 - [ ] secret rotation, 접근 권한, 감사 절차를 결정한다.
+
+## 2026-07-25 LAN-210 prod WAF rate limit Block 전환
+
+- [x] ALB access log로 정상 서버·사용자와 스캐너의 5분 요청량을 분리해 확인한다.
+- [x] rate rule만 Count에서 Block으로 전환하고 Common·IP Reputation은 Count로 유지한다.
+- [x] 계약 테스트와 Terraform 정적 검증을 실행한다.
+- [ ] prod saved plan의 변경 범위를 확인한다.
+- [ ] 사용자 승인 후 prod apply와 live WAF 상태를 확인한다.

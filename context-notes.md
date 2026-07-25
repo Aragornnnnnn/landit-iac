@@ -549,3 +549,11 @@
 - Grafana 기본 Discord 메시지는 raw label, source·silence URL, Grafana version이 본문 대부분을 차지해 장애 판단이 늦다. `landit.discord.title`, `landit.discord.message` template group을 추가하고 `discord-prod-incidents` contact point의 title·message에 연결했다.
 - Firing 제목은 심각도별 emoji와 `environment · service`를 표시한다. 본문은 상태, `summary`, `description`, Grafana 상세 링크만 표시하고 Firing·Resolved 모두 같은 형식을 사용한다.
 - AI CRITICAL 조건을 `vector(1)`으로 고정한 1회성 검증 rule은 Alertmanager active 상태를 확인한 뒤 삭제했다. 삭제 후 active alert 목록은 비었고 rule 조회는 `404`였다. Discord에는 새 Firing·Resolved 형식의 검증 메시지가 전송됐다.
+
+## 2026-07-25 LAN-210 prod WAF rate limit Block 전환
+
+- prod ALB access log를 2026-07-22 02:58:52부터 2026-07-25 14:59:54 KST까지 분석했다. 운영 서버의 `Java-http-client/21.0.11`에서 `ai.landit.im`의 `/api/v1/conversation/`으로 향한 요청은 5분 최고 42건, 정상 모바일 `/api/v1/` 요청은 5분 최고 21건이었다.
+- 외부 스캐너 두 출발지 IP는 각각 5분 최고 2,654건과 5,986건으로 2,000회 rate limit을 초과했다. 현재 관측 범위에서는 운영 서버나 정상 사용자 IP에 별도 allowlist를 두지 않고 rate rule만 Block으로 전환한다.
+- 이번 구현은 `ip-rate-limit` action만 `count`에서 `block`으로 바꾼다. Common Rule Set과 Amazon IP Reputation List는 Count, limit 2,000, evaluation window 300초, 기존 Web ACL 이름·리소스 주소는 유지한다. Terraform apply는 사용자 승인 뒤에만 별도 실행한다.
+- `scripts/test-waf-rate-limit-contract.sh`는 기존 Count action에서 `ip-rate-limit` Block 계약이 실패하는 RED 결과를 확인한 뒤 추가했다. 변경 뒤에는 같은 계약 테스트, `terraform fmt -recursive`, `git diff --check`가 통과했다.
+- sandbox 안에서는 AWS provider와 archive provider가 plugin stdout을 열지 못해 Terraform validate가 실패했다. provider binary의 arm64 아키텍처와 실행 권한을 확인한 뒤 sandbox 밖에서 같은 `AWS_PROFILE=landit terraform -chdir=environments/dev|prod validate`를 재실행해 두 환경 모두 성공했다. prod plan과 apply는 이번 작업에서 실행하지 않았다.

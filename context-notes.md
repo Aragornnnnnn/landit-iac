@@ -1,5 +1,18 @@
 # Context Notes
 
+## 2026-07-25 IaC Wiki 장애 대응 중심 개편
+
+- 사용자는 이번 작업을 이슈 번호 없이 진행하도록 승인했다.
+- 현재 소스 작업트리는 `origin/main`의 `a2729e1`에서 시작했고 `feat/wiki-incident-runbook` 브랜치를 만들었다.
+- 게시된 IaC Wiki `master`는 `0f52816`이며 코드 기준을 `16223d3`으로 기록하고 있어 현재 소스와 시차가 있다.
+- IaC Wiki 작성 뒤 관측성·장애 알림·WAF·Push 인프라 관련 변경이 다수 반영됐지만 현재 Wiki에는 포함되지 않았다.
+- BE Wiki는 정상 릴리즈 절차와 Troubleshooting을 분리하고 각 문제를 빠른 구분, 증상, 확인, 조치, 복구 확인 순서로 설명한다.
+- AI Wiki는 배포, 관측성, 장애 진단을 분리하고 실제 배포 SHA와 운영 상태를 문서 기준 커밋과 구분한다.
+- IaC Wiki는 기존 10개 파일을 최신 기준으로 다시 쓰고 `Incident-Response-Runbook.md`, `Push-Notifications.md`를 추가한다.
+- Runbook은 production 장애 대응을 기준으로 하며 develop은 재현과 검증 용도로만 사용한다.
+- 페이지 구조는 시작하기, 구조 이해하기, 변경하고 운영하기, 장애 대응하기, 저장소 바로가기 순서로 구성한다.
+- 이번 작업은 Wiki와 소스 문서만 변경하며 Terraform apply, AWS 리소스 변경, SSM 값 변경, Grafana 설정 변경은 수행하지 않는다.
+
 ## 2026-07-24 LAN-184 Push 알림 인프라 계획
 
 - dev와 prod는 모두 `cron(0 20 * * ? *)`, `Asia/Seoul`, 최초 Scheduler `DISABLED`를 사용한다. Queue는 main 4일, DLQ 14일, visibility timeout 300초, redrive `maxReceiveCount=3`이며 Alarm은 외부 action 없는 상태 전용이다.

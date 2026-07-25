@@ -569,3 +569,8 @@
 - prod BE의 Grafana metric은 `/actuator` scrape가 아니라 30초 주기의 Micrometer OTLP push를 사용한다. `/actuator/health`만 ALB health check에 필요하므로 prod에서는 health만 노출하고 discovery와 info endpoint를 비활성화한다.
 - 실제 apply와 BE·AI 운영 배포는 구현·테스트와 prod saved plan 검토 뒤 별도 사용자 승인을 받아 진행한다.
 - 사용자가 설계 문서를 검토하고 구현을 승인했다. 구현 계획은 docs/superpowers/plans/2026-07-25-lan-210-waf-logging-athena-actuator.md에 기록한다. IaC와 BE는 테스트 우선으로 구현하고 apply와 운영 배포 권한은 포함하지 않는다.
+- WAF logging은 `aws-waf-logs-prod-landit-982529430654` bucket에 직접 저장한다. bucket은 public access block, SSE-S3, 30일 lifecycle을 적용하고 WAF delivery service의 ACL 확인과 account·region 조건부 쓰기만 허용한다. Count·Block match만 저장하며 `Authorization`, `Cookie`, `X-Api-Key`, query string은 redaction한다.
+- Athena는 기존 ALB database와 workgroup을 재사용한다. `waf_logs` JSON table은 분 단위 partition projection을 사용하며 `prod-landit-waf-recent-matches`는 action과 terminating·managed rule match 목록을, `prod-landit-alb-top-client-rate`는 client IP별 5분 요청량을 조회한다.
+- ALB Glue table에는 최신 transform 세 컬럼과 37 capture group regex를 반영했다. `scripts/test-athena-alb-contract.sh`, 새 `scripts/test-waf-logging-athena-contract.sh`, 기존 rate limit 계약 검사가 통과했다.
+- prod BE는 Springdoc 비활성화에 더해 Actuator discovery를 끄고 web exposure를 `health`만으로 제한한다. 보안 allowlist에서도 `/actuator/info`를 제거했다. prod integration test는 `/actuator`, `/actuator/info`의 404와 `/actuator/health`의 200을 검증하며 `./gradlew check --no-daemon`이 통과했다.
+- `AWS_PROFILE=landit terraform -chdir=environments/dev|prod validate`는 성공했다. 최종 prod saved plan은 `9 to add, 1 to change, 0 to destroy`이며 WAF bucket·보호 설정·logging configuration·WAF Glue table·Athena named query 2개를 만들고 기존 ALB Glue parser만 in-place 수정한다. apply와 BE·AI prod 배포는 아직 실행하지 않았다.

@@ -212,6 +212,98 @@ resource "aws_s3_bucket_policy" "alb_access_logs" {
   })
 }
 
+resource "aws_s3_bucket" "waf_logs" {
+  count = var.waf_count_enabled ? 1 : 0
+
+  bucket = "aws-waf-logs-${local.name_prefix}-${data.aws_caller_identity.current.account_id}"
+}
+
+resource "aws_s3_bucket_public_access_block" "waf_logs" {
+  count = var.waf_count_enabled ? 1 : 0
+
+  bucket = aws_s3_bucket.waf_logs[0].id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "waf_logs" {
+  count = var.waf_count_enabled ? 1 : 0
+
+  bucket = aws_s3_bucket.waf_logs[0].id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "waf_logs" {
+  count = var.waf_count_enabled ? 1 : 0
+
+  bucket = aws_s3_bucket.waf_logs[0].id
+
+  rule {
+    id     = "expire-waf-logs"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = var.alb_access_log_retention_days
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "waf_logs" {
+  count = var.waf_count_enabled ? 1 : 0
+
+  bucket = aws_s3_bucket.waf_logs[0].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowWafLogDeliveryAclCheck"
+        Effect = "Allow"
+        Principal = {
+          Service = "delivery.logs.amazonaws.com"
+        }
+        Action   = "s3:GetBucketAcl"
+        Resource = aws_s3_bucket.waf_logs[0].arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:*"
+          }
+        }
+      },
+      {
+        Sid    = "AllowWafLogDeliveryWrite"
+        Effect = "Allow"
+        Principal = {
+          Service = "delivery.logs.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.waf_logs[0].arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+            "s3:x-amz-acl"      = "bucket-owner-full-control"
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:*"
+          }
+        }
+      }
+    ]
+  })
+}
+
 resource "aws_glue_catalog_database" "alb_access_logs" {
   count = var.alb_access_logs_enabled ? 1 : 0
 
@@ -416,6 +508,21 @@ resource "aws_glue_catalog_table" "alb_access_logs" {
       type = "string"
     }
 
+    columns {
+      name = "transformed_host"
+      type = "string"
+    }
+
+    columns {
+      name = "transformed_uri"
+      type = "string"
+    }
+
+    columns {
+      name = "request_transform_status"
+      type = "string"
+    }
+
     ser_de_info {
       name                  = "alb-access-logs-regex"
       serialization_library = "org.apache.hadoop.hive.serde2.RegexSerDe"
@@ -423,9 +530,94 @@ resource "aws_glue_catalog_table" "alb_access_logs" {
       parameters = {
         "serialization.format" = "1"
         "input.regex"          = <<-REGEX
-          ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*):([0-9]*) ([^ ]*)[:-]([0-9]*) ([-.0-9]*) ([-.0-9]*) ([-.0-9]*) (|[-0-9]*) (-|[-0-9]*) ([-0-9]*) ([-0-9]*) "([^ ]*) (.*) (- |[^ ]*)" "([^"]*)" ([A-Z0-9-_]+) ([A-Za-z0-9.-]*) ([^ ]*) "([^"]*)" "([^"]*)" "([^"]*)" ([-.0-9]*) ([^ ]*) "([^"]*)" "([^"]*)" "([^ ]*)" "([^\s]+?)" "([^\s]+)" "([^ ]*)" "([^ ]*)" ?([^ ]*)? ?( .*)?
+          ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*):([0-9]*) ([^ ]*)[:-]([0-9]*) ([-.0-9]*) ([-.0-9]*) ([-.0-9]*) (|[-0-9]*) (-|[-0-9]*) ([-0-9]*) ([-0-9]*) "([^ ]*) (.*) (- |[^ ]*)" "([^"]*)" ([A-Z0-9-_]+) ([A-Za-z0-9.-]*) ([^ ]*) "([^"]*)" "([^"]*)" "([^"]*)" ([-.0-9]*) ([^ ]*) "([^"]*)" "([^"]*)" "([^ ]*)" "([^\s]+?)" "([^\s]+)" "([^ ]*)" "([^ ]*)" ([^ ]*) "([^"]*)" "([^"]*)" "([^ ]*)"(?: .*)?
         REGEX
       }
+    }
+  }
+}
+
+resource "aws_glue_catalog_table" "waf_logs" {
+  count = var.waf_count_enabled && var.alb_access_logs_enabled ? 1 : 0
+
+  name          = "waf_logs"
+  database_name = aws_glue_catalog_database.alb_access_logs[0].name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    EXTERNAL                            = "TRUE"
+    "projection.enabled"                = "true"
+    "projection.log_time.type"          = "date"
+    "projection.log_time.range"         = "2026/07/25,NOW"
+    "projection.log_time.format"        = "yyyy/MM/dd/HH/mm"
+    "projection.log_time.interval"      = "1"
+    "projection.log_time.interval.unit" = "MINUTES"
+    "storage.location.template"         = "s3://${aws_s3_bucket.waf_logs[0].bucket}/AWSLogs/${data.aws_caller_identity.current.account_id}/WAFLogs/${var.aws_region}/${aws_wafv2_web_acl.alb[0].name}/$${log_time}"
+  }
+
+  partition_keys {
+    name = "log_time"
+    type = "string"
+  }
+
+  storage_descriptor {
+    location      = "s3://${aws_s3_bucket.waf_logs[0].bucket}/AWSLogs/${data.aws_caller_identity.current.account_id}/WAFLogs/${var.aws_region}/${aws_wafv2_web_acl.alb[0].name}/"
+    input_format  = "org.apache.hadoop.mapred.TextInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
+
+    columns {
+      name = "timestamp"
+      type = "bigint"
+    }
+
+    columns {
+      name = "formatversion"
+      type = "string"
+    }
+
+    columns {
+      name = "webaclid"
+      type = "string"
+    }
+
+    columns {
+      name = "terminatingruleid"
+      type = "string"
+    }
+
+    columns {
+      name = "terminatingruletype"
+      type = "string"
+    }
+
+    columns {
+      name = "action"
+      type = "string"
+    }
+
+    columns {
+      name = "rulegrouplist"
+      type = "array<struct<rulegroupid:string,terminatingrule:struct<ruleid:string,action:string>,nonterminatingmatchingrules:array<struct<ruleid:string,action:string,overriddenaction:string>>,excludedrules:array<struct<exclusiontype:string,ruleid:string>>>>"
+    }
+
+    columns {
+      name = "nonterminatingmatchingrules"
+      type = "array<struct<ruleid:string,action:string,overriddenaction:string>>"
+    }
+
+    columns {
+      name = "httprequest"
+      type = "struct<clientip:string,country:string,headers:array<struct<name:string,value:string>>,uri:string,args:string,httpversion:string,httpmethod:string,requestid:string>"
+    }
+
+    columns {
+      name = "labels"
+      type = "array<struct<name:string>>"
+    }
+
+    ser_de_info {
+      name                  = "waf-logs-json"
+      serialization_library = "org.openx.data.jsonserde.JsonSerDe"
     }
   }
 }
@@ -469,6 +661,67 @@ resource "aws_athena_named_query" "alb_4xx_analysis" {
                   AND date_format(current_date, '%Y/%m/%d')
       AND elb_status_code BETWEEN 400 AND 499
     ORDER BY time_kst DESC
+    LIMIT 1000
+  SQL
+}
+
+resource "aws_athena_named_query" "alb_top_client_rate" {
+  count = var.alb_access_logs_enabled ? 1 : 0
+
+  name        = "${local.name_prefix}-alb-top-client-rate"
+  description = "최근 3일 5분 구간별 client IP 요청량을 확인합니다."
+  database    = aws_glue_catalog_database.alb_access_logs[0].name
+  workgroup   = aws_athena_workgroup.alb_access_logs[0].id
+  query       = <<-SQL
+    WITH requests AS (
+      SELECT
+        date_trunc('minute', from_iso8601_timestamp(time) AT TIME ZONE 'Asia/Seoul')
+          - INTERVAL '1' MINUTE * (minute(from_iso8601_timestamp(time) AT TIME ZONE 'Asia/Seoul') % 5) AS five_minute_kst,
+        client_ip,
+        request_url,
+        elb_status_code,
+        user_agent
+      FROM alb_access_logs
+      WHERE day BETWEEN date_format(current_date - INTERVAL '2' DAY, '%Y/%m/%d')
+                    AND date_format(current_date, '%Y/%m/%d')
+    )
+    SELECT
+      five_minute_kst,
+      client_ip,
+      count(*) AS request_count,
+      min(request_url) AS example_request_url,
+      min(user_agent) AS example_user_agent,
+      count_if(elb_status_code BETWEEN 400 AND 499) AS elb_4xx_count
+    FROM requests
+    GROUP BY five_minute_kst, client_ip
+    ORDER BY request_count DESC, five_minute_kst DESC
+    LIMIT 1000
+  SQL
+}
+
+resource "aws_athena_named_query" "waf_recent_matches" {
+  count = var.waf_count_enabled && var.alb_access_logs_enabled ? 1 : 0
+
+  name        = "${local.name_prefix}-waf-recent-matches"
+  description = "최근 3일 WAF Count와 Block 매칭 요청을 확인합니다."
+  database    = aws_glue_catalog_database.alb_access_logs[0].name
+  workgroup   = aws_athena_workgroup.alb_access_logs[0].id
+  query       = <<-SQL
+    SELECT
+      from_unixtime("timestamp" / 1000) AT TIME ZONE 'Asia/Seoul' AS time_kst,
+      httprequest.clientip AS client_ip,
+      httprequest.httpmethod AS request_method,
+      httprequest.uri AS request_uri,
+      action,
+      terminatingruleid,
+      terminatingruletype,
+      rulegrouplist,
+      nonterminatingmatchingrules,
+      element_at(filter(httprequest.headers, header -> lower(header.name) = 'user-agent'), 1).value AS user_agent
+    FROM waf_logs
+    WHERE log_time BETWEEN date_format(current_date - INTERVAL '2' DAY, '%Y/%m/%d/00/00')
+                       AND date_format(current_timestamp, '%Y/%m/%d/%H/%i')
+    ORDER BY "timestamp" DESC
     LIMIT 1000
   SQL
 }
@@ -582,6 +835,58 @@ resource "aws_wafv2_web_acl_association" "alb" {
 
   resource_arn = aws_lb.api.arn
   web_acl_arn  = aws_wafv2_web_acl.alb[0].arn
+}
+
+resource "aws_wafv2_web_acl_logging_configuration" "alb" {
+  count = var.waf_count_enabled ? 1 : 0
+
+  resource_arn            = aws_wafv2_web_acl.alb[0].arn
+  log_destination_configs = [aws_s3_bucket.waf_logs[0].arn]
+
+  logging_filter {
+    default_behavior = "DROP"
+
+    filter {
+      behavior    = "KEEP"
+      requirement = "MEETS_ANY"
+
+      condition {
+        action_condition {
+          action = "BLOCK"
+        }
+      }
+
+      condition {
+        action_condition {
+          action = "COUNT"
+        }
+      }
+    }
+  }
+
+  redacted_fields {
+    single_header {
+      name = "authorization"
+    }
+  }
+
+  redacted_fields {
+    single_header {
+      name = "cookie"
+    }
+  }
+
+  redacted_fields {
+    single_header {
+      name = "x-api-key"
+    }
+  }
+
+  redacted_fields {
+    query_string {}
+  }
+
+  depends_on = [aws_s3_bucket_policy.waf_logs]
 }
 
 resource "aws_lb_target_group" "api" {

@@ -160,13 +160,13 @@ variable "alb_access_log_retention_days" {
 }
 
 variable "waf_count_enabled" {
-  description = "Whether to associate a Count-only WAF Web ACL with the ALB."
+  description = "Whether to associate the WAF Web ACL and log Count or Block matches."
   type        = bool
   default     = false
 }
 
 variable "waf_rate_limit" {
-  description = "Requests per source IP per five minutes before WAF Count matches."
+  description = "Requests per source IP per five minutes before WAF Block matches."
   type        = number
   default     = 2000
 

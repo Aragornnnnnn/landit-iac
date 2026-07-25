@@ -65,13 +65,19 @@ Discord webhook을 교체할 때는 새 URL을 prod SSM에 반영하고 test ale
 
 prod ALB access log는 전용 S3 bucket의 `alb/` prefix에 저장합니다. bucket은 공개 접근을 모두 차단하고 SSE-S3로 암호화하며 객체를 30일 뒤 만료합니다. ALB log delivery policy는 Landit AWS account의 load balancer가 `alb/AWSLogs/982529430654/` 아래에 쓰는 작업만 허용합니다. develop에서는 access log bucket을 만들지 않습니다.
 
-prod에는 이 원본을 바로 조회하는 Glue Data Catalog table과 Athena workgroup을 함께 만듭니다. table은 `day=yyyy/MM/dd` partition projection을 사용하므로 일별 partition을 수동 등록하지 않습니다. `prod-landit-alb-4xx-analysis` named query는 최근 3일의 4xx 요청을 KST 시각, client IP, method, URL, ALB·target 상태, user agent 순서로 최대 1,000건 조회합니다. 결과는 같은 bucket의 `athena-results/` prefix에 저장되고 access log와 같은 lifecycle로 30일 뒤 만료됩니다.
+prod에는 이 원본을 바로 조회하는 Glue Data Catalog table과 Athena workgroup을 함께 만듭니다. table은 `day=yyyy/MM/dd` partition projection을 사용하므로 일별 partition을 수동 등록하지 않습니다. ALB access log 형식의 추가된 `transformed_host`, `transformed_uri`, `request_transform_status` 세 필드까지 RegexSerDe와 Glue schema에 맞춰야 한다. 필드 수가 맞지 않으면 Athena가 행 수는 세더라도 주요 컬럼을 `NULL`로 반환한다. `prod-landit-alb-4xx-analysis` named query는 최근 3일의 4xx 요청을 KST 시각, client IP, method, URL, ALB·target 상태, user agent 순서로 최대 1,000건 조회합니다. `prod-landit-alb-top-client-rate`는 같은 기간의 client IP별 5분 요청량과 예시 경로·User-Agent를 조회합니다. 결과는 같은 bucket의 `athena-results/` prefix에 저장되고 access log와 같은 lifecycle로 30일 뒤 만료됩니다.
+
+WAF는 별도 비공개 S3 bucket `aws-waf-logs-prod-landit-982529430654`에 직접 로그를 저장합니다. bucket은 공개 접근을 모두 차단하고 SSE-S3로 암호화하며 30일 뒤 만료합니다. WAF log delivery service만 `AWSLogs/982529430654/` 아래에 쓰도록 bucket policy를 제한한다. `Authorization`, `Cookie`, `X-Api-Key`, query string은 WAF log에 redaction 처리한다. 저장 비용과 민감 데이터 노출 범위를 줄이기 위해 Count 또는 Block과 매칭된 요청만 저장하고 Allow 요청은 저장하지 않는다.
+
+`waf_logs` Glue table은 WAF log JSON과 `log_time=yyyy/MM/dd/HH/mm` partition projection을 사용한다. `prod-landit-waf-recent-matches` named query는 최근 3일의 WAF 매칭 시각, client IP, method, URI, action, terminating rule, User-Agent를 조회한다. WAF logging을 적용하기 전의 과거 Count 요청은 복원할 수 없으므로, Amazon IP Reputation List와 Common Rule Set의 Block 전환은 새 로그를 검토한 뒤 별도 변경으로 결정한다.
 
 배포 후 아래 출력으로 workgroup과 named query ID를 확인합니다.
 
 ```bash
 AWS_PROFILE=landit terraform -chdir=environments/prod output alb_access_logs_athena_workgroup
 AWS_PROFILE=landit terraform -chdir=environments/prod output alb_access_logs_athena_named_query_id
+AWS_PROFILE=landit terraform -chdir=environments/prod output alb_access_logs_athena_rate_named_query_id
+AWS_PROFILE=landit terraform -chdir=environments/prod output waf_logs_athena_named_query_id
 ```
 
 Athena Console에서 출력된 workgroup을 선택하고 저장 쿼리를 실행합니다. 원본 URL에는 query string이 포함될 수 있으므로 결과를 metric label이나 로그 label로 복제하지 않고 운영 분석 시에만 제한적으로 확인합니다.
@@ -96,7 +102,12 @@ BE, AI stdout
 prod ALB access log
   -> Amazon S3
   -> Glue Data Catalog partition projection table
-  -> Athena 4xx analysis named query
+  -> Athena 4xx, 5분 IP 요청량 named query
+
+prod WAF Count 또는 Block match
+  -> 전용 Amazon S3 bucket
+  -> Glue Data Catalog partition projection table
+  -> Athena WAF match named query
 ```
 
 BE와 AI는 Grafana Cloud OTLP endpoint로 직접 지표를 전송합니다. Alloy는 로컬 버퍼링, 신호 가공, 다중 backend 전송이 필요해질 때 도입합니다.
@@ -184,6 +195,7 @@ terraform fmt -recursive -check
 AWS_PROFILE=landit terraform -chdir=environments/dev validate
 AWS_PROFILE=landit terraform -chdir=environments/prod validate
 ./scripts/test-athena-alb-contract.sh
+./scripts/test-waf-logging-athena-contract.sh
 ./scripts/test-waf-rate-limit-contract.sh
 ./scripts/test-grafana-analysis-panels.sh
 ```

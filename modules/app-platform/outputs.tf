@@ -59,6 +59,16 @@ output "alb_access_logs_athena_named_query_id" {
   value       = try(aws_athena_named_query.alb_4xx_analysis[0].id, null)
 }
 
+output "alb_access_logs_athena_rate_named_query_id" {
+  description = "Athena named query ID for top client IP request rates."
+  value       = try(aws_athena_named_query.alb_top_client_rate[0].id, null)
+}
+
+output "waf_logs_athena_named_query_id" {
+  description = "Athena named query ID for recent WAF Count and Block matches."
+  value       = try(aws_athena_named_query.waf_recent_matches[0].id, null)
+}
+
 output "app_bucket_name" {
   description = "Private application S3 bucket name."
   value       = aws_s3_bucket.app.bucket

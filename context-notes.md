@@ -578,3 +578,12 @@
 - 초기 ALB parser 검증은 1,127행 중 type·client IP·User-Agent 모두 0행으로 실패했다. 실제 log 한 줄은 Java regex에서 37개 group으로 정상 매칭됐고 Glue table도 37개 column이었다. 원인은 Terraform heredoc이 Glue `input.regex` 끝에 `\n`을 저장한 것이며 RegexSerDe의 전체 행 매칭을 실패시켰다.
 - heredoc을 개행 없는 HCL string으로 바꾸고 Glue table만 `0 added, 1 changed, 0 destroyed`로 재적용했다. 같은 Athena 집계에서 전체 1,130행과 type·client IP·User-Agent 파싱 행이 모두 1,130행으로 일치했다. 이 회귀를 막기 위해 ALB contract는 `input.regex` heredoc을 금지한다.
 - WAF bucket에는 service가 만든 `AWSLogs/982529430654/` prefix만 있고 아직 Count·Block delivery object는 없다. WAF log delivery는 일관성이 보장되지 않으므로 실제 매칭 log가 도착한 뒤 redaction과 WAF Athena query 결과를 별도로 확인한다. BE·AI prod 배포는 이번 apply 범위에 포함하지 않았다.
+
+## 2026-07-26 LAN-210 IP Reputation 기본 차단 전환
+
+- WAF S3에 2026-07-25 07:45~15:40 UTC 구간의 실제 Count·Block 로그 64개가 도착했다. 3,539건 중 IP Reputation Count는 3,527건, Common Rule Set Count는 500건, rate limit Block은 311건이었다. 같은 요청이 여러 managed rule에 매칭될 수 있어 Count 합계는 요청 수와 다르다.
+- IP Reputation Count 3,527건은 23개 출발지에서 발생했고, 최다 한 출발지는 5분 동안 3,253건과 1,316개 경로를 기록했다. WordPress·PHP·PHPUnit·`.env` 등 Landit과 무관한 경로 스캔이 반복됐으며, 이 표본에서는 `api.landit.im`, `ai.landit.im`, 실제 BE API route에 대한 Count 매칭이 없었다.
+- Common Rule Set은 XSS 284건, LFI 146건 등 공격성 라벨을 남겼다. 다만 XSS body·query와 body size 계열은 대화·학습 입력의 코드 조각 또는 긴 본문을 오탐할 수 있으므로 managed rule group 전체는 Count를 유지한다.
+- 사용자 승인 뒤 `aws-managed-ip-reputation`의 outer `override_action`만 `count`에서 `none`으로 바꿨다. 이는 Rule Group을 비활성화하는 것이 아니라 AWS 관리형 IP Reputation List의 기본 action을 복원한다. Common은 Count, `ip-rate-limit`은 5분 2,000회 Block을 유지한다.
+- `terraform fmt -recursive`, WAF와 logging contract, dev·prod validate가 통과했다. prod saved plan과 apply는 모두 `0 added, 1 changed, 0 destroyed`였고, 기존 Web ACL 한 건만 in-place 변경했다. live WAF는 Common Count, IP Reputation None, rate limit Block이며 API `/actuator/health`는 UP, AI `/health`는 ok, post-apply prod plan은 No changes다.
+- WAF raw sample에서 Authorization·Cookie·query string은 REDACTED였다. `waf_logs` Athena table은 `projection.log_time.range`가 분 단위 format과 맞지 않아 조회가 실패하므로 별도 Terraform 수정이 필요하다.

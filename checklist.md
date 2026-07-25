@@ -409,3 +409,11 @@
 - [x] 사용자 승인 뒤 prod WAF logging·Athena Terraform apply를 실행한다.
 - [ ] BE·AI PR을 병합·prod 배포한다.
 - [ ] live WAF log redaction, Athena query, 운영 endpoint와 사용자 흐름을 확인한다.
+
+## 2026-07-26 LAN-210 IP Reputation 기본 차단 전환
+
+- [x] 실제 WAF S3 로그의 Count·Block 매칭과 민감 필드 redaction을 분석한다.
+- [x] Amazon IP Reputation List만 AWS 관리형 기본 action으로 전환하고 Common Rule Set은 Count로 유지한다.
+- [x] Terraform fmt, WAF 계약 검사, dev·prod validate, prod saved plan을 검증한다.
+- [x] 사용자 승인 후 prod apply, live WAF action, API·AI health, post-apply no-change plan을 확인한다.
+- [x] 분석 근거, 결정, 롤백 절차를 Obsidian Landit 운영 노트에 기록한다.

@@ -47,4 +47,5 @@ assert_contains "${rate_rule}" 'evaluation_window_sec = 300' "5분 평가 구간
 assert_contains "${rate_rule}" 'limit                 = var.waf_rate_limit' "기존 2,000회 limit 변수를 유지해야 한다."
 assert_contains "${prod_main}" 'waf_rate_limit                = 2000' "prod rate limit은 2,000회여야 한다."
 assert_contains "${common_rule}" 'count {}' "Common Rule Set은 Count를 유지해야 한다."
-assert_contains "${ip_reputation_rule}" 'count {}' "IP Reputation List는 Count를 유지해야 한다."
+assert_contains "${ip_reputation_rule}" 'none {}' "IP Reputation List는 AWS 관리형 기본 action을 사용해야 한다."
+assert_not_contains "${ip_reputation_rule}" 'count {}' "IP Reputation List에 Count override가 남으면 안 된다."

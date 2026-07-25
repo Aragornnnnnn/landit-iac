@@ -593,3 +593,4 @@
 - `waf_logs`의 `projection.log_time.format`은 `yyyy/MM/dd/HH/mm`인데 range 시작값이 `2026/07/25`여서 Athena가 index 10에서 파싱 실패했다. range 시작값을 `2026/07/25/00/00`으로 맞추고 contract에 format과 range를 함께 검증하도록 추가했다.
 - `terraform fmt -recursive`, rate limit·WAF logging contract, dev·prod validate가 통과했다. prod saved plan과 apply는 모두 Glue `waf_logs` table 한 건의 in-place 변경으로 `0 added, 1 changed, 0 destroyed`였다.
 - apply 뒤 2026-07-25 07:45~15:40 UTC를 조회한 Athena 집계는 전체 3,539행과 action, client IP, URI, terminating rule 파싱 행이 모두 3,539행으로 일치했다.
+- 외부 취약점 스캐너의 malformed multipart·form request가 Sentry 500으로 보이는 조사 기준, WAF 완화·롤백, Athena 파티션 검증 절차를 IaC Wiki `Troubleshooting`에 게시했다. GitHub 공개 렌더링에서 새 섹션을 확인했다.

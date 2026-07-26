@@ -1,5 +1,19 @@
 # Context Notes
 
+## 2026-07-26 LAN-184 최종 Push Scheduler 계약 정렬
+
+- 실제 dev·prod Scheduler는 `DISABLED`, `cron(0 20 * * ? *)`, `Asia/Seoul`, flexible window `OFF`이며 기존 Push Standard Queue를 target으로 사용한다.
+- 실제 Push main Queue는 visibility timeout 300초, retention 4일, DLQ redrive `maxReceiveCount=3`이다.
+- API Task Role은 Push main Queue 한 개에 `ReceiveMessage`, `DeleteMessage`, `ChangeMessageVisibility`, `GetQueueAttributes`, `SendMessage`만 허용한다.
+- 실제 API Task Definition에는 consumer 활성화와 Push Queue URL이 두 환경 모두 주입돼 있고, 테스트 API flag는 dev에만 `true`다.
+- Expo base URL·connect timeout·request timeout·receipt delay는 현재 BE 기본값을 사용하며, 관련 일반 환경 변수나 SSM parameter 이름은 현재 ECS Task Definition과 SSM path에서 확인되지 않았다. Expo access token은 값 없이 optional이므로 원문을 조회하지 않는다.
+- Scheduler 입력은 BE `PushQueueMessage`의 `version:int`, `messageId:String`, `messageType:String`, `occurredAt:Instant`, `payload:object`와 맞춰야 한다. EventBridge Scheduler는 `<aws.scheduler.execution-id>`와 `<aws.scheduler.scheduled-time>` context attribute를 실제 지원한다.
+- 최종 메시지 유형은 `SCHEDULED_NOTIFICATION_BATCH`다. 현재 BE는 `ON_SUCCESS` ack만 사용하며 visibility 연장은 아직 구현되지 않았다. Scheduler 활성화 전 BE가 `Visibility.changeTo(...)`로 배치 시작과 각 500명 페이지 전후에 300초로 visibility를 연장해야 한다.
+- 전체 처리 시간의 실측 상한은 아직 없고 Publisher가 사용자별 SQS `sendMessage(...).join()`을 사용할 수 있으므로, 현재 300초는 유지한다. 한 페이지가 300초를 넘을 때 중복 전달은 가능하지만 `push_delivery`가 Expo 중복 발송을 막으며, dev 부하 측정 결과 후에만 timeout 변경을 검토한다.
+- `LANDIT_NOTIFICATION_EXPO_BASE_URL`, connect timeout, request timeout, receipt delay는 BE 기본값을 사용한다. receipt delay는 정확히 900초만 허용하므로 IaC 주입을 추가하지 않는다. Expo access token만 필요한 경우 SSM SecureString으로 별도 주입한다.
+- dev plan은 Scheduler input 1건을 `SCHEDULED_NOTIFICATION_BATCH`로 갱신하고 state는 `DISABLED`로 유지한다. prod plan은 같은 Scheduler 변경 외에 LAN-210 WAF logging·Athena 계열 9개 delete와 2개 update를 포함하므로 apply하지 않는다.
+- prod plan의 LAN-210 WAF logging·Athena 삭제 위험은 여전히 적용 금지 사유다.
+
 ## 2026-07-26 LAN-184 dev 수동 리마인더 테스트 API
 
 - BE의 수동 복습 리마인더 Controller는 기본 비활성화되고 dev에서만 생성돼야 한다.

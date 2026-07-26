@@ -60,7 +60,7 @@ AI Worker Task Role과 Worker container에는 Push 관련 권한이나 환경 �
 - target은 해당 환경의 Push main queue ARN이다.
 - Scheduler 자체 DLQ와 별도 retry 설정은 이번 범위에서 추가하지 않는다.
 
-target input은 version 1, Scheduler execution ID `messageId`, `REVIEW_REMINDER_BATCH`, Scheduler scheduled time `occurredAt`, 빈 `payload`로 구성한다. 상세 운영 계약은 `docs/push-notifications.md`에 둔다.
+target input은 version 1, Scheduler execution ID `messageId`, `SCHEDULED_NOTIFICATION_BATCH`, Scheduler scheduled time `occurredAt`, 빈 `payload`로 구성한다. 상세 운영 계약은 `docs/push-notifications.md`에 둔다.
 
 API가 발행하는 `PUSH_RECEIPT_CHECK` 메시지는 같은 main queue를 사용하고 요청별 `DelaySeconds=900`을 지정한다. 이 동작과 Consumer 동시성 `2`는 BE 책임이다.
 

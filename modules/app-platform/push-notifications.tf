@@ -60,7 +60,7 @@ resource "aws_scheduler_schedule" "review_reminder" {
     input = jsonencode({
       version     = 1
       messageId   = "<aws.scheduler.execution-id>"
-      messageType = "REVIEW_REMINDER_BATCH"
+      messageType = "SCHEDULED_NOTIFICATION_BATCH"
       occurredAt  = "<aws.scheduler.scheduled-time>"
       payload     = {}
     })

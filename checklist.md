@@ -1,5 +1,13 @@
 # Checklist
 
+## 2026-07-26 LAN-184 최종 Push Scheduler 계약 정렬
+
+- [x] 현재 dev·prod Push Queue, DLQ, Scheduler, API Task Role, Task Definition 주입 상태를 읽기 전용으로 확인한다.
+- [x] Scheduler 메시지 유형을 `SCHEDULED_NOTIFICATION_BATCH`로 교체하고 정적 계약 테스트를 갱신한다.
+- [x] Scheduler payload 예시와 20시 배치 시작 운영 메모를 문서화한다.
+- [x] BE의 배치 처리 시간·visibility 연장·설정 키 계약을 확인하고 Visibility Timeout 판단을 기록한다.
+- [x] dev·prod Terraform validate와 narrow plan을 감사하고 prod apply를 보류한다.
+
 ## 2026-07-26 LAN-184 dev 수동 리마인더 테스트 API
 
 - [x] 공통 모듈의 테스트 API 활성화 기본값을 `false`로 둔다.

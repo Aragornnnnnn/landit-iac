@@ -35,7 +35,7 @@ Scheduler는 매일 `Asia/Seoul` 20시에 main queue로 `SCHEDULED_NOTIFICATION_
 }
 ```
 
-`<aws.scheduler.execution-id>`와 `<aws.scheduler.scheduled-time>`은 EventBridge Scheduler가 target input에서 실제 값으로 치환하는 context attribute다. Standard Queue의 중복 전달과 순서 변경은 정상 동작으로 취급한다. BE는 예정 시각의 한국 날짜, 사용자, 기기, 알림 유형을 기준으로 `push_delivery` 멱등성을 보장한다.
+`<aws.scheduler.execution-id>`와 `<aws.scheduler.scheduled-time>`은 EventBridge Scheduler가 target input에서 실제 값으로 치환하는 context attribute다. Terraform `jsonencode`는 꺾쇠 문자를 Unicode escape하므로, Scheduler input은 raw JSON heredoc으로 작성해 context token을 문자 그대로 전달한다. Standard Queue의 중복 전달과 순서 변경은 정상 동작으로 취급한다. BE는 예정 시각의 한국 날짜, 사용자, 기기, 알림 유형을 기준으로 `push_delivery` 멱등성을 보장한다.
 
 BE는 `SCHEDULED_NOTIFICATION_BATCH`를 받으면 사용자 500명씩 Keyset Pagination으로 최신 대상을 계산하고, 실제 발송용 `PUSH_SEND`만 같은 queue에 발행한다. `NOTIFICATION_TARGET_BATCH` 같은 중간 queue나 별도 Push Worker는 만들지 않는다. `PUSH_RECEIPT_CHECK`도 같은 queue를 사용하며 요청별 `DelaySeconds=900`을 지정한다.
 

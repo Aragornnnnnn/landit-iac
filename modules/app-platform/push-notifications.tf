@@ -57,13 +57,15 @@ resource "aws_scheduler_schedule" "review_reminder" {
   target {
     arn      = aws_sqs_queue.push_notifications.arn
     role_arn = aws_iam_role.review_reminder_scheduler.arn
-    input = jsonencode({
-      version     = 1
-      messageId   = "<aws.scheduler.execution-id>"
-      messageType = "SCHEDULED_NOTIFICATION_BATCH"
-      occurredAt  = "<aws.scheduler.scheduled-time>"
-      payload     = {}
-    })
+    input    = <<-JSON
+      {
+        "version": 1,
+        "messageId": "<aws.scheduler.execution-id>",
+        "messageType": "SCHEDULED_NOTIFICATION_BATCH",
+        "occurredAt": "<aws.scheduler.scheduled-time>",
+        "payload": {}
+      }
+    JSON
   }
 }
 

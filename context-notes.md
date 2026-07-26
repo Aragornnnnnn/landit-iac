@@ -2,6 +2,7 @@
 
 ## 2026-07-26 LAN-184 최종 Push Scheduler 계약 정렬
 
+- `jsonencode`는 `<aws.scheduler.*>` token을 `\u003c...\u003e`로 직렬화하므로 Scheduler의 context attribute 치환을 보장하지 않는다. `target.input`을 raw JSON heredoc으로 바꾸고 Terraform plan JSON에서 Unicode escape 없는 정확한 token을 검사한다.
 - 실제 dev·prod Scheduler는 `DISABLED`, `cron(0 20 * * ? *)`, `Asia/Seoul`, flexible window `OFF`이며 기존 Push Standard Queue를 target으로 사용한다.
 - 실제 Push main Queue는 visibility timeout 300초, retention 4일, DLQ redrive `maxReceiveCount=3`이다.
 - API Task Role은 Push main Queue 한 개에 `ReceiveMessage`, `DeleteMessage`, `ChangeMessageVisibility`, `GetQueueAttributes`, `SendMessage`만 허용한다.

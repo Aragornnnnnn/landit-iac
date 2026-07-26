@@ -2,6 +2,7 @@
 
 ## 2026-07-26 LAN-184 최종 Push Scheduler 계약 정렬
 
+- [x] Scheduler context token의 Unicode escape를 raw JSON heredoc과 plan 계약 테스트로 제거한다.
 - [x] 현재 dev·prod Push Queue, DLQ, Scheduler, API Task Role, Task Definition 주입 상태를 읽기 전용으로 확인한다.
 - [x] Scheduler 메시지 유형을 `SCHEDULED_NOTIFICATION_BATCH`로 교체하고 정적 계약 테스트를 갱신한다.
 - [x] Scheduler payload 예시와 20시 배치 시작 운영 메모를 문서화한다.

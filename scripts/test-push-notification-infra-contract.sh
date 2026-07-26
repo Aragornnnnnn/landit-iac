@@ -207,9 +207,10 @@ require 'mode[[:space:]]*=[[:space:]]*"OFF"' "$PUSH_FILE"
 scheduler_target="$(block '^[[:space:]]*target[[:space:]]*\{' "$PUSH_FILE")"
 require_text 'arn[[:space:]]*=[[:space:]]*aws_sqs_queue\.push_notifications\.arn' "$scheduler_target" "review reminder scheduler target"
 require_text 'role_arn[[:space:]]*=[[:space:]]*aws_iam_role\.review_reminder_scheduler\.arn' "$scheduler_target" "review reminder scheduler target"
-require_text 'messageType[[:space:]]*=[[:space:]]*"SCHEDULED_NOTIFICATION_BATCH"' "$scheduler_target" "review reminder scheduler target"
+require_text 'input[[:space:]]*=[[:space:]]*<<-JSON' "$scheduler_target" "review reminder scheduler target"
+require_text '"messageType":[[:space:]]*"SCHEDULED_NOTIFICATION_BATCH"' "$scheduler_target" "review reminder scheduler target"
 forbid_text 'REVIEW_REMINDER_BATCH' "$scheduler_target" "review reminder scheduler target"
-for value in 'version[[:space:]]*=[[:space:]]*1' '<aws.scheduler.execution-id>' 'SCHEDULED_NOTIFICATION_BATCH' '<aws.scheduler.scheduled-time>' 'payload[[:space:]]*=[[:space:]]*\{\}'; do
+for value in '"version":[[:space:]]*1' '<aws.scheduler.execution-id>' 'SCHEDULED_NOTIFICATION_BATCH' '<aws.scheduler.scheduled-time>' '"payload":[[:space:]]*\{\}'; do
   grep -Eq "$value" "$PUSH_FILE"
 done
 

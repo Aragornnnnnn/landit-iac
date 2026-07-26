@@ -37,13 +37,13 @@ Scheduler는 매일 `Asia/Seoul` 20시에 main queue로 `SCHEDULED_NOTIFICATION_
 
 `<aws.scheduler.execution-id>`와 `<aws.scheduler.scheduled-time>`은 EventBridge Scheduler가 target input에서 실제 값으로 치환하는 context attribute다. Terraform `jsonencode`는 꺾쇠 문자를 Unicode escape하므로, Scheduler input은 raw JSON heredoc으로 작성해 context token을 문자 그대로 전달한다. Standard Queue의 중복 전달과 순서 변경은 정상 동작으로 취급한다. BE는 예정 시각의 한국 날짜, 사용자, 기기, 알림 유형을 기준으로 `push_delivery` 멱등성을 보장한다.
 
-BE는 `SCHEDULED_NOTIFICATION_BATCH`를 받으면 사용자 500명씩 Keyset Pagination으로 최신 대상을 계산하고, 실제 발송용 `PUSH_SEND`만 같은 queue에 발행한다. `NOTIFICATION_TARGET_BATCH` 같은 중간 queue나 별도 Push Worker는 만들지 않는다. `PUSH_RECEIPT_CHECK`도 같은 queue를 사용하며 요청별 `DelaySeconds=900`을 지정한다.
+BE가 SQS에서 소비하는 메시지 유형은 `SCHEDULED_NOTIFICATION_BATCH`와 `PUSH_RECEIPT_CHECK`뿐이다. `SCHEDULED_NOTIFICATION_BATCH`를 받으면 `occurredAt`을 기준으로 사용자 프로필을 500명씩 Keyset Pagination하여 최신 대상을 계산하고, Expo API에 최대 100건씩 직접 발송한다. `PUSH_SEND` 메시지와 `NOTIFICATION_TARGET_BATCH` 같은 중간 queue는 사용하지 않는다. `PUSH_RECEIPT_CHECK`는 같은 queue를 사용하며 요청별 `DelaySeconds=900`을 지정한다.
 
 ## Visibility Timeout과 런타임 설정
 
 main queue visibility timeout은 300초를 유지한다. 현재 Consumer는 `ON_SUCCESS`로 정상 반환한 뒤에만 메시지를 삭제하며 visibility 연장은 아직 구현되지 않았다. Scheduler 활성화 전에 BE는 배치 시작과 각 500명 페이지 전후에 `Visibility.changeTo(...)`로 현재 메시지의 visibility를 300초로 연장해야 한다.
 
-전체 배치 시간은 `ceil(대상 사용자 수 / 500) × (페이지 일괄 조회 + 후보 계산 + PUSH_SEND 발행 시간)`이다. 현재 활성 사용자 수, DB 실행계획, SQS 발행 지연의 실측값이 없으므로 IaC timeout을 임의로 늘리지 않는다. 한 페이지가 300초를 넘으면 중복 전달은 가능하지만 `push_delivery`가 실제 Expo 중복 발송을 막는다. BE visibility 연장 구현과 dev 부하 측정 결과가 나온 뒤에만 timeout 변경을 검토한다.
+전체 배치 시간은 `ceil(대상 사용자 수 / 500) × (페이지 일괄 조회 + 후보 계산 + Expo 최대 100건 단위 발송 시간)`이다. 현재 활성 사용자 수, DB 실행계획, Expo 발송 지연의 실측값이 없으므로 IaC timeout을 임의로 늘리지 않는다. 한 페이지가 300초를 넘으면 중복 전달은 가능하지만 `push_delivery`가 실제 Expo 중복 발송을 막는다. BE visibility 연장 구현과 dev 부하 측정 결과가 나온 뒤에만 timeout 변경을 검토한다.
 
 | 환경 변수 | IaC 주입 | 기본값 또는 SSM |
 | --- | --- | --- |
@@ -64,8 +64,8 @@ main queue visibility timeout은 300초를 유지한다. 현재 Consumer는 `ON_
 2. ECS Service delete 또는 replace, Worker IAM·Task Definition·Service 변경, 기존 jobs Queue·DLQ 변경이 있으면 진행하지 않는다.
 3. prod plan에 LAN-184와 무관한 WAF logging·Athena·Glue 변경이나 삭제가 있으면 source와 state를 정합화하기 전에는 apply를 요청하지 않는다.
 4. Scheduler payload 변경은 dev와 prod 모두 `DISABLED` 상태로 apply한다. BE가 `SCHEDULED_NOTIFICATION_BATCH`를 처리하지 않는 동안에는 어떤 환경에서도 활성화하지 않는다.
-5. `SCHEDULED_NOTIFICATION_BATCH`와 visibility 연장 구현이 포함된 BE를 dev에 배포한다.
-6. dev main queue의 수동 메시지, 500명 페이지 경계, `PUSH_SEND`, `PUSH_RECEIPT_CHECK` 900초 지연, 멱등성, DLQ 이동과 배치 처리 시간을 검증한다.
+5. `SCHEDULED_NOTIFICATION_BATCH`, `PUSH_RECEIPT_CHECK`와 visibility 연장 구현이 포함된 BE를 dev에 배포한다.
+6. dev main queue에 두 메시지 유형을 각각 수동 발행하고, 500명 페이지 경계, Expo 최대 100건 단위 직접 발송, `PUSH_RECEIPT_CHECK` 900초 지연, 멱등성, DLQ 이동과 배치 처리 시간을 검증한다.
 7. 사용자 승인 뒤 dev Scheduler 활성화 plan만 별도로 감사·apply해 실기기 E2E를 검증한다.
 8. prod Scheduler는 dev 실기기 E2E와 운영 검토가 완료될 때까지 반드시 `DISABLED`로 유지한다. prod enable plan과 apply는 별도 승인 범위다.
 

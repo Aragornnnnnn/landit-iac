@@ -1,5 +1,14 @@
 # Checklist
 
+## 2026-07-28 LAN-184 Push 알림 인프라 제거
+
+- [x] 앱 로컬 알림 전환으로 서버 Push 인프라가 불필요해졌음을 확인한다.
+- [x] dev·prod Queue와 DLQ가 비어 있고 Scheduler가 `DISABLED`인지 확인한다.
+- [x] 제거 전 dev·prod plan이 `No changes`인지 확인한다.
+- [x] Push Queue·DLQ, Scheduler, IAM, API 환경변수, Alarm과 전용 문서·테스트를 코드에서 제거한다.
+- [x] Terraform fmt, dev·prod validate와 removal plan을 검증한다.
+- [ ] 실제 AWS apply와 Wiki 동기화는 별도 승인 전까지 보류한다.
+
 ## 2026-07-26 LAN-184 최종 Push Scheduler 계약 정렬
 
 - [x] Scheduler context token의 Unicode escape를 raw JSON heredoc과 plan 계약 테스트로 제거한다.

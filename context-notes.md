@@ -1,5 +1,17 @@
 # Context Notes
 
+## 2026-07-28 LAN-184 Push 알림 인프라 제거
+
+- 제품 결정이 서버 Push에서 앱 로컬 알림으로 변경돼 LAN-184 Push 전용 AWS 인프라와 API 연결을 제거한다.
+- 제거 범위는 dev·prod Push main Queue·DLQ, Review reminder Scheduler와 execution IAM, Push backlog·DLQ Alarm, API Task Role의 Push Queue 권한, API의 Queue URL·Consumer·dev 테스트 API 환경변수, 관련 variable·output·문서·테스트다.
+- 기존 AI jobs Queue·DLQ, AI Worker, ECS Service, WAF·Athena·Glue와 관측성 리소스는 변경하지 않는다.
+- 2026-07-28 live 확인에서 dev·prod main Queue와 DLQ의 visible·in-flight·delayed 메시지는 모두 0개이고 두 Scheduler는 `DISABLED`다.
+- 제거 전 dev·prod plan은 모두 `No changes`였다.
+- RED dev saved plan은 `missing required Push deletion: module.app_platform.aws_cloudwatch_metric_alarm.push_notifications_backlog`로 예상대로 실패했다.
+- GREEN dev·prod validate와 `/tmp/lan184-push-removal-plan-contract.sh`는 모두 통과했다. 각 environment plan은 Push 관리 리소스 7개 삭제, API IAM policy in-place 갱신, API Task Definition의 `delete,create`, API ECS Service in-place 갱신만 포함한다.
+- dev·prod plan summary는 모두 `1 to add, 2 to change, 8 to destroy`이며, add와 추가 destroy 1개는 API Task Definition revision 교체의 쌍이다.
+- 실제 AWS 삭제 apply와 Wiki 동기화는 removal plan 검토와 사용자 별도 승인 뒤 진행한다.
+
 ## 2026-07-26 LAN-184 최종 Push Scheduler 계약 정렬
 
 - `jsonencode`는 `<aws.scheduler.*>` token을 `\u003c...\u003e`로 직렬화하므로 Scheduler의 context attribute 치환을 보장하지 않는다. `target.input`을 raw JSON heredoc으로 바꾸고 Terraform plan JSON에서 Unicode escape 없는 정확한 token을 검사한다.

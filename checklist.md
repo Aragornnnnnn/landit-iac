@@ -436,3 +436,12 @@
 - [x] 사용자 승인 후 prod apply, live WAF action, API·AI health, post-apply no-change plan을 확인한다.
 - [x] 분석 근거, 결정, 롤백 절차를 Obsidian Landit 운영 노트에 기록한다.
 - [x] WAF Athena partition projection을 수정하고 실제 WAF 로그 주요 컬럼 파싱을 검증한다.
+
+## 2026-08-01 LAN-210 Common Rule Set 선택적 Label Block
+
+- [x] 운영 관찰 결과와 실제 Landit API 경로의 오탐 여부를 확인한다.
+- [x] Common Rule Set Count 라벨을 후속 Label Match Block 규칙으로 선택 차단하는 Terraform을 추가한다.
+- [x] WAF 계약 테스트와 Terraform validate를 통과한다.
+- [x] WAF-only prod plan에서 Web ACL in-place 변경만 확인한다.
+- [ ] 사용자 승인 후 apply하고 24~48시간 정상 흐름과 5xx를 관찰한다.
+- [ ] 오탐 시 Label Block 규칙만 제거하는 롤백 절차를 기록한다.

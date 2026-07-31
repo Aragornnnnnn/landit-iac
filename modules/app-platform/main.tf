@@ -799,6 +799,46 @@ resource "aws_wafv2_web_acl" "alb" {
   }
 
   rule {
+    name     = "common-label-block"
+    priority = 25
+
+    action {
+      block {}
+    }
+
+    statement {
+      or_statement {
+        statement {
+          label_match_statement {
+            key   = "awswaf:managed:aws:core-rule-set:RestrictedExtensions_URIPath"
+            scope = "LABEL"
+          }
+        }
+
+        statement {
+          label_match_statement {
+            key   = "awswaf:managed:aws:core-rule-set:BadBots_Header"
+            scope = "LABEL"
+          }
+        }
+
+        statement {
+          label_match_statement {
+            key   = "awswaf:managed:aws:core-rule-set:GenericLFI_URIPath"
+            scope = "LABEL"
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-waf-common-label-block"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
     name     = "ip-rate-limit"
     priority = 30
 

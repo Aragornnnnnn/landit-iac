@@ -621,3 +621,22 @@
 - `terraform fmt -recursive`, rate limit·WAF logging contract, dev·prod validate가 통과했다. prod saved plan과 apply는 모두 Glue `waf_logs` table 한 건의 in-place 변경으로 `0 added, 1 changed, 0 destroyed`였다.
 - apply 뒤 2026-07-25 07:45~15:40 UTC를 조회한 Athena 집계는 전체 3,539행과 action, client IP, URI, terminating rule 파싱 행이 모두 3,539행으로 일치했다.
 - 외부 취약점 스캐너의 malformed multipart·form request가 Sentry 500으로 보이는 조사 기준, WAF 완화·롤백, Athena 파티션 검증 절차를 IaC Wiki `Troubleshooting`에 게시했다. GitHub 공개 렌더링에서 새 섹션을 확인했다.
+
+## 2026-08-01 LAN-210 Common Rule Set 선택적 Label Block 계획
+
+- 2026-07-26 00:00부터 2026-08-01 00:12 KST까지 WAF 로그를 관찰했다. 61,853건 중 IP Reputation 33,299건과 rate rule 27,609건을 Block했고, Common Rule Set Count 로그는 945건이었다.
+- 같은 구간의 ALB·target 5xx는 0건이고 API·AI health endpoint와 target health는 정상이다. 정상 API `/api/v1/...` 경로의 WAF 오탐은 확인되지 않았으며, `/api/` Count 잔여 요청도 환경 파일·백업 파일 탐색이었다.
+- Common Rule Set 전체를 Block하지 않고, Count 라벨을 뒤쪽 Label Match 규칙에서 선택적으로 Block한다. 우선 대상은 `RestrictedExtensions_URIPath`, `BadBots_Header`, `GenericLFI_URIPath`다.
+- `NoUserAgent_Header`, body·query 계열 규칙은 Count를 유지한다. 대화·학습 본문과 일반 클라이언트의 오탐 가능성을 별도 관찰하기 위해서다.
+- 구현 규칙은 `aws-managed-common` priority 10, IP Reputation priority 20 뒤인 priority 25에 둔다. 기존 IP Reputation과 rate limit Block의 우선 동작은 유지한다.
+- apply 전 prod plan에서 Web ACL 1건의 in-place 변경과 삭제 없음만 허용한다. apply 후 24~48시간 동안 `/api/v1/...` 차단, ALB·target 5xx, health 상태를 재확인한다.
+
+- LAN-210 커밋에 priority 25 `common-label-block`과 세 개의 Label Match 조건을 추가했다. Common managed rule group은 Count, body·query와 `NoUserAgent_Header`는 계속 Count다.
+- WAF 계약 테스트, logging·ALB contract, `terraform fmt -recursive`, dev·prod validate가 통과했다.
+- 최신 `origin/main`에는 Push 알림 인프라 제거가 반영됐지만 prod state에는 기존 리소스가 남아 있다. 전체 prod plan은 `1 add, 3 change, 8 destroy`로 WAF 외 삭제를 포함해 보류했다.
+- WAF-only targeted plan은 `0 add, 1 change, 0 destroy`로 Web ACL in-place 변경만 포함한다. targeted plan은 사용자 승인 전 apply하지 않는다.
+- 사용자가 Push 알림 기능을 사용하지 않기로 한 결정을 확인해 관련 queue·DLQ·alarm·scheduler·IAM 제거와 API task 갱신을 포함한 전체 prod plan 적용을 승인했다.
+- 승인한 saved plan은 `1 added, 3 changed, 8 destroyed`로 적용됐다. API ECS service는 task definition revision 6으로 롤링 배포됐고 desired 1, running 1, pending 0, rollout `COMPLETED` 상태다.
+- 새 API target은 healthy이며 기존 target은 정상 deregistration 과정에서 draining 상태였다. API `/actuator/health`는 `UP`, AI `/health`는 `ok`를 반환했다.
+- live WAF는 Common priority 10 Count, IP Reputation priority 20 기본 action, priority 25 `common-label-block`의 세 라벨 Block, priority 30의 5분 2,000회 rate Block을 반환한다.
+- post-apply 전체 prod plan은 `No changes`다. Label Block 오탐과 ALB·target 5xx는 24~48시간 추가 관찰한다.

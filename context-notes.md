@@ -635,3 +635,8 @@
 - WAF 계약 테스트, logging·ALB contract, `terraform fmt -recursive`, dev·prod validate가 통과했다.
 - 최신 `origin/main`에는 Push 알림 인프라 제거가 반영됐지만 prod state에는 기존 리소스가 남아 있다. 전체 prod plan은 `1 add, 3 change, 8 destroy`로 WAF 외 삭제를 포함해 보류했다.
 - WAF-only targeted plan은 `0 add, 1 change, 0 destroy`로 Web ACL in-place 변경만 포함한다. targeted plan은 사용자 승인 전 apply하지 않는다.
+- 사용자가 Push 알림 기능을 사용하지 않기로 한 결정을 확인해 관련 queue·DLQ·alarm·scheduler·IAM 제거와 API task 갱신을 포함한 전체 prod plan 적용을 승인했다.
+- 승인한 saved plan은 `1 added, 3 changed, 8 destroyed`로 적용됐다. API ECS service는 task definition revision 6으로 롤링 배포됐고 desired 1, running 1, pending 0, rollout `COMPLETED` 상태다.
+- 새 API target은 healthy이며 기존 target은 정상 deregistration 과정에서 draining 상태였다. API `/actuator/health`는 `UP`, AI `/health`는 `ok`를 반환했다.
+- live WAF는 Common priority 10 Count, IP Reputation priority 20 기본 action, priority 25 `common-label-block`의 세 라벨 Block, priority 30의 5분 2,000회 rate Block을 반환한다.
+- post-apply 전체 prod plan은 `No changes`다. Label Block 오탐과 ALB·target 5xx는 24~48시간 추가 관찰한다.

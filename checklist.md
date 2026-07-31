@@ -443,5 +443,6 @@
 - [x] Common Rule Set Count 라벨을 후속 Label Match Block 규칙으로 선택 차단하는 Terraform을 추가한다.
 - [x] WAF 계약 테스트와 Terraform validate를 통과한다.
 - [x] WAF-only prod plan에서 Web ACL in-place 변경만 확인한다.
-- [ ] 사용자 승인 후 apply하고 24~48시간 정상 흐름과 5xx를 관찰한다.
+- [x] 사용자 승인 후 prod apply를 실행하고 API·AI health와 live WAF 규칙을 확인한다.
+- [ ] apply 후 24~48시간 정상 흐름과 5xx를 관찰한다.
 - [ ] 오탐 시 Label Block 규칙만 제거하는 롤백 절차를 기록한다.

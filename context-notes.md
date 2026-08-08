@@ -5,7 +5,7 @@
 - 개발 ECS API·AI와 ALB는 EC2 병행 검증과 DNS 전환이 끝날 때까지 유지한다.
 - 단일 `t3.small`에서 Docker Compose로 BE, AI, Caddy를 실행하고 기존 ECR, SSM, S3, SQS, CloudWatch Logs를 재사용한다.
 - EC2의 BE만 `LANDIT_AI_BASE_URL=http://ai:8000`을 사용한다. 기존 SSM 값을 바꾸면 ECS BE까지 EC2 AI를 호출하므로 변경하지 않는다.
-- BE·AI 개발 배포 workflow의 ECS 성공 후 같은 Git SHA 이미지를 SSM Run Command로 EC2에 미러링하는 작업은 후속 Task 5·6에서 구현·검증한다. 현재는 workflow 미러링과 EC2 apply가 모두 완료되지 않았다.
+- BE·AI 개발 배포 workflow는 ECS 성공 뒤 같은 Git SHA를 SSM Run Command로 EC2에 미러링하도록 구현했고 shell 계약·BE Gradle check·AI unittest를 통과했다. EC2 apply와 GitHub Environment `EC2_INSTANCE_ID` 등록은 실행하지 않았다.
 - 병행 검증 도메인은 `api-ec2-develop.landit.im`, `ai-ec2-develop.landit.im`을 사용하고 Vercel DNS 변경은 별도 승인 후 진행한다.
 - EC2 instance role을 두 컨테이너가 공유해 BE·AI IAM 권한이 합쳐지는 점과 단일 장애 지점을 테스트 환경의 비용 절감 조건으로 수용한다.
 - ECS·ALB 제거는 별도 단계로 진행하며 ECR, S3, SQS, SSM, CloudWatch Logs와 Grafana 전달 경로를 보존한다.
@@ -14,6 +14,10 @@
 - 나머지 API ECS Service update, API Task Definition `delete,create`, Push Queue·DLQ·Scheduler·IAM·Alarm 8개 delete와 API IAM policy update는 미적용 LAN-184 Push 제거다. summary의 10번째 add는 LAN-184 API Task Definition replacement의 create 부분이다.
 - saved plan JSON 감사에서 `aws_lb` 주소는 없었다. ECS API Service delete 또는 replacement도 없고, ECS API의 update와 Task Definition replacement만 LAN-184 경계에 있다. 따라서 기존 ECS·ALB는 LAN-284 apply 전에 유지된다.
 - LAN-184 drift를 먼저 적용해 기준 plan을 `No changes`로 만들지, LAN-284와 함께 적용할지는 별도 승인이 필요하다. 실제 Terraform apply, Vercel DNS 변경, 기존 리소스 제거는 각각 사용자 승인 뒤에만 실행한다.
+- Task 7 재검증에서 `bash scripts/test-dev-ec2-contract.sh`, `terraform fmt -recursive -check`, `AWS_PROFILE=landit terraform -chdir=environments/dev validate`가 통과했다. sandbox는 AWS provider의 Unix socket bind를 막아 validate를 실행 환경에서 재시도했고 `Success! The configuration is valid.`를 확인했다.
+- BE는 `bash .github/scripts/test/deploy-ec2-service_test.sh`와 `./gradlew check --rerun-tasks --no-daemon`, AI는 같은 shell test와 기존 가상환경을 읽기 전용으로 사용한 `PYTHONDONTWRITEBYTECODE=1 /Users/sangmin8817/Soma/landit-ai/.venv/bin/python -m unittest discover -s tests`를 통과했다. AI unittest는 241개를 실행했다.
+- 세 저장소 diff를 독립 검토한 결과 blocker는 없었다. SSM 명령은 `api|ai`와 40자 SHA만 전달하고 AWS 오류 원문을 숨기며, IaC role은 생성될 EC2와 `AWS-RunShellScript`만 SendCommand 대상으로 제한한다. rollback은 EC2 컨테이너만 직전 SHA로 되돌리고 기존 ECS·ALB를 변경하지 않는다.
+- apply, GitHub 변수 등록, 실제 SSM 명령, 임시 Vercel DNS, EC2·ECS health, 24~48시간 관찰, 기존 ECS·ALB 제거는 모두 미실행이다.
 
 ## 2026-07-28 LAN-184 Push 알림 인프라 제거
 

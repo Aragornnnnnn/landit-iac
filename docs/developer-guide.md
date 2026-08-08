@@ -52,7 +52,7 @@ jq -r '.resource_changes[] | select(.change.actions != ["no-op"]) | [.address, (
 
 따라서 LAN-184 drift를 별도 적용해 기준 plan을 `No changes`로 만들지, 같은 saved plan으로 함께 적용할지는 별도 승인이 필요하다. 승인 전에는 Terraform apply와 Vercel DNS 변경을 실행하지 않는다.
 
-후속 Task 5·6에서 BE·AI workflow의 EC2 미러링을 구현하고 검증한 뒤, ECS 배포가 성공한 같은 Git SHA를 SSM Run Command로 EC2에 배포한다. 현재는 workflow 미러링과 EC2 apply가 모두 완료되지 않았으므로 아래 명령을 실행하지 않는다. 실제 instance ID와 SHA를 확인한 뒤 서비스별로 실행한다.
+BE·AI workflow의 EC2 미러링 구현과 로컬 검증은 완료됐다. 다만 EC2 apply와 GitHub Environment `EC2_INSTANCE_ID` 등록이 미실행이므로 아래 명령은 실행하지 않는다. 별도 승인 뒤 실제 instance ID와 SHA를 확인한 뒤 서비스별로 실행한다.
 
 ```bash
 aws ssm send-command --region ap-northeast-2 \

@@ -102,7 +102,7 @@ variable "api_cpu" {
 variable "api_memory" {
   description = "Fargate memory MiB for the API task."
   type        = number
-  default     = 512
+  default     = 1024
 }
 
 variable "worker_cpu" {

@@ -15,7 +15,7 @@ Landit 서비스의 Infrastructure as Code 레포입니다.
 | 일반 workflow target | `shared`, `develop`, `production` |
 | Bootstrap | state bucket 관리자 절차로 분리 |
 | SSM Parameter Store | develop/prod 기본 runtime parameter 준비 완료 |
-| Application platform | develop/prod ECS, ALB, ECR, SQS, S3 구성 생성 완료 |
+| Application platform | develop/prod ECS, ALB, ECR, SQS, S3 구성 생성 완료. develop 단일 EC2 병행 경로는 apply 전 |
 | Shared content delivery | private S3 bucket과 CloudFront OAC Terraform 구성 추가, apply 전 |
 | Production platform | prod runtime image push 필요 |
 | Public ingress | 환경별 BE와 AI host rule로 분리 |
@@ -57,11 +57,18 @@ Landit 서비스의 Infrastructure as Code 레포입니다.
 
 - Terraform backend, GitHub Actions, ECS Fargate application platform을 관리합니다.
 - develop은 기존 ALB에 BE와 AI host rule을 함께 둡니다.
+- develop EC2 전환 중에도 기존 ECS·ALB를 유지하고, 별도 승인된 apply와 병행 검증을 거친 뒤에만 DNS를 전환합니다.
 - production은 별도 ALB에 BE와 AI host rule을 함께 둡니다.
 - DNS record는 Vercel에서 관리하므로 Terraform은 Route53 record를 만들지 않습니다.
 - SSM Parameter Store에는 runtime parameter를 Terraform 밖에서 준비합니다.
 - `terraform apply`, `terraform destroy`, 실제 AWS 리소스 생성, 변경, 삭제는 사용자 확인 없이는 실행하지 않습니다.
 - 공통 콘텐츠 이미지는 private S3 bucket에서 CloudFront OAC를 통해서만 조회합니다.
+
+## 개발 EC2 병행 전환
+
+개발 환경은 기존 ECS·ALB와 단일 EC2를 병행 운영합니다. EC2 적용 후 `api-ec2-develop.landit.im`, `ai-ec2-develop.landit.im`에서 24~48시간 동안 HTTPS, BE·AI 기능, ECS target health, CloudWatch Logs, Grafana 지표, 메모리·swap·디스크와 CPU credit을 확인합니다. 검증을 마친 뒤에만 별도 승인으로 원래 개발 DNS를 EC2 Elastic IP로 전환하고, ECS·ALB 제거는 다시 별도 작업과 승인으로 진행합니다.
+
+Terraform apply와 Vercel DNS 변경은 아직 실행하지 않았습니다. EC2 장애 시에는 직전 이미지 SHA로 EC2만 되돌리고, 원래 DNS와 ECS·ALB는 복구 경계로 유지합니다.
 
 ## 주요 경로
 

@@ -9,8 +9,11 @@
 - 병행 검증 도메인은 `api-ec2-develop.landit.im`, `ai-ec2-develop.landit.im`을 사용하고 Vercel DNS 변경은 별도 승인 후 진행한다.
 - EC2 instance role을 두 컨테이너가 공유해 BE·AI IAM 권한이 합쳐지는 점과 단일 장애 지점을 테스트 환경의 비용 절감 조건으로 수용한다.
 - ECS·ALB 제거는 별도 단계로 진행하며 ECR, S3, SQS, SSM, CloudWatch Logs와 Grafana 전달 경로를 보존한다.
-- 변경 전 live dev plan에는 LAN-184 Push 제거가 아직 적용되지 않아 `1 add, 2 change, 8 destroy`가 남아 있다. LAN-284 apply 전에 별도 승인으로 기준 상태를 정리해야 한다.
-- 실제 Terraform apply, Vercel DNS 변경, 기존 리소스 제거는 각각 사용자 승인 뒤에만 실행한다.
+- `terraform init -reconfigure`, `bash scripts/test-dev-ec2-contract.sh`, `terraform fmt -recursive`, `terraform fmt -recursive -check`, `AWS_PROFILE=landit terraform -chdir=environments/dev validate`를 실행했고 모두 통과했다.
+- 2026-08-08 dev saved plan은 `10 add, 2 change, 8 destroy`였다. LAN-284는 `aws_instance.app`, `aws_eip.app`, `aws_eip_association.app`, EC2 IAM role·policy·attachment·instance profile, security group의 9개 create다.
+- 나머지 API ECS Service update, API Task Definition `delete,create`, Push Queue·DLQ·Scheduler·IAM·Alarm 8개 delete와 API IAM policy update는 미적용 LAN-184 Push 제거다. summary의 10번째 add는 LAN-184 API Task Definition replacement의 create 부분이다.
+- saved plan JSON 감사에서 `aws_lb` 주소는 없었다. ECS API Service delete 또는 replacement도 없고, ECS API의 update와 Task Definition replacement만 LAN-184 경계에 있다. 따라서 기존 ECS·ALB는 LAN-284 apply 전에 유지된다.
+- LAN-184 drift를 먼저 적용해 기준 plan을 `No changes`로 만들지, LAN-284와 함께 적용할지는 별도 승인이 필요하다. 실제 Terraform apply, Vercel DNS 변경, 기존 리소스 제거는 각각 사용자 승인 뒤에만 실행한다.
 
 ## 2026-07-28 LAN-184 Push 알림 인프라 제거
 

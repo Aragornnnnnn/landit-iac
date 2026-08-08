@@ -38,6 +38,40 @@ terraform -chdir=environments/dev validate
 AWS_PROFILE=landit terraform -chdir=environments/dev plan
 ```
 
+## 개발 EC2 병행 전환 검증
+
+개발 EC2는 기존 ECS·ALB를 대체하지 않고 병행 검증한다. saved plan을 만든 뒤 주소별 변경을 감사하고, plan 파일과 JSON은 `/tmp`에만 둔다.
+
+```bash
+AWS_PROFILE=landit terraform -chdir=environments/dev plan -input=false -out=/tmp/lan284-dev.tfplan
+terraform -chdir=environments/dev show -json /tmp/lan284-dev.tfplan > /tmp/lan284-dev-plan.json
+jq -r '.resource_changes[] | select(.change.actions != ["no-op"]) | [.address, (.change.actions | join(","))] | @tsv' /tmp/lan284-dev-plan.json
+```
+
+2026-08-08 saved plan은 `10 add, 2 change, 8 destroy`였다. LAN-284 경계는 `aws_instance.app`, `aws_eip.app`, `aws_eip_association.app`, EC2 IAM·instance profile·security group의 9개 create다. 나머지 API ECS Service update, API Task Definition replacement와 Push Queue·DLQ·Scheduler·IAM·Alarm 삭제는 미적용 LAN-184 Push 제거다. `aws_lb` 주소는 없고 ECS Service delete 또는 replacement도 없다.
+
+따라서 LAN-184 drift를 별도 적용해 기준 plan을 `No changes`로 만들지, 같은 saved plan으로 함께 적용할지는 별도 승인이 필요하다. 승인 전에는 Terraform apply와 Vercel DNS 변경을 실행하지 않는다.
+
+EC2가 적용된 뒤 BE·AI workflow는 ECS 배포가 성공한 같은 Git SHA를 SSM Run Command로 EC2에 배포한다. 실제 instance ID와 SHA를 확인한 뒤 서비스별로 실행한다.
+
+```bash
+aws ssm send-command --region ap-northeast-2 \
+  --document-name AWS-RunShellScript \
+  --instance-ids "$INSTANCE_ID" \
+  --parameters 'commands=["/opt/landit/bin/deploy-service api <GIT_SHA>"]'
+```
+
+health check 실패 시 EC2 스크립트는 저장된 직전 SHA로 자동 복구한다. 수동 복구가 필요하면 확인한 직전 SHA를 같은 명령의 인자로 사용한다.
+
+```bash
+aws ssm send-command --region ap-northeast-2 \
+  --document-name AWS-RunShellScript \
+  --instance-ids "$INSTANCE_ID" \
+  --parameters 'commands=["/opt/landit/bin/deploy-service api <PREVIOUS_GIT_SHA>"]'
+```
+
+EC2 복구는 ECS·ALB 변경을 포함하지 않는다. 원래 개발 DNS가 ALB를 가리키는 동안 EC2 실패는 EC2에서만 롤백한다. DNS 전환 뒤 장애가 나면 먼저 Vercel DNS를 ALB로 되돌리고, ECS 장애가 확인된 경우에만 기존 ECS 배포 절차로 복구한다. ECS·ALB 제거는 DNS 전환과 24~48시간 관찰을 마친 뒤 별도 승인으로만 수행한다.
+
 production root도 같은 흐름을 사용합니다.
 
 ```bash

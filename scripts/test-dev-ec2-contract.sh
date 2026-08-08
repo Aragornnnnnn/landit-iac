@@ -17,6 +17,7 @@ rg -q 'http_put_response_hop_limit[[:space:]]*=[[:space:]]*2' "${DEV_EC2}"
 rg -q 'cpu_credits[[:space:]]*=[[:space:]]*"standard"' "${DEV_EC2}"
 rg -q 'encrypted[[:space:]]*=[[:space:]]*true' "${DEV_EC2}"
 rg -q 'volume_size[[:space:]]*=[[:space:]]*20' "${DEV_EC2}"
+rg -q 'associate_public_ip_address[[:space:]]*=[[:space:]]*true' "${DEV_EC2}"
 if rg -q 'from_port[[:space:]]*=[[:space:]]*22' "${DEV_EC2}"; then
   echo '계약 위반. SSH 22번 포트를 열면 안 된다.' >&2
   exit 1
@@ -33,6 +34,16 @@ rg -q 'chmod 0600' "${USER_DATA}"
 rg -q 'flock' "${USER_DATA}"
 rg -q 'mkswap' "${USER_DATA}"
 rg -q 'amazon-cloudwatch-agent' "${USER_DATA}"
+rg -q 'grafana_otlp_enabled' "${DEV_EC2}"
+rg -q 'grafana_otlp_endpoint' "${DEV_EC2}"
+for otel_key in OTEL_EXPORTER_OTLP_METRICS_ENDPOINT MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED MANAGEMENT_OTLP_METRICS_EXPORT_STEP OTEL_METRICS_ENABLED OTEL_EXPORTER_OTLP_PROTOCOL OTEL_EXPORTER_OTLP_ENDPOINT OTEL_SERVICE_NAME OTEL_RESOURCE_ATTRIBUTES; do
+  rg -q "${otel_key}" "${USER_DATA}"
+done
+rg -q 'LANDIT_LOCK_FILE' "${USER_DATA}"
+rg -Fq 'if [[ ! -s "$${LANDIT_DIR}/api.tag" ]]' "${USER_DATA}"
+rg -Fq "grep -q '^/swapfile swap swap defaults 0 0$' /etc/fstab" "${USER_DATA}"
+rg -q 'previous_tag' "${USER_DATA}"
+rg -q 'rollback' "${USER_DATA}"
 rg -q 'mem_limit: 768m' "${COMPOSE}"
 rg -q 'mem_limit: 512m' "${COMPOSE}"
 rg -q '127.0.0.1:8080:8080' "${COMPOSE}"

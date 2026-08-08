@@ -5,7 +5,7 @@
 - 개발 ECS API·AI와 ALB는 EC2 병행 검증과 DNS 전환이 끝날 때까지 유지한다.
 - 단일 `t3.small`에서 Docker Compose로 BE, AI, Caddy를 실행하고 기존 ECR, SSM, S3, SQS, CloudWatch Logs를 재사용한다.
 - EC2의 BE만 `LANDIT_AI_BASE_URL=http://ai:8000`을 사용한다. 기존 SSM 값을 바꾸면 ECS BE까지 EC2 AI를 호출하므로 변경하지 않는다.
-- 기존 개발 배포 workflow는 ECS 성공 후 같은 Git SHA 이미지를 SSM Run Command로 EC2에 미러링한다.
+- BE·AI 개발 배포 workflow의 ECS 성공 후 같은 Git SHA 이미지를 SSM Run Command로 EC2에 미러링하는 작업은 후속 Task 5·6에서 구현·검증한다. 현재는 workflow 미러링과 EC2 apply가 모두 완료되지 않았다.
 - 병행 검증 도메인은 `api-ec2-develop.landit.im`, `ai-ec2-develop.landit.im`을 사용하고 Vercel DNS 변경은 별도 승인 후 진행한다.
 - EC2 instance role을 두 컨테이너가 공유해 BE·AI IAM 권한이 합쳐지는 점과 단일 장애 지점을 테스트 환경의 비용 절감 조건으로 수용한다.
 - ECS·ALB 제거는 별도 단계로 진행하며 ECR, S3, SQS, SSM, CloudWatch Logs와 Grafana 전달 경로를 보존한다.

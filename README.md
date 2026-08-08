@@ -66,9 +66,9 @@ Landit 서비스의 Infrastructure as Code 레포입니다.
 
 ## 개발 EC2 병행 전환
 
-개발 환경은 기존 ECS·ALB와 단일 EC2를 병행 운영합니다. EC2 적용 후 `api-ec2-develop.landit.im`, `ai-ec2-develop.landit.im`에서 24~48시간 동안 HTTPS, BE·AI 기능, ECS target health, CloudWatch Logs, Grafana 지표, 메모리·swap·디스크와 CPU credit을 확인합니다. 검증을 마친 뒤에만 별도 승인으로 원래 개발 DNS를 EC2 Elastic IP로 전환하고, ECS·ALB 제거는 다시 별도 작업과 승인으로 진행합니다.
+별도 승인으로 EC2를 적용한 뒤, 후속 Task 5·6에서 BE·AI 배포 workflow의 EC2 미러링을 구현·검증하고 기존 ECS·ALB와 병행 운영합니다. 그 후 `api-ec2-develop.landit.im`, `ai-ec2-develop.landit.im`에서 24~48시간 동안 HTTPS, BE·AI 기능, ECS target health, CloudWatch Logs, Grafana 지표, 메모리·swap·디스크와 CPU credit을 확인합니다. 검증을 마친 뒤에만 별도 승인으로 원래 개발 DNS를 EC2 Elastic IP로 전환하고, ECS·ALB 제거는 다시 별도 작업과 승인으로 진행합니다.
 
-Terraform apply와 Vercel DNS 변경은 아직 실행하지 않았습니다. EC2 장애 시에는 직전 이미지 SHA로 EC2만 되돌리고, 원래 DNS와 ECS·ALB는 복구 경계로 유지합니다.
+현재는 Terraform apply와 Vercel DNS 변경을 실행하지 않아 EC2와 EIP가 생성되지 않았습니다. 적용 후 EC2 장애 시에는 직전 이미지 SHA로 EC2만 되돌리고, 원래 DNS와 ECS·ALB는 복구 경계로 유지합니다.
 
 ## 주요 경로
 

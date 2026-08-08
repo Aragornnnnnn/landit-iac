@@ -7,7 +7,7 @@
 - [x] 기존 ECS·ALB를 유지하는 단계적 EC2 통합 설계를 작성한다.
 - [x] 승인된 설계를 기준으로 구현 계획을 작성한다.
 - [x] EC2 병행 인프라와 정적 계약 테스트를 구현한다.
-- [x] BE·AI 개발 배포를 ECS와 EC2에 미러링한다.
+- [ ] BE·AI 개발 배포를 ECS와 EC2에 미러링한다. 후속 Task 5·6에서 구현·검증한다.
 - [x] Terraform fmt, validate와 dev saved plan을 검증한다.
 - [x] 실제 apply와 DNS 변경은 별도 승인 전까지 보류한다.
 - [ ] EC2 이전 검증 후 기존 ECS·ALB 제거를 별도 작업으로 진행한다.

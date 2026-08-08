@@ -1,5 +1,17 @@
 # Context Notes
 
+## 2026-08-08 LAN-284 개발 BE·AI 단일 EC2 통합
+
+- 개발 ECS API·AI와 ALB는 EC2 병행 검증과 DNS 전환이 끝날 때까지 유지한다.
+- 단일 `t3.small`에서 Docker Compose로 BE, AI, Caddy를 실행하고 기존 ECR, SSM, S3, SQS, CloudWatch Logs를 재사용한다.
+- EC2의 BE만 `LANDIT_AI_BASE_URL=http://ai:8000`을 사용한다. 기존 SSM 값을 바꾸면 ECS BE까지 EC2 AI를 호출하므로 변경하지 않는다.
+- 기존 개발 배포 workflow는 ECS 성공 후 같은 Git SHA 이미지를 SSM Run Command로 EC2에 미러링한다.
+- 병행 검증 도메인은 `api-ec2-develop.landit.im`, `ai-ec2-develop.landit.im`을 사용하고 Vercel DNS 변경은 별도 승인 후 진행한다.
+- EC2 instance role을 두 컨테이너가 공유해 BE·AI IAM 권한이 합쳐지는 점과 단일 장애 지점을 테스트 환경의 비용 절감 조건으로 수용한다.
+- ECS·ALB 제거는 별도 단계로 진행하며 ECR, S3, SQS, SSM, CloudWatch Logs와 Grafana 전달 경로를 보존한다.
+- 변경 전 live dev plan에는 LAN-184 Push 제거가 아직 적용되지 않아 `1 add, 2 change, 8 destroy`가 남아 있다. LAN-284 apply 전에 별도 승인으로 기준 상태를 정리해야 한다.
+- 실제 Terraform apply, Vercel DNS 변경, 기존 리소스 제거는 각각 사용자 승인 뒤에만 실행한다.
+
 ## 2026-07-28 LAN-184 Push 알림 인프라 제거
 
 - 제품 결정이 서버 Push에서 앱 로컬 알림으로 변경돼 LAN-184 Push 전용 AWS 인프라와 API 연결을 제거한다.

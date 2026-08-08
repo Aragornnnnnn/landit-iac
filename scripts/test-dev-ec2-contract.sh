@@ -18,6 +18,13 @@ rg -q 'cpu_credits[[:space:]]*=[[:space:]]*"standard"' "${DEV_EC2}"
 rg -q 'encrypted[[:space:]]*=[[:space:]]*true' "${DEV_EC2}"
 rg -q 'volume_size[[:space:]]*=[[:space:]]*20' "${DEV_EC2}"
 rg -q 'associate_public_ip_address[[:space:]]*=[[:space:]]*true' "${DEV_EC2}"
+instance_block="$(sed -n '/resource "aws_instance" "app" {/,/^}/p' "${DEV_EC2}")"
+for iam_dependency in aws_iam_role_policy_attachment.ec2_ssm_managed_instance aws_iam_role_policy.ec2_app; do
+  if ! rg -Fq "${iam_dependency}" <<<"${instance_block}"; then
+    echo "계약 위반. EC2 instance는 ${iam_dependency} 완료 뒤에 생성돼야 한다." >&2
+    exit 1
+  fi
+done
 if rg -q 'from_port[[:space:]]*=[[:space:]]*22' "${DEV_EC2}"; then
   echo '계약 위반. SSH 22번 포트를 열면 안 된다.' >&2
   exit 1

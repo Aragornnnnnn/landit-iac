@@ -161,6 +161,11 @@ resource "aws_security_group" "ec2_app" {
 }
 
 resource "aws_instance" "app" {
+  depends_on = [
+    aws_iam_role_policy_attachment.ec2_ssm_managed_instance,
+    aws_iam_role_policy.ec2_app
+  ]
+
   ami                         = data.aws_ssm_parameter.al2023_ami.value
   instance_type               = var.dev_ec2_instance_type
   subnet_id                   = module.app_platform.public_subnet_ids[0]

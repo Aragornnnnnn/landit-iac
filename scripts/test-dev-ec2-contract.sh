@@ -23,6 +23,12 @@ if rg -q 'from_port[[:space:]]*=[[:space:]]*22' "${DEV_EC2}"; then
   exit 1
 fi
 
+get_command_invocation_statement="$(sed -n '/actions[[:space:]]*=[[:space:]]*\["ssm:GetCommandInvocation"\]/,/^  }/p' "${DEV_EC2}")"
+if ! rg -q 'resources[[:space:]]*=[[:space:]]*\["\*"\]' <<<"${get_command_invocation_statement}"; then
+  echo '계약 위반. GitHub deploy role은 GetCommandInvocation만 Resource=*로 허용해야 한다.' >&2
+  exit 1
+fi
+
 USER_DATA="${ROOT_DIR}/environments/dev/templates/ec2-user-data.sh.tftpl"
 COMPOSE="${ROOT_DIR}/environments/dev/templates/docker-compose.yml.tftpl"
 CADDY="${ROOT_DIR}/environments/dev/templates/Caddyfile.tftpl"

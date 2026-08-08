@@ -228,6 +228,11 @@ data "aws_iam_policy_document" "github_actions_ec2_deploy" {
       "arn:aws:ssm:${var.aws_region}::document/AWS-RunShellScript"
     ]
   }
+
+  statement {
+    actions   = ["ssm:GetCommandInvocation"]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role_policy" "github_actions_ec2_deploy" {

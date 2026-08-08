@@ -1,0 +1,60 @@
+services:
+  api:
+    image: $${API_IMAGE}:$${API_TAG}
+    env_file:
+      - /run/landit/api.env
+    ports:
+      - "127.0.0.1:8080:8080"
+    mem_limit: 768m
+    restart: unless-stopped
+    networks:
+      - landit
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: "${api_log_group_name}"
+        awslogs-region: "${aws_region}"
+        awslogs-stream: ec2-api
+
+  ai:
+    image: $${AI_IMAGE}:$${AI_TAG}
+    env_file:
+      - /run/landit/ai.env
+    ports:
+      - "127.0.0.1:8000:8000"
+    mem_limit: 512m
+    restart: unless-stopped
+    networks:
+      - landit
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: "${ai_log_group_name}"
+        awslogs-region: "${aws_region}"
+        awslogs-stream: ec2-ai
+
+  caddy:
+    image: caddy:2.8.4-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /opt/landit/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    networks:
+      - landit
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: "${api_log_group_name}"
+        awslogs-region: "${aws_region}"
+        awslogs-stream: ec2-caddy
+
+networks:
+  landit:
+
+volumes:
+  caddy_data:
+  caddy_config:

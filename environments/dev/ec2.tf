@@ -167,6 +167,27 @@ resource "aws_instance" "app" {
   vpc_security_group_ids      = [aws_security_group.ec2_app.id]
   iam_instance_profile        = aws_iam_instance_profile.ec2_app.name
   associate_public_ip_address = false
+  user_data = templatefile("${path.module}/templates/ec2-user-data.sh.tftpl", {
+    api_image            = module.app_platform.api_ecr_repository_url
+    ai_image             = module.app_platform.worker_ecr_repository_url
+    api_log_group_name   = module.app_platform.api_log_group_name
+    ai_log_group_name    = module.app_platform.worker_log_group_name
+    aws_region           = var.aws_region
+    parameter_store_path = var.parameter_store_path
+    ecr_registry         = split("/", module.app_platform.api_ecr_repository_url)[0]
+    environment          = var.environment
+    app_bucket_name      = module.app_platform.app_bucket_name
+    jobs_queue_url       = module.app_platform.jobs_queue_url
+    docker_compose = templatefile("${path.module}/templates/docker-compose.yml.tftpl", {
+      api_log_group_name = module.app_platform.api_log_group_name
+      ai_log_group_name  = module.app_platform.worker_log_group_name
+      aws_region         = var.aws_region
+    })
+    caddyfile = templatefile("${path.module}/templates/Caddyfile.tftpl", {
+      api_domain_name = var.api_ec2_domain_name
+      ai_domain_name  = var.ai_ec2_domain_name
+    })
+  })
 
   credit_specification {
     cpu_credits = "standard"

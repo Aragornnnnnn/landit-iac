@@ -446,3 +446,15 @@
 - [x] 사용자 승인 후 prod apply를 실행하고 API·AI health와 live WAF 규칙을 확인한다.
 - [ ] apply 후 24~48시간 정상 흐름과 5xx를 관찰한다.
 - [ ] 오탐 시 Label Block 규칙만 제거하는 롤백 절차를 기록한다.
+
+## 2026-08-11 LAN-299 관리자 콘텐츠 이미지 업로드 IaC
+
+- [x] 기존 shared 콘텐츠 S3·CloudFront와 dev·prod API ECS IAM 구조를 확인한다.
+- [x] IaC 범위, 업로드 key prefix, 허용 origin과 shared state 연동 방식을 확정한다.
+- [x] S3 CORS, API Task Role 최소 권한, ECS 환경 변수와 검증 설계를 문서화한다.
+- [ ] 사용자가 설계 문서를 검토한다.
+- [ ] 상세 구현 계획을 작성한다.
+- [ ] 계약 테스트를 먼저 추가하고 Terraform을 구현한다.
+- [ ] `terraform fmt -recursive`, 계약 테스트, shared·dev·prod validate와 plan을 실행한다.
+- [ ] 사용자 승인 후 shared·develop·production saved plan을 적용한다.
+- [ ] 실제 임시 객체 업로드와 CloudFront 조회를 확인한다.

@@ -640,3 +640,14 @@
 - 새 API target은 healthy이며 기존 target은 정상 deregistration 과정에서 draining 상태였다. API `/actuator/health`는 `UP`, AI `/health`는 `ok`를 반환했다.
 - live WAF는 Common priority 10 Count, IP Reputation priority 20 기본 action, priority 25 `common-label-block`의 세 라벨 Block, priority 30의 5분 2,000회 rate Block을 반환한다.
 - post-apply 전체 prod plan은 `No changes`다. Label Block 오탐과 ALB·target 5xx는 24~48시간 추가 관찰한다.
+
+## 2026-08-11 LAN-299 관리자 콘텐츠 이미지 업로드 IaC 설계
+
+- 이번 저장소 범위는 shared 콘텐츠 S3 CORS, develop·production API ECS Task Role 권한, API 컨테이너 환경 변수, 문서와 IaC 검증이다. 관리자 presigned URL API, 파일 형식·크기 검증, 공지·업데이트 이미지 블록 저장은 landit-be 후속 범위이며 이번 IaC 작업에서 완료 처리하지 않는다.
+- develop과 production API가 같은 shared 콘텐츠 버킷에 업로드한다. AI worker에는 콘텐츠 버킷 권한이나 환경 변수를 추가하지 않는다.
+- 새 객체 key는 `content/inbox/{uuid}.{extension}`을 사용한다. API는 `If-None-Match: *`와 immutable cache header를 presigned PUT 계약에 포함해 같은 key 덮어쓰기를 거부해야 한다.
+- shared 콘텐츠 버킷의 CORS는 `PUT`만 허용한다. origin은 `https://landit.im`, `https://develop.landit.im`, 현재 CORS의 로컬 프론트 주소 `http://localhost:3000`, `http://127.0.0.1:3000`, `http://10.0.2.2:3000`, `http://172.16.103.142:3000`, `http://192.168.219.107:3000`으로 제한한다.
+- dev·prod root는 `terraform_remote_state`로 shared state의 실제 `content_bucket_name`과 `cloudfront_url` output을 읽어 app-platform module에 전달한다. 값을 환경별로 중복 작성하거나 SSM parameter를 추가하지 않는다.
+- API Task Role에는 shared bucket의 `content/inbox/*`에 대한 `s3:PutObject`만 허용한다. 기존 application bucket 권한과 worker 권한은 유지한다.
+- API 컨테이너에는 `CONTENT_BUCKET_NAME`, `CONTENT_CLOUDFRONT_URL`을 일반 환경 변수로 주입한다. 기존 CloudFront OAC가 `content/*`를 읽으므로 distribution과 bucket read policy는 넓히지 않는다.
+- 구현 검증은 계약 테스트, `terraform fmt -recursive`, shared·dev·prod validate, 세 root의 saved plan 순서로 진행한다. apply와 실제 S3 임시 객체 업로드는 plan 검토 뒤 사용자 승인을 별도로 받는다.

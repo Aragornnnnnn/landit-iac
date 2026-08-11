@@ -1,11 +1,23 @@
 # 개발 환경의 ECS 기반 application platform module을 호출한다.
+data "terraform_remote_state" "shared" {
+  backend = "s3"
+
+  config = {
+    bucket = "landit-terraform-state-982529430654"
+    key    = "shared/landit-iac/terraform.tfstate"
+    region = var.aws_region
+  }
+}
+
 module "app_platform" {
   source = "../../modules/app-platform"
 
-  project_name         = var.project_name
-  environment          = var.environment
-  aws_region           = var.aws_region
-  parameter_store_path = var.parameter_store_path
+  project_name           = var.project_name
+  environment            = var.environment
+  aws_region             = var.aws_region
+  parameter_store_path   = var.parameter_store_path
+  content_bucket_name    = data.terraform_remote_state.shared.outputs.content_bucket_name
+  content_cloudfront_url = data.terraform_remote_state.shared.outputs.cloudfront_url
 
   vpc_cidr            = var.vpc_cidr
   public_subnet_cidrs = var.public_subnet_cidrs

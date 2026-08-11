@@ -10,3 +10,17 @@ variable "project_name" {
   type        = string
   default     = "landit"
 }
+
+variable "content_upload_allowed_origins" {
+  description = "Browser origins allowed to upload shared content images directly to S3."
+  type        = list(string)
+  default = [
+    "https://landit.im",
+    "https://develop.landit.im",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://10.0.2.2:3000",
+    "http://172.16.103.142:3000",
+    "http://192.168.219.107:3000"
+  ]
+}

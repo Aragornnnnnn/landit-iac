@@ -452,8 +452,8 @@
 - [x] 기존 shared 콘텐츠 S3·CloudFront와 dev·prod API ECS IAM 구조를 확인한다.
 - [x] IaC 범위, 업로드 key prefix, 허용 origin과 shared state 연동 방식을 확정한다.
 - [x] S3 CORS, API Task Role 최소 권한, ECS 환경 변수와 검증 설계를 문서화한다.
-- [ ] 사용자가 설계 문서를 검토한다.
-- [ ] 상세 구현 계획을 작성한다.
+- [x] 사용자가 설계 문서를 검토한다.
+- [x] 상세 구현 계획을 작성한다.
 - [ ] 계약 테스트를 먼저 추가하고 Terraform을 구현한다.
 - [ ] `terraform fmt -recursive`, 계약 테스트, shared·dev·prod validate와 plan을 실행한다.
 - [ ] 사용자 승인 후 shared·develop·production saved plan을 적용한다.

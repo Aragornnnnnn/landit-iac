@@ -651,3 +651,4 @@
 - API Task Role에는 shared bucket의 `content/inbox/*`에 대한 `s3:PutObject`만 허용한다. 기존 application bucket 권한과 worker 권한은 유지한다.
 - API 컨테이너에는 `CONTENT_BUCKET_NAME`, `CONTENT_CLOUDFRONT_URL`을 일반 환경 변수로 주입한다. 기존 CloudFront OAC가 `content/*`를 읽으므로 distribution과 bucket read policy는 넓히지 않는다.
 - 구현 검증은 계약 테스트, `terraform fmt -recursive`, shared·dev·prod validate, 세 root의 saved plan 순서로 진행한다. apply와 실제 S3 임시 객체 업로드는 plan 검토 뒤 사용자 승인을 별도로 받는다.
+- 사용자가 설계를 승인했고, 구현 계획은 `docs/superpowers/plans/2026-08-11-lan-299-admin-content-upload-iac.md`에 필요한 Terraform 구현·검증·적용 후 live 확인의 세 작업으로만 정리한다.

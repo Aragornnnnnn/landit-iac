@@ -652,3 +652,6 @@
 - API 컨테이너에는 `CONTENT_BUCKET_NAME`, `CONTENT_CLOUDFRONT_URL`을 일반 환경 변수로 주입한다. 기존 CloudFront OAC가 `content/*`를 읽으므로 distribution과 bucket read policy는 넓히지 않는다.
 - 구현 검증은 계약 테스트, `terraform fmt -recursive`, shared·dev·prod validate, 세 root의 saved plan 순서로 진행한다. apply와 실제 S3 임시 객체 업로드는 plan 검토 뒤 사용자 승인을 별도로 받는다.
 - 사용자가 설계를 승인했고, 구현 계획은 `docs/superpowers/plans/2026-08-11-lan-299-admin-content-upload-iac.md`에 필요한 Terraform 구현·검증·적용 후 live 확인의 세 작업으로만 정리한다.
+- LAN-299 계약 테스트가 CORS 7개 origin·PUT/header 계약, shared remote state, API `content/inbox/*` PutObject, API 환경 변수, worker 미변경을 모두 통과했다.
+- shared·develop·production Terraform validate는 모두 성공했다. shared saved plan은 `1 to add, 0 to change, 0 to destroy`로 CORS configuration만 추가한다. production saved plan은 `1 to add, 2 to change, 1 to destroy`로 API policy·Task Definition·Service만 반영한다.
+- develop saved plan은 현재 state에 남은 Push 알림 리소스 때문에 `1 to add, 2 to change, 8 to destroy`가 되었다. targeted API plan도 이전 Push 권한·환경 변수 제거가 함께 포함된다. LAN-299와 무관한 stale state 삭제를 방지하기 위해 develop·production apply와 실제 업로드 검증은 보류한다.

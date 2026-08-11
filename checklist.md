@@ -456,5 +456,5 @@
 - [x] 상세 구현 계획을 작성한다.
 - [x] 계약 테스트를 먼저 추가하고 Terraform을 구현한다.
 - [x] `terraform fmt -recursive`, 계약 테스트, shared·dev·prod validate와 plan을 실행한다.
-- [ ] 사용자 승인 후 shared·develop·production saved plan을 적용한다.
+- [x] 사용자 승인 후 shared·develop·production saved plan을 적용한다.
 - [ ] 실제 임시 객체 업로드와 CloudFront 조회를 확인한다.

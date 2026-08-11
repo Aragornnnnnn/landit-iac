@@ -655,3 +655,8 @@
 - LAN-299 계약 테스트가 CORS 7개 origin·PUT/header 계약, shared remote state, API `content/inbox/*` PutObject, API 환경 변수, worker 미변경을 모두 통과했다.
 - shared·develop·production Terraform validate는 모두 성공했다. shared saved plan은 `1 to add, 0 to change, 0 to destroy`로 CORS configuration만 추가한다. production saved plan은 `1 to add, 2 to change, 1 to destroy`로 API policy·Task Definition·Service만 반영한다.
 - develop saved plan은 현재 state에 남은 Push 알림 리소스 때문에 `1 to add, 2 to change, 8 to destroy`가 되었다. targeted API plan도 이전 Push 권한·환경 변수 제거가 함께 포함된다. LAN-299와 무관한 stale state 삭제를 방지하기 위해 develop·production apply와 실제 업로드 검증은 보류한다.
+- 사용자가 Push 정리를 포함한 전체 적용을 승인했다. 삭제 전 develop Push queue·DLQ의 visible·in-flight·delayed 메시지는 모두 0이었다.
+- shared apply는 콘텐츠 버킷 CORS만 `1 added, 0 changed, 0 destroyed`로 반영했다. develop apply는 Push queue·DLQ·alarm·Scheduler·IAM 7개와 기존 API task definition을 정리하며 `1 added, 2 changed, 8 destroyed`, production apply는 API task definition 교체와 IAM·Service 갱신으로 `1 added, 2 changed, 1 destroyed`였다.
+- develop API revision `10`과 production API revision `8`은 desired/running `1/1`, pending `0`, rollout `COMPLETED`, failed task `0`으로 안정화됐고 두 ALB에는 새 healthy target만 남았다. 두 외부 `/actuator/health` endpoint는 `UP`을 반환했다.
+- AWS 실상태에서 CORS 7개 origin, 두 API task role의 `content/inbox/*` `s3:PutObject`, 두 task definition의 콘텐츠 bucket·CloudFront 환경 변수를 확인했다. 기존 콘텐츠 객체의 CloudFront HEAD 요청은 `HTTP 200`, `image/png`을 반환했다.
+- post-apply shared·develop·production 전체 plan은 모두 `No changes`다. presigned URL을 이용한 신규 임시 객체 업로드는 BE 구현 후 검증 범위이므로 아직 실행하지 않았다.

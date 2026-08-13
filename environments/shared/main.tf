@@ -32,6 +32,18 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "content" {
   }
 }
 
+resource "aws_s3_bucket_cors_configuration" "content" {
+  bucket = aws_s3_bucket.content.id
+
+  cors_rule {
+    allowed_methods = ["PUT"]
+    allowed_origins = var.content_upload_allowed_origins
+    allowed_headers = ["Content-Type", "Cache-Control", "If-None-Match", "x-amz-*"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3600
+  }
+}
+
 resource "aws_cloudfront_origin_access_control" "content" {
   name                              = "${local.name_prefix}-content"
   description                       = "CloudFront access to the shared Landit content bucket."

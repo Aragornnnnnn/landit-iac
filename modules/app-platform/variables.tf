@@ -19,6 +19,16 @@ variable "parameter_store_path" {
   type        = string
 }
 
+variable "content_bucket_name" {
+  description = "Shared private S3 bucket name for administrator content images."
+  type        = string
+}
+
+variable "content_cloudfront_url" {
+  description = "CloudFront base URL for administrator content images."
+  type        = string
+}
+
 variable "vpc_cidr" {
   description = "CIDR block for the new VPC."
   type        = string

@@ -1,5 +1,35 @@
 # Context Notes
 
+## 2026-08-15 LAN-284 최신 state 적용 전 plan 분리 감사
+
+- 기준은 `origin/main` `145980a`와 Task 1 clean `feat/284` `2431187`이며, `origin/main`은 feature HEAD의 조상이다. 두 plan은 같은 develop state에서 `terraform apply` 없이 생성했고 saved plan·JSON은 `/tmp`에만 저장했다.
+- `origin/main` 기준 plan은 `No changes`였다. 이전 기록의 LAN-184 Push 8개 destroy는 최신 state 기준 이 plan에 더 이상 포함되지 않는다.
+- 리뷰 보완 뒤 LAN-284 plan은 `10 to add, 0 to change, 0 to destroy`다. 기존 EC2·EIP·IAM·security group create 9개에 입력을 `api|ai`와 40자리 SHA로 제한한 `aws_ssm_document.ec2_deploy` create 1개가 추가됐고, `data.aws_iam_policy_document.github_actions_ec2_deploy`의 plan-time read 1개가 있다.
+- 두 plan 모두 `aws_lb`, listener, target group 주소 변경이 없고 ECS Service delete·replace도 없다. LAN-184 Push destroy도 없으며, 최신 main에 반영된 LAN-299 이후 변경도 기준 plan `No changes`로 인해 LAN-284 plan에 추가 변경으로 포함되지 않았다.
+- 따라서 2026-08-08 당시의 LAN-184 8개 destroy 기록은 역사적 plan 결과로만 보존한다. 2026-08-15 현재 baseline은 이미 `No changes`이므로 LAN-184 drift apply와 post-apply `No changes`는 다음 승인 게이트가 아니라 해당 없음으로 닫는다.
+- AWS 읽기 전용 확인에서 개발 EC2는 0대, ECS API·AI는 각각 desired/running `1/1`, pending `0`, PRIMARY rollout `COMPLETED`였고 ALB는 `active`다. SSM parameter 또는 secret 값은 조회·기록하지 않았다.
+- 이 결과는 EC2 create-only 승인을 위한 사전 검토일 뿐이다. Terraform apply, DNS, GitHub `EC2_INSTANCE_ID` 등록, 실제 SSM 배포, 기존 ECS·ALB 제거는 계속 별도 사용자 승인 대상이다.
+- 현재 후속 순서는 IaC PR 병합, 최신 create-only plan 재생성·승인, EC2 apply, SSM·Docker·Caddy·loopback health 검증, 임시 Vercel DNS `api-ec2-develop.landit.im`·`ai-ec2-develop.landit.im` 등록 승인, 외부 HTTPS·API·AI·BE→AI 검증, BE·AI `EC2_INSTANCE_ID` 등록, BE·AI workflow PR 병합과 ECS 검증 뒤 동일 SHA EC2 미러링, 24~48시간 관찰, 원래 개발 DNS 전환 별도 승인이다. EC2 runtime과 두 GitHub 변수를 준비하기 전에는 application workflow PR을 병합하지 않는다.
+
+## 2026-08-08 LAN-284 개발 BE·AI 단일 EC2 통합
+
+- 개발 ECS API·AI와 ALB는 EC2 병행 검증과 DNS 전환이 끝날 때까지 유지한다.
+- 단일 `t3.small`에서 Docker Compose로 BE, AI, Caddy를 실행하고 기존 ECR, SSM, S3, SQS, CloudWatch Logs를 재사용한다.
+- EC2의 BE만 `LANDIT_AI_BASE_URL=http://ai:8000`을 사용한다. 기존 SSM 값을 바꾸면 ECS BE까지 EC2 AI를 호출하므로 변경하지 않는다.
+- BE·AI 개발 배포 workflow는 ECS 성공 뒤 같은 Git SHA를 SSM Run Command로 EC2에 미러링하도록 구현했고 shell 계약·BE Gradle check·AI unittest를 통과했다. EC2 apply와 GitHub Environment `EC2_INSTANCE_ID` 등록은 실행하지 않았다.
+- 병행 검증 도메인은 `api-ec2-develop.landit.im`, `ai-ec2-develop.landit.im`을 사용하고 Vercel DNS 변경은 별도 승인 후 진행한다.
+- EC2 instance role을 두 컨테이너가 공유해 BE·AI IAM 권한이 합쳐지는 점과 단일 장애 지점을 테스트 환경의 비용 절감 조건으로 수용한다.
+- ECS·ALB 제거는 별도 단계로 진행하며 ECR, S3, SQS, SSM, CloudWatch Logs와 Grafana 전달 경로를 보존한다.
+- `terraform init -reconfigure`, `bash scripts/test-dev-ec2-contract.sh`, `terraform fmt -recursive`, `terraform fmt -recursive -check`, `AWS_PROFILE=landit terraform -chdir=environments/dev validate`를 실행했고 모두 통과했다.
+- 2026-08-08 dev saved plan은 `10 add, 2 change, 8 destroy`였다. LAN-284는 `aws_instance.app`, `aws_eip.app`, `aws_eip_association.app`, EC2 IAM role·policy·attachment·instance profile, security group의 9개 create다.
+- 나머지 API ECS Service update, API Task Definition `delete,create`, Push Queue·DLQ·Scheduler·IAM·Alarm 8개 delete와 API IAM policy update는 미적용 LAN-184 Push 제거다. summary의 10번째 add는 LAN-184 API Task Definition replacement의 create 부분이다.
+- saved plan JSON 감사에서 `aws_lb` 주소는 없었다. ECS API Service delete 또는 replacement도 없고, ECS API의 update와 Task Definition replacement만 LAN-184 경계에 있다. 따라서 기존 ECS·ALB는 LAN-284 apply 전에 유지된다.
+- 2026-08-08 당시에는 LAN-184 drift를 먼저 적용해 기준 plan을 `No changes`로 만들지, LAN-284와 함께 적용할지를 별도 승인으로 판단했다. 이 판단은 2026-08-15 baseline `No changes` 확인 뒤 현재 후속 승인 게이트에는 적용하지 않으며, 실제 Terraform apply, Vercel DNS 변경, 기존 리소스 제거는 각각 사용자 승인 뒤에만 실행한다.
+- Task 7 재검증에서 `bash scripts/test-dev-ec2-contract.sh`, `terraform fmt -recursive -check`, `AWS_PROFILE=landit terraform -chdir=environments/dev validate`가 통과했다. sandbox는 AWS provider의 Unix socket bind를 막아 validate를 실행 환경에서 재시도했고 `Success! The configuration is valid.`를 확인했다.
+- BE는 `bash .github/scripts/test/deploy-ec2-service_test.sh`와 `./gradlew check --rerun-tasks --no-daemon`, AI는 같은 shell test와 기존 가상환경을 읽기 전용으로 사용한 `PYTHONDONTWRITEBYTECODE=1 /Users/sangmin8817/Soma/landit-ai/.venv/bin/python -m unittest discover -s tests`를 통과했다. AI unittest는 241개를 실행했다.
+- 세 저장소 diff 검토 뒤 GitHub role의 AWS 관리형 shell 문서 호출 권한을 제거했다. 전용 `develop-landit-ec2-deploy` 문서는 `ENV_VAR` interpolation과 `allowedValues`·`allowedPattern`으로 `api|ai`, 40자리 SHA만 받아 고정된 `/opt/landit/bin/deploy-service`를 실행한다. Docker Compose 바이너리 SHA-256 검증, 최초 API·AI health gate, GNU·BSD 공통 테스트 렌더링도 추가했고 rollback은 EC2 컨테이너만 직전 SHA로 되돌린다.
+- apply, GitHub 변수 등록, 실제 SSM 명령, 임시 Vercel DNS, EC2·ECS health, 24~48시간 관찰, 기존 ECS·ALB 제거는 모두 미실행이다.
+
 ## 2026-07-28 LAN-184 Push 알림 인프라 제거
 
 - 제품 결정이 서버 Push에서 앱 로컬 알림으로 변경돼 LAN-184 Push 전용 AWS 인프라와 API 연결을 제거한다.

@@ -1,5 +1,35 @@
 # Checklist
 
+## 2026-08-08 LAN-284 개발 BE·AI 단일 EC2 통합
+
+- [x] `feat/284` 격리 worktree를 `origin/main`에서 생성한다.
+- [x] 현재 개발 ECS·ALB 구성과 BE·AI 배포 workflow를 확인한다.
+- [x] 기존 ECS·ALB를 유지하는 단계적 EC2 통합 설계를 작성한다.
+- [x] 승인된 설계를 기준으로 구현 계획을 작성한다.
+- [x] EC2 병행 인프라와 정적 계약 테스트를 구현한다.
+- [x] BE·AI 개발 배포가 ECS 안정화 뒤 같은 SHA를 EC2에 미러링하도록 구현하고 로컬 계약·전체 검증을 통과한다.
+- [x] Terraform fmt, validate와 dev saved plan을 검증한다.
+- [x] 세 저장소의 LAN-284 diff, IAM·secret·rollback 경계와 재실행한 검증 결과를 교차 검토한다.
+- [x] 실제 apply와 DNS 변경은 별도 승인 전까지 보류한다.
+- [ ] IaC LAN-284 PR을 먼저 병합한 뒤 최신 state 기준 EC2 create-only plan을 재생성·승인하고 EC2를 apply한다.
+- [ ] SSM·Docker·Caddy·loopback health·로그·rollback을 검증한다.
+- [ ] 임시 Vercel DNS `api-ec2-develop.landit.im`, `ai-ec2-develop.landit.im` 등록 승인을 받고, 외부 HTTPS·API·AI·BE→AI를 검증한다.
+- [ ] 그 뒤 BE·AI GitHub Environment `EC2_INSTANCE_ID`를 등록한다.
+- [ ] EC2와 `EC2_INSTANCE_ID` 준비 전에는 BE·AI application workflow PR을 병합하지 않고, 준비 뒤 두 PR을 병합해 ECS 검증 뒤 같은 SHA를 EC2에 미러링하는 dual deploy를 검증한다.
+- [ ] dual deploy 뒤 24~48시간 병행 관찰을 거쳐 원래 개발 DNS 전환의 별도 승인을 받는다.
+- [ ] EC2 이전 검증 후 기존 ECS·ALB 제거를 별도 작업으로 진행한다.
+
+## 2026-08-15 LAN-284 최신 state 적용 전 plan 분리 감사
+
+- [x] 최신 `origin/main`과 `feat/284`를 같은 develop state에서 각각 saved plan으로 생성한다.
+- [x] 기준 plan의 `No changes`와 전용 SSM 문서를 포함한 LAN-284 plan의 `10 to add, 0 to change, 0 to destroy`를 주소 단위로 분리한다.
+- [x] GitHub 배포 역할의 `AWS-RunShellScript` 권한을 제거하고 입력을 `api|ai`와 40자리 SHA로 제한한 전용 SSM 문서만 허용한다.
+- [x] ALB·listener·target group, ECS Service delete·replace, LAN-184 Push destroy가 두 plan에 없음을 확인한다.
+- [x] 2026-08-15 baseline `No changes`로 현재 LAN-184 drift apply·post-apply 승인 게이트가 해당 없음을 확인한다.
+- [x] 개발 EC2 부재, ECS API·AI `1/1` 및 PRIMARY rollout `COMPLETED`, ALB `active`를 읽기 전용으로 재확인한다.
+- [x] apply·DNS·GitHub 변수·기존 ECS/ALB 제거를 별도 승인 게이트로 유지한다.
+- [x] 다음 게이트를 IaC 병합, create-only plan 승인, EC2 apply, loopback 검증, 임시 DNS 승인·외부 검증, `EC2_INSTANCE_ID` 등록, BE·AI workflow 병합·dual deploy, 24~48시간 관찰, 원래 DNS 전환 승인 순서로 고정한다.
+
 ## 2026-07-28 LAN-184 Push 알림 인프라 제거
 
 - [x] 앱 로컬 알림 전환으로 서버 Push 인프라가 불필요해졌음을 확인한다.

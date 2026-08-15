@@ -38,3 +38,13 @@ output "app_bucket_name" {
   description = "Development private application S3 bucket name."
   value       = module.app_platform.app_bucket_name
 }
+
+output "ec2_instance_id" {
+  description = "Development EC2 application instance ID."
+  value       = aws_instance.app.id
+}
+
+output "ec2_public_ip" {
+  description = "Development EC2 application Elastic IP address."
+  value       = aws_eip.app.public_ip
+}

@@ -63,6 +63,24 @@ variable "ai_domain_name" {
   default     = "ai-develop.landit.im"
 }
 
+variable "dev_ec2_instance_type" {
+  description = "Instance type for the development EC2 application host."
+  type        = string
+  default     = "t3.small"
+}
+
+variable "api_ec2_domain_name" {
+  description = "Temporary development API host name for EC2 validation."
+  type        = string
+  default     = "api-ec2-develop.landit.im"
+}
+
+variable "ai_ec2_domain_name" {
+  description = "Temporary development AI host name for EC2 validation."
+  type        = string
+  default     = "ai-ec2-develop.landit.im"
+}
+
 variable "ai_container_port" {
   description = "Development AI container port."
   type        = number

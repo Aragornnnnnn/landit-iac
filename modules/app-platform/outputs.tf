@@ -19,14 +19,39 @@ output "ai_domain_name" {
   value       = var.ai_domain_name
 }
 
+output "vpc_id" {
+  description = "VPC ID for environment-specific companion resources."
+  value       = aws_vpc.this.id
+}
+
+output "public_subnet_ids" {
+  description = "Public subnet IDs for environment-specific companion resources."
+  value       = values(aws_subnet.public)[*].id
+}
+
+output "api_ecr_repository_arn" {
+  description = "API ECR repository ARN."
+  value       = aws_ecr_repository.api.arn
+}
+
 output "api_ecr_repository_url" {
   description = "API ECR repository URL."
   value       = aws_ecr_repository.api.repository_url
 }
 
+output "worker_ecr_repository_arn" {
+  description = "Worker ECR repository ARN."
+  value       = aws_ecr_repository.worker.arn
+}
+
 output "worker_ecr_repository_url" {
   description = "Worker ECR repository URL."
   value       = aws_ecr_repository.worker.repository_url
+}
+
+output "jobs_queue_arn" {
+  description = "SQS jobs queue ARN."
+  value       = aws_sqs_queue.jobs.arn
 }
 
 output "jobs_queue_url" {
@@ -57,6 +82,31 @@ output "waf_logs_athena_named_query_id" {
 output "app_bucket_name" {
   description = "Private application S3 bucket name."
   value       = aws_s3_bucket.app.bucket
+}
+
+output "app_bucket_arn" {
+  description = "Private application S3 bucket ARN."
+  value       = aws_s3_bucket.app.arn
+}
+
+output "api_log_group_arn" {
+  description = "API CloudWatch log group ARN."
+  value       = aws_cloudwatch_log_group.api.arn
+}
+
+output "api_log_group_name" {
+  description = "API CloudWatch log group name."
+  value       = aws_cloudwatch_log_group.api.name
+}
+
+output "worker_log_group_arn" {
+  description = "Worker CloudWatch log group ARN."
+  value       = aws_cloudwatch_log_group.worker.arn
+}
+
+output "worker_log_group_name" {
+  description = "Worker CloudWatch log group name."
+  value       = aws_cloudwatch_log_group.worker.name
 }
 
 output "ecs_cluster_name" {

@@ -1,5 +1,14 @@
 # Context Notes
 
+## 2026-08-15 LAN-284 최신 state 적용 전 plan 분리 감사
+
+- 기준은 `origin/main` `145980a`와 Task 1 clean `feat/284` `2431187`이며, `origin/main`은 feature HEAD의 조상이다. 두 plan은 같은 develop state에서 `terraform apply` 없이 생성했고 saved plan·JSON은 `/tmp`에만 저장했다.
+- `origin/main` 기준 plan은 `No changes`였다. 이전 기록의 LAN-184 Push 8개 destroy는 최신 state 기준 이 plan에 더 이상 포함되지 않는다.
+- LAN-284 plan은 `9 to add, 0 to change, 0 to destroy`다. `aws_eip.app`, `aws_eip_association.app`, `aws_iam_instance_profile.ec2_app`, EC2 IAM role·두 policy·managed-policy attachment, `aws_instance.app`, `aws_security_group.ec2_app`의 create 9개와 `data.aws_iam_policy_document.github_actions_ec2_deploy`의 plan-time read 1개만 있다.
+- 두 plan 모두 `aws_lb`, listener, target group 주소 변경이 없고 ECS Service delete·replace도 없다. LAN-184 Push destroy도 없으며, 최신 main에 반영된 LAN-299 이후 변경도 기준 plan `No changes`로 인해 LAN-284 plan에 추가 변경으로 포함되지 않았다.
+- AWS 읽기 전용 확인에서 개발 EC2는 0대, ECS API·AI는 각각 desired/running `1/1`, pending `0`, PRIMARY rollout `COMPLETED`였고 ALB는 `active`다. SSM parameter 또는 secret 값은 조회·기록하지 않았다.
+- 이 결과는 EC2 create-only 승인을 위한 사전 검토일 뿐이다. Terraform apply, DNS, GitHub `EC2_INSTANCE_ID` 등록, 실제 SSM 배포, 기존 ECS·ALB 제거는 계속 별도 사용자 승인 대상이다.
+
 ## 2026-08-08 LAN-284 개발 BE·AI 단일 EC2 통합
 
 - 개발 ECS API·AI와 ALB는 EC2 병행 검증과 DNS 전환이 끝날 때까지 유지한다.

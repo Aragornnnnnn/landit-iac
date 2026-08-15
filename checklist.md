@@ -14,6 +14,14 @@
 - [ ] GitHub Environment `EC2_INSTANCE_ID` 등록, EC2 생성·SSM 실제 배포, 임시 DNS, 24~48시간 병행 관찰을 별도 승인 뒤 진행한다.
 - [ ] EC2 이전 검증 후 기존 ECS·ALB 제거를 별도 작업으로 진행한다.
 
+## 2026-08-15 LAN-284 최신 state 적용 전 plan 분리 감사
+
+- [x] 최신 `origin/main`과 `feat/284`를 같은 develop state에서 각각 saved plan으로 생성한다.
+- [x] 기준 plan의 `No changes`와 LAN-284 plan의 `9 to add, 0 to change, 0 to destroy`를 주소 단위로 분리한다.
+- [x] ALB·listener·target group, ECS Service delete·replace, LAN-184 Push destroy가 두 plan에 없음을 확인한다.
+- [x] 개발 EC2 부재, ECS API·AI `1/1` 및 PRIMARY rollout `COMPLETED`, ALB `active`를 읽기 전용으로 재확인한다.
+- [x] apply·DNS·GitHub 변수·기존 ECS/ALB 제거를 별도 승인 게이트로 유지한다.
+
 ## 2026-07-28 LAN-184 Push 알림 인프라 제거
 
 - [x] 앱 로컬 알림 전환으로 서버 Push 인프라가 불필요해졌음을 확인한다.

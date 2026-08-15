@@ -89,7 +89,7 @@ Expected: 모든 명령이 exit code 0이고 ECS 검증 뒤 EC2 mirror 순서가
 - Consumes: Task 1의 최신 IaC branch와 현재 development Terraform state.
 - Produces: 최신 `origin/main` 기준 plan과 LAN-284 plan의 주소별 차이, apply 승인 전 검토 기록.
 
-- [ ] **Step 1: 최신 origin/main 기준 plan을 생성한다.**
+- [x] **Step 1: 최신 origin/main 기준 plan을 생성한다.**
 
 `origin/main` detached 임시 worktree를 `/tmp` 아래에 만들고 다음 명령을 실행한다.
 
@@ -101,7 +101,7 @@ terraform -chdir=environments/dev show -json /tmp/lan284-main-baseline.tfplan > 
 
 Expected: 현재 main만으로 발생하는 LAN-184 또는 기타 drift가 식별된다. apply는 실행하지 않는다.
 
-- [ ] **Step 2: 최신 LAN-284 plan을 생성한다.**
+- [x] **Step 2: 최신 LAN-284 plan을 생성한다.**
 
 ```bash
 AWS_PROFILE=landit terraform -chdir=environments/dev init -reconfigure -input=false
@@ -111,7 +111,7 @@ terraform -chdir=environments/dev show -json /tmp/lan284-dev.tfplan > /tmp/lan28
 
 Expected: plan이 성공하고 saved plan과 JSON은 `/tmp`에만 존재한다.
 
-- [ ] **Step 3: 두 plan의 변경 주소를 분류한다.**
+- [x] **Step 3: 두 plan의 변경 주소를 분류한다.**
 
 ```bash
 jq -r '.resource_changes[] | select(.change.actions != ["no-op"]) | [.address, (.change.actions | join(","))] | @tsv' /tmp/lan284-main-baseline.json
@@ -126,11 +126,11 @@ jq -r '.resource_changes[] | select(.change.actions != ["no-op"]) | [.address, (
 - LAN-284 EC2, EIP, security group, IAM 리소스 create 여부.
 - LAN-299 이후 최신 main 변경이 의도치 않게 포함되는지 여부.
 
-- [ ] **Step 4: 현재 live 안전 기준을 재확인한다.**
+- [x] **Step 4: 현재 live 안전 기준을 재확인한다.**
 
 AWS read-only API로 개발 EC2 부재, ECS API·AI desired/running, rollout state, ALB state를 조회한다. secret 값과 SSM parameter 값은 조회하지 않는다.
 
-- [ ] **Step 5: 검증 결과를 문서화하고 커밋한다.**
+- [x] **Step 5: 검증 결과를 문서화하고 커밋한다.**
 
 `checklist.md`와 `context-notes.md`에 날짜, 브랜치 기준 SHA, 테스트 결과, 두 plan summary, 변경 주소 분류, 아직 실행하지 않은 apply·DNS·GitHub 변수·ECS 제거를 기록한다.
 

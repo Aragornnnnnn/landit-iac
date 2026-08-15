@@ -60,6 +60,7 @@ data "aws_iam_policy_document" "ec2_app" {
       "ssm:GetParametersByPath"
     ]
     resources = [
+      "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${var.parameter_store_path}",
       "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${var.parameter_store_path}/*"
     ]
   }

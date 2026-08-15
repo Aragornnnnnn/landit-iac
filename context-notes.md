@@ -9,6 +9,7 @@
 - 따라서 2026-08-08 당시의 LAN-184 8개 destroy 기록은 역사적 plan 결과로만 보존한다. 2026-08-15 현재 baseline은 이미 `No changes`이므로 LAN-184 drift apply와 post-apply `No changes`는 다음 승인 게이트가 아니라 해당 없음으로 닫는다.
 - AWS 읽기 전용 확인에서 개발 EC2는 0대, ECS API·AI는 각각 desired/running `1/1`, pending `0`, PRIMARY rollout `COMPLETED`였고 ALB는 `active`다. SSM parameter 또는 secret 값은 조회·기록하지 않았다.
 - 이 결과는 EC2 create-only 승인을 위한 사전 검토일 뿐이다. Terraform apply, DNS, GitHub `EC2_INSTANCE_ID` 등록, 실제 SSM 배포, 기존 ECS·ALB 제거는 계속 별도 사용자 승인 대상이다.
+- 현재 후속 순서는 IaC PR 병합, 최신 create-only plan 재생성·승인, EC2 apply, SSM·Docker·Caddy·health 검증, BE·AI `EC2_INSTANCE_ID` 등록, BE·AI workflow PR 병합과 ECS 검증 뒤 동일 SHA EC2 미러링이다. EC2 runtime과 두 GitHub 변수를 준비하기 전에는 application workflow PR을 병합하지 않는다.
 
 ## 2026-08-08 LAN-284 개발 BE·AI 단일 EC2 통합
 

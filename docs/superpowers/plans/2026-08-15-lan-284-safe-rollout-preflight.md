@@ -32,11 +32,11 @@
 - Consumes: 기존 LAN-284 IaC, BE, AI 커밋과 최신 원격 기본 브랜치.
 - Produces: 최신 기본 브랜치 위에 놓인 clean LAN-284 worktree 세 개와 fresh test evidence.
 
-- [ ] **Step 1: 원격과 격리 상태를 확인한다.**
+- [x] **Step 1: 원격과 격리 상태를 확인한다.**
 
 각 저장소에서 `git fetch origin --prune`, `git status --short`, `git rev-list --left-right --count <base>...HEAD`를 실행한다. 모든 feature worktree는 rebase 전에 clean이어야 한다.
 
-- [ ] **Step 2: feature branch를 최신 기준으로 갱신한다.**
+- [x] **Step 2: feature branch를 최신 기준으로 갱신한다.**
 
 ```bash
 git -C /Users/sangmin8817/Soma/landit-iac/.worktrees/feat-284 rebase origin/main
@@ -46,7 +46,7 @@ git -C /Users/sangmin8817/Soma/landit-ai/.worktrees/feat-LAN-284 rebase origin/d
 
 충돌이 발생하면 정확한 파일과 양쪽 의도를 확인한다. LAN-284 범위를 벗어난 충돌이거나 운영 동작 판단이 필요하면 rebase를 중단하고 보고한다.
 
-- [ ] **Step 3: IaC 검증을 실행한다.**
+- [x] **Step 3: IaC 검증을 실행한다.**
 
 ```bash
 bash scripts/test-dev-ec2-contract.sh
@@ -58,7 +58,7 @@ git diff --check origin/main...HEAD
 
 Expected: 모든 명령이 exit code 0이고 LAN-284 이외의 의도하지 않은 변경이 없다.
 
-- [ ] **Step 4: BE 검증을 실행한다.**
+- [x] **Step 4: BE 검증을 실행한다.**
 
 ```bash
 bash .github/scripts/test/deploy-ec2-service_test.sh
@@ -68,7 +68,7 @@ git diff --check origin/develop...HEAD
 
 Expected: 모든 명령이 exit code 0이고 ECS 검증 뒤 EC2 mirror 순서가 유지된다.
 
-- [ ] **Step 5: AI 검증을 실행한다.**
+- [x] **Step 5: AI 검증을 실행한다.**
 
 ```bash
 bash .github/scripts/test/deploy-ec2-service_test.sh
@@ -145,8 +145,13 @@ git commit -m "docs: LAN-284 적용 전 최신 검증 결과를 기록한다"
 
 2026-08-15 `origin/main` baseline이 이미 `No changes`이므로 LAN-184 drift apply와 그 뒤의 post-apply 확인은 해당 없음으로 닫는다. 2026-08-08의 LAN-184 8개 destroy는 당시 기록으로만 유지하며 현재 후속 순서에는 사용하지 않는다.
 
-1. LAN-284 PR 병합 뒤 최신 state 기준 EC2 create-only plan을 재생성하고 별도 apply 승인을 받는다.
-2. EC2 apply 뒤 SSM, Docker, Caddy, 로그, rollback을 검증한다.
-3. GitHub `EC2_INSTANCE_ID`와 임시 DNS 등록 승인을 받는다.
-4. 24~48시간 병행 관찰 뒤 원래 개발 DNS 전환 승인을 받는다.
-5. 기존 ECS·ALB 제거용 별도 PR과 destroy plan 승인을 받는다.
+1. IaC LAN-284 PR만 병합한다.
+2. 최신 state 기준 EC2 create-only plan을 재생성하고 별도 apply 승인을 받는다.
+3. EC2를 apply한다.
+4. SSM, Docker, Caddy, health, 로그, rollback을 검증한다.
+5. BE·AI GitHub Environment에 `EC2_INSTANCE_ID`를 등록한다.
+6. BE·AI workflow PR을 병합하고, 기존 ECS 검증 뒤 동일 SHA를 EC2에도 미러링하는 dual deploy를 검증한다.
+7. 24~48시간 병행 관찰 뒤 원래 개발 DNS 전환 승인을 받는다.
+8. 기존 ECS·ALB 제거용 별도 PR과 destroy plan 승인을 받는다.
+
+EC2 apply·runtime 검증과 두 `EC2_INSTANCE_ID` 등록 전에는 BE·AI application workflow PR을 병합하지 않는다.

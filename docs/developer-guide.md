@@ -48,11 +48,19 @@ terraform -chdir=environments/dev show -json /tmp/lan284-dev.tfplan > /tmp/lan28
 jq -r '.resource_changes[] | select(.change.actions != ["no-op"]) | [.address, (.change.actions | join(","))] | @tsv' /tmp/lan284-dev-plan.json
 ```
 
-2026-08-08 saved plan은 `10 add, 2 change, 8 destroy`였다. LAN-284 경계는 `aws_instance.app`, `aws_eip.app`, `aws_eip_association.app`, EC2 IAM·instance profile·security group의 9개 create다. 나머지 API ECS Service update, API Task Definition replacement와 Push Queue·DLQ·Scheduler·IAM·Alarm 삭제는 미적용 LAN-184 Push 제거다. `aws_lb` 주소는 없고 ECS Service delete 또는 replacement도 없다.
+2026-08-08 saved plan의 `10 add, 2 change, 8 destroy`는 당시 LAN-184 Push drift를 함께 보였던 역사 기록이다. LAN-284 경계는 `aws_instance.app`, `aws_eip.app`, `aws_eip_association.app`, EC2 IAM·instance profile·security group의 9개 create였고, 당시 나머지 API ECS Service update, API Task Definition replacement와 Push Queue·DLQ·Scheduler·IAM·Alarm 삭제는 LAN-184 제거였다.
 
-따라서 LAN-184 drift를 별도 적용해 기준 plan을 `No changes`로 만들지, 같은 saved plan으로 함께 적용할지는 별도 승인이 필요하다. 승인 전에는 Terraform apply와 Vercel DNS 변경을 실행하지 않는다.
+2026-08-15 최신 `origin/main` baseline은 `No changes`이며 LAN-184 destroy는 더 이상 없다. 최신 LAN-284 plan은 EC2·EIP·security group·IAM의 `9 add, 0 change, 0 destroy`만 포함하고 ALB·listener·target group과 ECS Service 변경은 없다. 따라서 현재 LAN-184 apply·post-apply 확인은 승인 게이트가 아니며, Terraform apply와 Vercel DNS 변경은 계속 별도 승인 전까지 실행하지 않는다.
 
-BE·AI workflow의 EC2 미러링 구현과 로컬 검증은 완료됐다. 다만 EC2 apply와 GitHub Environment `EC2_INSTANCE_ID` 등록이 미실행이므로 아래 명령은 실행하지 않는다. 별도 승인 뒤 실제 instance ID와 SHA를 확인한 뒤 서비스별로 실행한다.
+BE·AI workflow의 EC2 미러링 구현과 로컬 검증은 완료됐다. 현재 순서는 다음과 같다.
+
+1. IaC LAN-284 PR만 병합한다.
+2. 최신 state 기준 EC2 create-only plan을 재생성하고 별도 apply 승인을 받은 뒤 EC2를 apply한다.
+3. SSM, Docker, Caddy, health, 로그, rollback을 검증한다.
+4. BE·AI GitHub Environment에 `EC2_INSTANCE_ID`를 등록한다.
+5. 그 뒤에만 BE·AI application workflow PR을 병합하고, 각 workflow의 ECS 검증 뒤 동일 SHA EC2 미러링 dual deploy를 검증한다.
+
+EC2 runtime과 두 `EC2_INSTANCE_ID` 준비 전에는 BE·AI application workflow PR을 병합하지 않는다. 실제 instance ID와 SHA를 확인하기 전에는 아래 명령도 실행하지 않는다.
 
 ```bash
 aws ssm send-command --region ap-northeast-2 \

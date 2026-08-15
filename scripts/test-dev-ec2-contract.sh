@@ -35,6 +35,15 @@ if ! rg -q 'resources[[:space:]]*=[[:space:]]*\["\*"\]' <<<"${get_command_invoca
   echo '계약 위반. GitHub deploy role은 GetCommandInvocation만 Resource=*로 허용해야 한다.' >&2
   exit 1
 fi
+rg -q 'resource "aws_ssm_document" "ec2_deploy"' "${DEV_EC2}"
+rg -q 'allowedValues[[:space:]]*=[[:space:]]*\["api", "ai"\]' "${DEV_EC2}"
+rg -q 'allowedPattern[[:space:]]*=[[:space:]]*"\^\[0-9a-f\]' "${DEV_EC2}"
+rg -q 'interpolationType[[:space:]]*=[[:space:]]*"ENV_VAR"' "${DEV_EC2}"
+rg -q 'aws_ssm_document.ec2_deploy.arn' "${DEV_EC2}"
+if rg -q 'AWS-RunShellScript' "${DEV_EC2}"; then
+  echo '계약 위반. GitHub deploy role은 AWS 관리형 shell 문서를 호출하면 안 된다.' >&2
+  exit 1
+fi
 
 USER_DATA="${ROOT_DIR}/environments/dev/templates/ec2-user-data.sh.tftpl"
 COMPOSE="${ROOT_DIR}/environments/dev/templates/docker-compose.yml.tftpl"
@@ -47,6 +56,10 @@ rg -q 'chmod 0600' "${USER_DATA}"
 rg -q 'flock' "${USER_DATA}"
 rg -q 'mkswap' "${USER_DATA}"
 rg -q 'amazon-cloudwatch-agent' "${USER_DATA}"
+rg -q '383ce6698cd5d5bbf958d2c8489ed75094e34a77d340404d9f32c4ae9e12baf0' "${USER_DATA}"
+rg -q 'sha256sum --check --status' "${USER_DATA}"
+rg -q 'wait_for_initial_health api' "${USER_DATA}"
+rg -q 'wait_for_initial_health ai' "${USER_DATA}"
 rg -q 'grafana_otlp_enabled' "${DEV_EC2}"
 rg -q 'grafana_otlp_endpoint' "${DEV_EC2}"
 for otel_key in OTEL_EXPORTER_OTLP_METRICS_ENDPOINT MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED MANAGEMENT_OTLP_METRICS_EXPORT_STEP OTEL_METRICS_ENABLED OTEL_EXPORTER_OTLP_PROTOCOL OTEL_EXPORTER_OTLP_ENDPOINT OTEL_SERVICE_NAME OTEL_RESOURCE_ATTRIBUTES; do

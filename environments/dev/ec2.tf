@@ -225,12 +225,46 @@ resource "aws_eip_association" "app" {
   instance_id   = aws_instance.app.id
 }
 
+resource "aws_ssm_document" "ec2_deploy" {
+  name          = "${local.name_prefix}-ec2-deploy"
+  document_type = "Command"
+
+  content = jsonencode({
+    schemaVersion = "2.2"
+    description   = "Deploy one validated Landit service image to the develop EC2 instance."
+    parameters = {
+      service = {
+        type              = "String"
+        allowedValues     = ["api", "ai"]
+        interpolationType = "ENV_VAR"
+      }
+      imageSha = {
+        type              = "String"
+        allowedPattern    = "^[0-9a-f]{40}$"
+        interpolationType = "ENV_VAR"
+      }
+    }
+    mainSteps = [{
+      action = "aws:runShellScript"
+      name   = "deployService"
+      precondition = {
+        StringEquals = ["platformType", "Linux"]
+      }
+      inputs = {
+        runCommand = [
+          "/opt/landit/bin/deploy-service \"$SSM_service\" \"$SSM_imageSha\""
+        ]
+      }
+    }]
+  })
+}
+
 data "aws_iam_policy_document" "github_actions_ec2_deploy" {
   statement {
     actions = ["ssm:SendCommand"]
     resources = [
       aws_instance.app.arn,
-      "arn:aws:ssm:${var.aws_region}::document/AWS-RunShellScript"
+      aws_ssm_document.ec2_deploy.arn
     ]
   }
 

@@ -46,7 +46,8 @@ EOF
 local.user_data
 EOF
 )
-sed -i '' '1d;$d' "${TEST_DIR}/user-data.sh"
+sed '1d;$d' "${TEST_DIR}/user-data.sh" > "${TEST_DIR}/user-data.rendered.sh"
+mv "${TEST_DIR}/user-data.rendered.sh" "${TEST_DIR}/user-data.sh"
 awk '
   /<<.DEPLOY_SERVICE.$/ { capture = 1; next }
   /^DEPLOY_SERVICE$/ { exit }

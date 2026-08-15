@@ -12,9 +12,11 @@
 - [x] 세 저장소의 LAN-284 diff, IAM·secret·rollback 경계와 재실행한 검증 결과를 교차 검토한다.
 - [x] 실제 apply와 DNS 변경은 별도 승인 전까지 보류한다.
 - [ ] IaC LAN-284 PR을 먼저 병합한 뒤 최신 state 기준 EC2 create-only plan을 재생성·승인하고 EC2를 apply한다.
-- [ ] SSM·Docker·Caddy·health·로그·rollback 검증 뒤 BE·AI GitHub Environment `EC2_INSTANCE_ID`를 등록한다.
+- [ ] SSM·Docker·Caddy·loopback health·로그·rollback을 검증한다.
+- [ ] 임시 Vercel DNS `api-ec2-develop.landit.im`, `ai-ec2-develop.landit.im` 등록 승인을 받고, 외부 HTTPS·API·AI·BE→AI를 검증한다.
+- [ ] 그 뒤 BE·AI GitHub Environment `EC2_INSTANCE_ID`를 등록한다.
 - [ ] EC2와 `EC2_INSTANCE_ID` 준비 전에는 BE·AI application workflow PR을 병합하지 않고, 준비 뒤 두 PR을 병합해 ECS 검증 뒤 같은 SHA를 EC2에 미러링하는 dual deploy를 검증한다.
-- [ ] 임시 DNS, 24~48시간 병행 관찰을 별도 승인 뒤 진행한다.
+- [ ] dual deploy 뒤 24~48시간 병행 관찰을 거쳐 원래 개발 DNS 전환의 별도 승인을 받는다.
 - [ ] EC2 이전 검증 후 기존 ECS·ALB 제거를 별도 작업으로 진행한다.
 
 ## 2026-08-15 LAN-284 최신 state 적용 전 plan 분리 감사
@@ -25,7 +27,7 @@
 - [x] 2026-08-15 baseline `No changes`로 현재 LAN-184 drift apply·post-apply 승인 게이트가 해당 없음을 확인한다.
 - [x] 개발 EC2 부재, ECS API·AI `1/1` 및 PRIMARY rollout `COMPLETED`, ALB `active`를 읽기 전용으로 재확인한다.
 - [x] apply·DNS·GitHub 변수·기존 ECS/ALB 제거를 별도 승인 게이트로 유지한다.
-- [x] 다음 게이트를 IaC 병합, create-only plan 승인, EC2 apply, runtime 검증, `EC2_INSTANCE_ID` 등록, BE·AI workflow 병합·dual deploy 순서로 고정한다.
+- [x] 다음 게이트를 IaC 병합, create-only plan 승인, EC2 apply, loopback 검증, 임시 DNS 승인·외부 검증, `EC2_INSTANCE_ID` 등록, BE·AI workflow 병합·dual deploy, 24~48시간 관찰, 원래 DNS 전환 승인 순서로 고정한다.
 
 ## 2026-07-28 LAN-184 Push 알림 인프라 제거
 

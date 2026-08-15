@@ -148,10 +148,13 @@ git commit -m "docs: LAN-284 적용 전 최신 검증 결과를 기록한다"
 1. IaC LAN-284 PR만 병합한다.
 2. 최신 state 기준 EC2 create-only plan을 재생성하고 별도 apply 승인을 받는다.
 3. EC2를 apply한다.
-4. SSM, Docker, Caddy, health, 로그, rollback을 검증한다.
-5. BE·AI GitHub Environment에 `EC2_INSTANCE_ID`를 등록한다.
-6. BE·AI workflow PR을 병합하고, 기존 ECS 검증 뒤 동일 SHA를 EC2에도 미러링하는 dual deploy를 검증한다.
-7. 24~48시간 병행 관찰 뒤 원래 개발 DNS 전환 승인을 받는다.
-8. 기존 ECS·ALB 제거용 별도 PR과 destroy plan 승인을 받는다.
+4. SSM, Docker, Caddy, loopback health, 로그, rollback을 검증한다.
+5. 임시 Vercel DNS `api-ec2-develop.landit.im`, `ai-ec2-develop.landit.im` 등록 승인을 받는다.
+6. 임시 도메인에서 외부 HTTPS, API, AI, BE→AI를 검증한다.
+7. BE·AI GitHub Environment에 `EC2_INSTANCE_ID`를 등록한다.
+8. BE·AI workflow PR을 병합하고, 기존 ECS 검증 뒤 동일 SHA를 EC2에도 미러링하는 dual deploy를 검증한다.
+9. 24~48시간 병행 관찰을 수행한다.
+10. 원래 개발 DNS 전환의 별도 승인을 받는다.
+11. 기존 ECS·ALB 제거용 별도 PR과 destroy plan 승인을 받는다.
 
 EC2 apply·runtime 검증과 두 `EC2_INSTANCE_ID` 등록 전에는 BE·AI application workflow PR을 병합하지 않는다.

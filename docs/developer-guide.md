@@ -56,9 +56,12 @@ BE·AI workflow의 EC2 미러링 구현과 로컬 검증은 완료됐다. 현재
 
 1. IaC LAN-284 PR만 병합한다.
 2. 최신 state 기준 EC2 create-only plan을 재생성하고 별도 apply 승인을 받은 뒤 EC2를 apply한다.
-3. SSM, Docker, Caddy, health, 로그, rollback을 검증한다.
-4. BE·AI GitHub Environment에 `EC2_INSTANCE_ID`를 등록한다.
-5. 그 뒤에만 BE·AI application workflow PR을 병합하고, 각 workflow의 ECS 검증 뒤 동일 SHA EC2 미러링 dual deploy를 검증한다.
+3. SSM, Docker, Caddy, loopback health, 로그, rollback을 검증한다.
+4. 임시 Vercel DNS `api-ec2-develop.landit.im`, `ai-ec2-develop.landit.im` 등록 승인을 받는다.
+5. 임시 도메인으로 외부 HTTPS, API, AI, BE→AI를 검증한다.
+6. BE·AI GitHub Environment에 `EC2_INSTANCE_ID`를 등록한다.
+7. 그 뒤에만 BE·AI application workflow PR을 병합하고, 각 workflow의 ECS 검증 뒤 동일 SHA EC2 미러링 dual deploy를 검증한다.
+8. 24~48시간 병행 관찰 뒤 원래 개발 DNS 전환의 별도 승인을 받는다.
 
 EC2 runtime과 두 `EC2_INSTANCE_ID` 준비 전에는 BE·AI application workflow PR을 병합하지 않는다. 실제 instance ID와 SHA를 확인하기 전에는 아래 명령도 실행하지 않는다.
 

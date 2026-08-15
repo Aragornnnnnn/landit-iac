@@ -40,6 +40,7 @@ rg -q 'allowedValues[[:space:]]*=[[:space:]]*\["api", "ai"\]' "${DEV_EC2}"
 rg -q 'allowedPattern[[:space:]]*=[[:space:]]*"\^\[0-9a-f\]' "${DEV_EC2}"
 rg -q 'interpolationType[[:space:]]*=[[:space:]]*"ENV_VAR"' "${DEV_EC2}"
 rg -q 'aws_ssm_document.ec2_deploy.arn' "${DEV_EC2}"
+rg -Fq 'parameter${var.parameter_store_path}",' "${DEV_EC2}"
 if rg -q 'AWS-RunShellScript' "${DEV_EC2}"; then
   echo '계약 위반. GitHub deploy role은 AWS 관리형 shell 문서를 호출하면 안 된다.' >&2
   exit 1

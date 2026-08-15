@@ -56,6 +56,10 @@ rg -q 'chmod 0600' "${USER_DATA}"
 rg -q 'flock' "${USER_DATA}"
 rg -q 'mkswap' "${USER_DATA}"
 rg -q 'amazon-cloudwatch-agent' "${USER_DATA}"
+if rg -q 'dnf install[^\n]*[[:space:]]curl([[:space:]]|$)' "${USER_DATA}"; then
+  echo '계약 위반. Amazon Linux 2023의 curl-minimal과 충돌하는 curl 패키지를 설치하면 안 된다.' >&2
+  exit 1
+fi
 rg -q '383ce6698cd5d5bbf958d2c8489ed75094e34a77d340404d9f32c4ae9e12baf0' "${USER_DATA}"
 rg -q 'sha256sum --check --status' "${USER_DATA}"
 rg -q 'wait_for_initial_health api' "${USER_DATA}"

@@ -19,6 +19,7 @@
 - [x] 최신 `origin/main`과 `feat/284`를 같은 develop state에서 각각 saved plan으로 생성한다.
 - [x] 기준 plan의 `No changes`와 LAN-284 plan의 `9 to add, 0 to change, 0 to destroy`를 주소 단위로 분리한다.
 - [x] ALB·listener·target group, ECS Service delete·replace, LAN-184 Push destroy가 두 plan에 없음을 확인한다.
+- [x] 2026-08-15 baseline `No changes`로 현재 LAN-184 drift apply·post-apply 승인 게이트가 해당 없음을 확인한다.
 - [x] 개발 EC2 부재, ECS API·AI `1/1` 및 PRIMARY rollout `COMPLETED`, ALB `active`를 읽기 전용으로 재확인한다.
 - [x] apply·DNS·GitHub 변수·기존 ECS/ALB 제거를 별도 승인 게이트로 유지한다.
 

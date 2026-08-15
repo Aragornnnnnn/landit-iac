@@ -17,7 +17,7 @@
 - Terraform plan 파일과 JSON은 `/tmp` 아래에만 저장하고 커밋하지 않는다.
 - `terraform -target`을 사용하지 않는다.
 - 기준 plan과 LAN-284 plan에 포함된 create, update, replace, destroy 주소를 모두 분류한다.
-- LAN-184 적용과 LAN-284 적용은 각각 별도 사용자 승인 전까지 실행하지 않는다.
+- 2026-08-15 baseline은 LAN-184 drift가 없는 `No changes`다. 이후 drift가 다시 검출될 때만 LAN-184 적용을 별도 승인으로 분리하고, LAN-284 적용은 별도 사용자 승인 전까지 실행하지 않는다.
 
 ---
 
@@ -143,10 +143,10 @@ git commit -m "docs: LAN-284 적용 전 최신 검증 결과를 기록한다"
 
 이 계획 완료 뒤 아래 작업은 자동으로 이어서 실행하지 않는다.
 
-1. 최신 `origin/main` 기준 LAN-184 drift plan의 별도 apply 승인.
-2. LAN-184 적용 뒤 post-apply `No changes` 확인.
-3. LAN-284 PR 병합과 EC2 create-only plan 승인.
-4. EC2 apply 뒤 SSM, Docker, Caddy, 로그, rollback 검증.
-5. GitHub `EC2_INSTANCE_ID`와 임시 DNS 등록 승인.
-6. 24~48시간 병행 관찰 뒤 원래 개발 DNS 전환 승인.
-7. 기존 ECS·ALB 제거용 별도 PR과 destroy plan 승인.
+2026-08-15 `origin/main` baseline이 이미 `No changes`이므로 LAN-184 drift apply와 그 뒤의 post-apply 확인은 해당 없음으로 닫는다. 2026-08-08의 LAN-184 8개 destroy는 당시 기록으로만 유지하며 현재 후속 순서에는 사용하지 않는다.
+
+1. LAN-284 PR 병합 뒤 최신 state 기준 EC2 create-only plan을 재생성하고 별도 apply 승인을 받는다.
+2. EC2 apply 뒤 SSM, Docker, Caddy, 로그, rollback을 검증한다.
+3. GitHub `EC2_INSTANCE_ID`와 임시 DNS 등록 승인을 받는다.
+4. 24~48시간 병행 관찰 뒤 원래 개발 DNS 전환 승인을 받는다.
+5. 기존 ECS·ALB 제거용 별도 PR과 destroy plan 승인을 받는다.

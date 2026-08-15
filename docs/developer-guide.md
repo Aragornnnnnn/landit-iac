@@ -48,9 +48,9 @@ terraform -chdir=environments/dev show -json /tmp/lan284-dev.tfplan > /tmp/lan28
 jq -r '.resource_changes[] | select(.change.actions != ["no-op"]) | [.address, (.change.actions | join(","))] | @tsv' /tmp/lan284-dev-plan.json
 ```
 
-2026-08-08 saved plan의 `10 add, 2 change, 8 destroy`는 당시 LAN-184 Push drift를 함께 보였던 역사 기록이다. LAN-284 경계는 `aws_instance.app`, `aws_eip.app`, `aws_eip_association.app`, EC2 IAM·instance profile·security group의 9개 create였고, 당시 나머지 API ECS Service update, API Task Definition replacement와 Push Queue·DLQ·Scheduler·IAM·Alarm 삭제는 LAN-184 제거였다.
+2026-08-08 saved plan의 `10 add, 2 change, 8 destroy`는 당시 LAN-184 Push drift를 함께 보였던 역사 기록이다. 당시 LAN-284 경계는 `aws_instance.app`, `aws_eip.app`, `aws_eip_association.app`, EC2 IAM·instance profile·security group의 9개 create였고, 당시 나머지 API ECS Service update, API Task Definition replacement와 Push Queue·DLQ·Scheduler·IAM·Alarm 삭제는 LAN-184 제거였다.
 
-2026-08-15 최신 `origin/main` baseline은 `No changes`이며 LAN-184 destroy는 더 이상 없다. 최신 LAN-284 plan은 EC2·EIP·security group·IAM의 `9 add, 0 change, 0 destroy`만 포함하고 ALB·listener·target group과 ECS Service 변경은 없다. 따라서 현재 LAN-184 apply·post-apply 확인은 승인 게이트가 아니며, Terraform apply와 Vercel DNS 변경은 계속 별도 승인 전까지 실행하지 않는다.
+2026-08-15 최신 `origin/main` baseline은 `No changes`이며 LAN-184 destroy는 더 이상 없다. 리뷰 보완 뒤 LAN-284 plan은 EC2·EIP·security group·IAM과 전용 SSM 배포 문서의 `10 add, 0 change, 0 destroy`만 포함하고 ALB·listener·target group과 ECS Service 변경은 없다. 따라서 현재 LAN-184 apply·post-apply 확인은 승인 게이트가 아니다.
 
 BE·AI workflow의 EC2 미러링 구현과 로컬 검증은 완료됐다. 현재 순서는 다음과 같다.
 
@@ -67,18 +67,18 @@ EC2 runtime과 두 `EC2_INSTANCE_ID` 준비 전에는 BE·AI application workflo
 
 ```bash
 aws ssm send-command --region ap-northeast-2 \
-  --document-name AWS-RunShellScript \
+  --document-name develop-landit-ec2-deploy \
   --instance-ids "$INSTANCE_ID" \
-  --parameters 'commands=["/opt/landit/bin/deploy-service api <GIT_SHA>"]'
+  --parameters 'service=api,imageSha=<GIT_SHA>'
 ```
 
 health check 실패 시 EC2 스크립트는 저장된 직전 SHA로 자동 복구한다. 수동 복구가 필요하면 확인한 직전 SHA를 같은 명령의 인자로 사용한다.
 
 ```bash
 aws ssm send-command --region ap-northeast-2 \
-  --document-name AWS-RunShellScript \
+  --document-name develop-landit-ec2-deploy \
   --instance-ids "$INSTANCE_ID" \
-  --parameters 'commands=["/opt/landit/bin/deploy-service api <PREVIOUS_GIT_SHA>"]'
+  --parameters 'service=api,imageSha=<PREVIOUS_GIT_SHA>'
 ```
 
 EC2 복구는 ECS·ALB 변경을 포함하지 않는다. 원래 개발 DNS가 ALB를 가리키는 동안 EC2 실패는 EC2에서만 롤백한다. DNS 전환 뒤 장애가 나면 먼저 Vercel DNS를 ALB로 되돌리고, ECS 장애가 확인된 경우에만 기존 ECS 배포 절차로 복구한다. ECS·ALB 제거는 DNS 전환과 24~48시간 관찰을 마친 뒤 별도 승인으로만 수행한다.

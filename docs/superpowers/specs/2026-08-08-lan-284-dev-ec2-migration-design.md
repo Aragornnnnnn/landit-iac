@@ -48,10 +48,10 @@
 - ECR, S3, SQS, SSM, CloudWatch Log Group과 Grafana 전달 경로는 보존한다.
 - 현재 `app-platform` 모듈을 통째로 제거하면 보존 대상도 함께 삭제되므로 금지한다.
 
-## 적용 전 선행 조건
+## 적용 전 기준
 
-- 현재 dev plan에는 이미 반영되지 않은 LAN-184 Push 인프라 제거가 `1 add, 2 change, 8 destroy`로 남아 있다.
-- LAN-284 apply 전에 LAN-184를 별도 적용해 기준 plan을 `No changes`로 만들거나 함께 적용할지 사용자의 별도 승인을 받는다.
+- 2026-08-08 dev plan에는 당시 미반영 LAN-184 Push 인프라 제거가 `1 add, 2 change, 8 destroy`로 남아 있었다.
+- 2026-08-15 최신 `origin/main` 기준 plan은 `No changes`다. 이후 LAN-184 drift가 다시 나타날 때만 LAN-284와 분리해 별도 승인을 받는다.
 - LAN-284 1차 plan의 완료 기준은 기준 plan 대비 EC2 관련 추가만 생기고 기존 ECS·ALB 변경이나 추가 삭제가 없는 것이다.
 
 ## 비용

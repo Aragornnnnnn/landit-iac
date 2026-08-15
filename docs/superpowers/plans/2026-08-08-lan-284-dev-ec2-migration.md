@@ -1,12 +1,12 @@
-# LAN-284 Development EC2 Migration Implementation Plan
+# LAN-284 개발 EC2 이전 구현 계획
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 기존 개발 ECS·ALB를 유지한 채 단일 `t3.small` EC2에 BE·AI·Caddy 병행 실행 경로를 추가하고 기존 개발 배포를 EC2에도 미러링한다.
+**목표:** 기존 개발 ECS·ALB를 유지한 채 단일 `t3.small` EC2에 BE·AI·Caddy 병행 실행 경로를 추가하고 기존 개발 배포를 EC2에도 미러링한다.
 
-**Architecture:** 기존 dev `app-platform`의 VPC, subnet, ECR, S3, SQS, CloudWatch Log Group을 재사용하는 EC2를 dev root에 직접 추가한다. BE와 AI workflow는 ECS 배포 성공 후 동일 Git SHA 이미지를 SSM Run Command로 EC2에 배포하며, DNS 전환과 ECS·ALB 제거는 이번 구현과 apply 범위에서 제외한다.
+**구조:** 기존 dev `app-platform`의 VPC, subnet, ECR, S3, SQS, CloudWatch Log Group을 재사용하는 EC2를 dev root에 직접 추가한다. BE와 AI workflow는 ECS 배포 성공 후 동일 Git SHA 이미지를 SSM Run Command로 EC2에 배포하며, DNS 전환과 ECS·ALB 제거는 이번 구현과 apply 범위에서 제외한다.
 
-**Tech Stack:** Terraform, AWS EC2, IAM, SSM, ECR, Docker Compose, Caddy, Bash, GitHub Actions.
+**기술:** Terraform, AWS EC2, IAM, SSM, ECR, Docker Compose, Caddy, Bash, GitHub Actions.
 
 ## Global Constraints
 
@@ -15,7 +15,7 @@
 - 운영 환경과 shared root는 변경하지 않는다.
 - Terraform state, user-data, GitHub Actions 로그에 SSM 값이나 secret을 남기지 않는다.
 - 실제 Terraform apply, Vercel DNS 변경, GitHub 변수 변경은 사용자 별도 승인 전까지 실행하지 않는다.
-- 현재 dev baseline plan의 LAN-184 `1 add, 2 change, 8 destroy`는 LAN-284 변경과 분리해 기록한다.
+- 2026-08-08 dev baseline plan의 LAN-184 `1 add, 2 change, 8 destroy`는 당시 기록으로 보존한다. 최신 적용 판단은 2026-08-15 사전 검증 계획을 따른다.
 - EC2 관련 신규 source 파일은 필수 directive 아래 첫 줄에 한국어 역할 주석을 둔다.
 
 ---
@@ -135,7 +135,7 @@ Expected: `environments/dev/ec2.tf`가 없어 실패한다.
 - 80·443 ingress와 전체 egress만 있는 security group.
 - 첫 번째 기존 public subnet의 `t3.small` EC2, IMDSv2 required, hop limit 2, T3 standard credit, 암호화된 gp3 20GB.
 - Elastic IP 연결.
-- 기존 GitHub deploy role에 해당 instance와 `AWS-RunShellScript`만 허용하는 SSM SendCommand inline policy.
+- 기존 GitHub deploy role에 해당 instance와 검증된 `api|ai`, 40자리 SHA만 받는 전용 SSM 문서만 허용하는 SendCommand inline policy.
 
 `environments/dev/variables.tf`에는 `dev_ec2_instance_type` 기본값 `t3.small`과 두 임시 검증 도메인만 추가한다. `environments/dev/outputs.tf`에는 instance ID와 public IP를 추가한다.
 
@@ -217,7 +217,7 @@ Bootstrap은 다음 순서만 수행한다.
 3. SSM 값을 `/run/landit/*.env`에 `0600`으로 만들고 EC2 API에만 내부 AI URL을 기록한다.
 4. ECR login 후 기존 `latest` 이미지를 최초 기동한다.
 5. `deploy-service api|ai <40자리 Git SHA>`를 설치한다. 스크립트는 `flock`, SSM refresh, ECR login, 해당 서비스 pull·up, loopback health 확인을 수행한다.
-6. CloudWatch agent로 host memory, swap, disk, CPU credit 지표를 `Landit/EC2` namespace에 보낸다.
+6. CloudWatch agent로 host CPU, memory, swap, disk 지표를 `Landit/EC2` namespace에 보낸다. `CPUCreditBalance`는 AWS가 제공하는 `AWS/EC2` native metric으로 확인한다.
 
 - [ ] **Step 5: 전체 정적 계약과 Terraform validate를 통과시킨다.**
 
@@ -266,7 +266,7 @@ AWS_PROFILE=landit terraform -chdir=environments/dev plan -input=false -out=/tmp
 terraform -chdir=environments/dev show -json /tmp/lan284-dev.tfplan > /tmp/lan284-dev-plan.json
 ```
 
-Expected: LAN-184 기존 drift 외에는 EC2, EIP, IAM, security group 관련 create만 추가된다. 기존 ECS·ALB 주소에는 LAN-284로 인한 변경이 없다.
+Expected: 기준 plan 대비 EC2, EIP, IAM, SSM 문서, security group 관련 create만 추가된다. 기존 ECS·ALB 주소에는 LAN-284로 인한 변경이 없다.
 
 - [ ] **Step 3: plan 주소를 감사한다.**
 
@@ -276,14 +276,14 @@ Run:
 jq -r '.resource_changes[] | select(.change.actions != ["no-op"]) | [.address, (.change.actions | join(","))] | @tsv' /tmp/lan284-dev-plan.json
 ```
 
-Expected: LAN-184 기존 항목과 승인된 EC2 관련 주소만 출력된다. EC2 apply 전에는 LAN-184 선행 drift 처리 승인이 필요하다고 기록한다.
+Expected: 승인된 LAN-284 관련 주소만 출력된다. LAN-184 항목이 다시 나타나면 LAN-284와 분리해 별도 승인 대상으로 기록한다.
 
 - [ ] **Step 4: README와 개발자 가이드를 갱신한다.**
 
 다음 내용만 반영한다.
 
 - 개발 환경은 ECS·ALB와 단일 EC2를 병행 운영 중이다.
-- apply → 임시 DNS → 24~48시간 검증 → 원래 DNS 전환 → 별도 ECS·ALB 제거 순서다.
+- apply → loopback 검증 → 임시 DNS → 외부 검증 → dual deploy → 24~48시간 관찰 → 원래 DNS 전환 → 별도 ECS·ALB 제거 순서다.
 - SSM 배포와 직전 SHA 롤백 명령, ECS 복구 경계를 적는다.
 - 실제 apply와 DNS 변경은 승인 전까지 실행하지 않았다고 기록한다.
 
@@ -480,10 +480,10 @@ git commit -m "docs: LAN-284 구현과 적용 전 검증 결과를 기록한다"
 
 아래 단계는 이번 코드 구현 완료와 분리한다.
 
-1. LAN-184 선행 drift 처리 방향 승인.
-2. dev saved plan 검토와 Terraform apply 승인.
-3. GitHub Environment `EC2_INSTANCE_ID` 등록.
-4. 임시 Vercel DNS 두 개 등록.
-5. BE·AI dual deploy와 24~48시간 관찰.
-6. 원래 개발 DNS의 EC2 전환 승인.
-7. 기존 ECS·ALB 제거 설계와 별도 Terraform apply 승인.
+1. 최신 main의 기준 plan이 `No changes`인지 확인한다. LAN-184 drift가 다시 나타날 때만 별도 처리 방향을 승인한다.
+2. dev saved plan 검토와 Terraform apply 승인을 받는다.
+3. EC2 loopback 검증 뒤 임시 Vercel DNS 두 개를 등록하고 외부 검증한다.
+4. GitHub Environment `EC2_INSTANCE_ID`를 등록한다.
+5. BE·AI dual deploy와 24~48시간 관찰을 수행한다.
+6. 원래 개발 DNS의 EC2 전환 승인을 받는다.
+7. 기존 ECS·ALB 제거 설계와 별도 Terraform apply 승인을 받는다.

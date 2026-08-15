@@ -4,7 +4,7 @@
 
 - 기준은 `origin/main` `145980a`와 Task 1 clean `feat/284` `2431187`이며, `origin/main`은 feature HEAD의 조상이다. 두 plan은 같은 develop state에서 `terraform apply` 없이 생성했고 saved plan·JSON은 `/tmp`에만 저장했다.
 - `origin/main` 기준 plan은 `No changes`였다. 이전 기록의 LAN-184 Push 8개 destroy는 최신 state 기준 이 plan에 더 이상 포함되지 않는다.
-- LAN-284 plan은 `9 to add, 0 to change, 0 to destroy`다. `aws_eip.app`, `aws_eip_association.app`, `aws_iam_instance_profile.ec2_app`, EC2 IAM role·두 policy·managed-policy attachment, `aws_instance.app`, `aws_security_group.ec2_app`의 create 9개와 `data.aws_iam_policy_document.github_actions_ec2_deploy`의 plan-time read 1개만 있다.
+- 리뷰 보완 뒤 LAN-284 plan은 `10 to add, 0 to change, 0 to destroy`다. 기존 EC2·EIP·IAM·security group create 9개에 입력을 `api|ai`와 40자리 SHA로 제한한 `aws_ssm_document.ec2_deploy` create 1개가 추가됐고, `data.aws_iam_policy_document.github_actions_ec2_deploy`의 plan-time read 1개가 있다.
 - 두 plan 모두 `aws_lb`, listener, target group 주소 변경이 없고 ECS Service delete·replace도 없다. LAN-184 Push destroy도 없으며, 최신 main에 반영된 LAN-299 이후 변경도 기준 plan `No changes`로 인해 LAN-284 plan에 추가 변경으로 포함되지 않았다.
 - 따라서 2026-08-08 당시의 LAN-184 8개 destroy 기록은 역사적 plan 결과로만 보존한다. 2026-08-15 현재 baseline은 이미 `No changes`이므로 LAN-184 drift apply와 post-apply `No changes`는 다음 승인 게이트가 아니라 해당 없음으로 닫는다.
 - AWS 읽기 전용 확인에서 개발 EC2는 0대, ECS API·AI는 각각 desired/running `1/1`, pending `0`, PRIMARY rollout `COMPLETED`였고 ALB는 `active`다. SSM parameter 또는 secret 값은 조회·기록하지 않았다.
@@ -27,7 +27,7 @@
 - 2026-08-08 당시에는 LAN-184 drift를 먼저 적용해 기준 plan을 `No changes`로 만들지, LAN-284와 함께 적용할지를 별도 승인으로 판단했다. 이 판단은 2026-08-15 baseline `No changes` 확인 뒤 현재 후속 승인 게이트에는 적용하지 않으며, 실제 Terraform apply, Vercel DNS 변경, 기존 리소스 제거는 각각 사용자 승인 뒤에만 실행한다.
 - Task 7 재검증에서 `bash scripts/test-dev-ec2-contract.sh`, `terraform fmt -recursive -check`, `AWS_PROFILE=landit terraform -chdir=environments/dev validate`가 통과했다. sandbox는 AWS provider의 Unix socket bind를 막아 validate를 실행 환경에서 재시도했고 `Success! The configuration is valid.`를 확인했다.
 - BE는 `bash .github/scripts/test/deploy-ec2-service_test.sh`와 `./gradlew check --rerun-tasks --no-daemon`, AI는 같은 shell test와 기존 가상환경을 읽기 전용으로 사용한 `PYTHONDONTWRITEBYTECODE=1 /Users/sangmin8817/Soma/landit-ai/.venv/bin/python -m unittest discover -s tests`를 통과했다. AI unittest는 241개를 실행했다.
-- 세 저장소 diff를 독립 검토한 결과 blocker는 없었다. SSM 명령은 `api|ai`와 40자 SHA만 전달하고 AWS 오류 원문을 숨기며, IaC role은 생성될 EC2와 `AWS-RunShellScript`만 SendCommand 대상으로 제한한다. rollback은 EC2 컨테이너만 직전 SHA로 되돌리고 기존 ECS·ALB를 변경하지 않는다.
+- 세 저장소 diff 검토 뒤 GitHub role의 AWS 관리형 shell 문서 호출 권한을 제거했다. 전용 `develop-landit-ec2-deploy` 문서는 `ENV_VAR` interpolation과 `allowedValues`·`allowedPattern`으로 `api|ai`, 40자리 SHA만 받아 고정된 `/opt/landit/bin/deploy-service`를 실행한다. Docker Compose 바이너리 SHA-256 검증, 최초 API·AI health gate, GNU·BSD 공통 테스트 렌더링도 추가했고 rollback은 EC2 컨테이너만 직전 SHA로 되돌린다.
 - apply, GitHub 변수 등록, 실제 SSM 명령, 임시 Vercel DNS, EC2·ECS health, 24~48시간 관찰, 기존 ECS·ALB 제거는 모두 미실행이다.
 
 ## 2026-07-28 LAN-184 Push 알림 인프라 제거

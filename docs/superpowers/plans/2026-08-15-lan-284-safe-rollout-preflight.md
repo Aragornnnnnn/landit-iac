@@ -1,12 +1,12 @@
-# LAN-284 Safe Rollout Preflight Implementation Plan
+# LAN-284 안전 적용 사전 검증 계획
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 최신 소스와 개발 AWS state를 기준으로 LAN-284 적용 경계를 다시 검증하고, 실제 변경 전 승인 가능한 saved plan을 준비한다.
+**목표:** 최신 소스와 개발 AWS state를 기준으로 LAN-284 적용 경계를 다시 검증하고, 실제 변경 전 승인 가능한 saved plan을 준비한다.
 
-**Architecture:** 기존 개발 ECS·ALB는 그대로 둔 채 세 저장소의 LAN-284 브랜치를 최신 기준으로 갱신한다. 최신 `origin/main`의 기준 plan과 LAN-284 plan을 별도로 생성해 기존 LAN-184 drift와 신규 EC2 추가분을 주소 단위로 분리한다.
+**구조:** 기존 개발 ECS·ALB는 그대로 둔 채 세 저장소의 LAN-284 브랜치를 최신 기준으로 갱신한다. 최신 `origin/main`의 기준 plan과 LAN-284 plan을 별도로 생성해 기존 LAN-184 drift와 신규 EC2 추가분을 주소 단위로 분리한다.
 
-**Tech Stack:** Git worktree, Terraform, AWS provider, Bash, Gradle, Python unittest.
+**기술:** Git worktree, Terraform, AWS provider, Bash, Gradle, Python unittest.
 
 ## Global Constraints
 
@@ -91,12 +91,13 @@ Expected: 모든 명령이 exit code 0이고 ECS 검증 뒤 EC2 mirror 순서가
 
 - [x] **Step 1: 최신 origin/main 기준 plan을 생성한다.**
 
-`origin/main` detached 임시 worktree를 `/tmp` 아래에 만들고 다음 명령을 실행한다.
+`origin/main` detached 임시 worktree를 `/tmp` 아래에 만들고 그 절대 경로에서 다음 명령을 실행한다.
 
 ```bash
-AWS_PROFILE=landit terraform -chdir=environments/dev init -reconfigure -input=false
-AWS_PROFILE=landit terraform -chdir=environments/dev plan -input=false -out=/tmp/lan284-main-baseline.tfplan
-terraform -chdir=environments/dev show -json /tmp/lan284-main-baseline.tfplan > /tmp/lan284-main-baseline.json
+BASELINE_WORKTREE=/tmp/lan284-main-baseline
+AWS_PROFILE=landit terraform -chdir="$BASELINE_WORKTREE/environments/dev" init -reconfigure -input=false
+AWS_PROFILE=landit terraform -chdir="$BASELINE_WORKTREE/environments/dev" plan -input=false -out=/tmp/lan284-main-baseline.tfplan
+terraform -chdir="$BASELINE_WORKTREE/environments/dev" show -json /tmp/lan284-main-baseline.tfplan > /tmp/lan284-main-baseline.json
 ```
 
 Expected: 현재 main만으로 발생하는 LAN-184 또는 기타 drift가 식별된다. apply는 실행하지 않는다.

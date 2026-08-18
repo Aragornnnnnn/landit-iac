@@ -82,3 +82,16 @@ rg -q '127.0.0.1:8000:8000' "${COMPOSE}"
 rg -q 'awslogs-group' "${COMPOSE}"
 rg -q 'reverse_proxy api:8080' "${CADDY}"
 rg -q 'reverse_proxy ai:8000' "${CADDY}"
+
+CONSOLE_DIR="$(mktemp -d)"
+trap 'rm -rf "${CONSOLE_DIR}"' EXIT
+rendered_caddy="$(
+  printf '%s\n' "templatefile(\"${CADDY}\", { api_domain_names = \"api-ec2-develop.landit.im, api-develop.landit.im\", ai_domain_names = \"ai-ec2-develop.landit.im, ai-develop.landit.im\" })" |
+    terraform -chdir="${CONSOLE_DIR}" console
+)"
+for domain_name in api-ec2-develop.landit.im api-develop.landit.im ai-ec2-develop.landit.im ai-develop.landit.im; do
+  if ! rg -Fq "${domain_name}" <<<"${rendered_caddy}"; then
+    echo "계약 위반. Caddy render에 ${domain_name}이 포함돼야 한다." >&2
+    exit 1
+  fi
+done

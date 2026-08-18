@@ -1,5 +1,14 @@
 # Checklist
 
+## 2026-08-18 LAN-284 개발 DNS 전환과 ECS·ALB 제거
+
+- [x] BE·AI dual deploy와 Flyway, ECS 안정화, 동일 SHA EC2 배포를 검증한다.
+- [ ] Caddy가 임시·기존 개발 도메인을 함께 수신하도록 보완하고 계약 테스트를 통과한다.
+- [ ] 실행 중 EC2 Caddy에 동일 설정을 반영하고 임시 도메인을 재검증한다.
+- [ ] 기존 개발 DNS를 EC2 EIP로 전환하고 BE·AI·BE→AI 경로를 검증한다.
+- [ ] ECS·ALB 제거 plan에서 삭제 대상을 확인하고 사용자 승인 범위만 적용한다.
+- [ ] 제거 뒤 EC2, DNS, GitHub Actions, CloudWatch·Grafana 경로를 최종 확인한다.
+
 ## 2026-08-08 LAN-284 개발 BE·AI 단일 EC2 통합
 
 - [x] `feat/284` 격리 worktree를 `origin/main`에서 생성한다.

@@ -112,7 +112,6 @@ for resource_address in \
     exit 1
   fi
 done
-
 CONSOLE_DIR="$(mktemp -d)"
 trap 'rm -rf "${CONSOLE_DIR}"' EXIT
 rendered_caddy="$(

@@ -44,6 +44,12 @@ variable "public_subnet_cidrs" {
   }
 }
 
+variable "ecs_platform_enabled" {
+  description = "Whether to provision the ECS services and their ALB routing layer."
+  type        = bool
+  default     = true
+}
+
 variable "container_port" {
   description = "API container port."
   type        = number

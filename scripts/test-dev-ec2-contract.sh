@@ -4,6 +4,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODULE_OUTPUTS="${ROOT_DIR}/modules/app-platform/outputs.tf"
+MODULE_MAIN="${ROOT_DIR}/modules/app-platform/main.tf"
+MODULE_VARIABLES="${ROOT_DIR}/modules/app-platform/variables.tf"
 for output_name in vpc_id public_subnet_ids api_ecr_repository_arn worker_ecr_repository_arn app_bucket_arn jobs_queue_arn api_log_group_name worker_log_group_name; do
   rg -q "output \"${output_name}\"" "${MODULE_OUTPUTS}"
 done
@@ -82,6 +84,34 @@ rg -q '127.0.0.1:8000:8000' "${COMPOSE}"
 rg -q 'awslogs-group' "${COMPOSE}"
 rg -q 'reverse_proxy api:8080' "${CADDY}"
 rg -q 'reverse_proxy ai:8000' "${CADDY}"
+
+rg -q 'variable "ecs_platform_enabled"' "${MODULE_VARIABLES}"
+rg -q 'ecs_platform_enabled[[:space:]]*=[[:space:]]*false' "${ROOT_DIR}/environments/dev/main.tf"
+rg -q 'ignore_changes[[:space:]]*=[[:space:]]*\[ami, user_data\]' "${DEV_EC2}"
+
+for resource_address in \
+  'aws_security_group.alb' \
+  'aws_security_group.ecs_tasks' \
+  'aws_lb.api' \
+  'aws_lb_target_group.api' \
+  'aws_lb_target_group.ai' \
+  'aws_lb_listener.http' \
+  'aws_iam_role.execution' \
+  'aws_iam_role.api_task' \
+  'aws_iam_role.worker_task' \
+  'aws_ecs_cluster.this' \
+  'aws_ecs_task_definition.api' \
+  'aws_ecs_task_definition.worker' \
+  'aws_ecs_service.api' \
+  'aws_ecs_service.worker'; do
+  resource_type="${resource_address%%.*}"
+  resource_name="${resource_address#*.}"
+  resource_block="$(sed -n "/resource \"${resource_type}\" \"${resource_name}\" {/,/^}/p" "${MODULE_MAIN}")"
+  if ! rg -q 'count[[:space:]]*=[[:space:]]*var\.ecs_platform_enabled[[:space:]]*\?[[:space:]]*1[[:space:]]*:[[:space:]]*0' <<<"${resource_block}"; then
+    echo "계약 위반. ${resource_address}는 ecs_platform_enabled=false일 때 제거돼야 한다." >&2
+    exit 1
+  fi
+done
 
 CONSOLE_DIR="$(mktemp -d)"
 trap 'rm -rf "${CONSOLE_DIR}"' EXIT

@@ -215,6 +215,10 @@ resource "aws_instance" "app" {
   tags = {
     Name = "${local.name_prefix}-ec2-app"
   }
+
+  lifecycle {
+    ignore_changes = [ami, user_data]
+  }
 }
 
 resource "aws_eip" "app" {

@@ -9,7 +9,7 @@ locals {
   name_prefix     = "${var.environment}-${var.project_name}"
   ssm_path        = trimsuffix(var.parameter_store_path, "/")
   app_bucket_name = "${local.name_prefix}-app-${data.aws_caller_identity.current.account_id}"
-  enable_https    = var.alb_certificate_arn != null
+  enable_https    = var.ecs_platform_enabled && var.alb_certificate_arn != null
   enable_api_host_rule = (
     local.enable_https &&
     length(var.api_domain_name) > 0
@@ -82,6 +82,8 @@ resource "aws_route_table_association" "public" {
 }
 
 resource "aws_security_group" "alb" {
+  count = var.ecs_platform_enabled ? 1 : 0
+
   name        = "${local.name_prefix}-alb"
   description = "Allow public HTTP and HTTPS traffic to ALB."
   vpc_id      = aws_vpc.this.id
@@ -112,6 +114,8 @@ resource "aws_security_group" "alb" {
 }
 
 resource "aws_security_group" "ecs_tasks" {
+  count = var.ecs_platform_enabled ? 1 : 0
+
   name        = "${local.name_prefix}-ecs-tasks"
   description = "Allow ALB traffic to ECS tasks."
   vpc_id      = aws_vpc.this.id
@@ -121,7 +125,7 @@ resource "aws_security_group" "ecs_tasks" {
     from_port       = var.container_port
     to_port         = var.container_port
     protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
+    security_groups = [aws_security_group.alb[0].id]
   }
 
   ingress {
@@ -129,7 +133,7 @@ resource "aws_security_group" "ecs_tasks" {
     from_port       = var.ai_container_port
     to_port         = var.ai_container_port
     protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
+    security_groups = [aws_security_group.alb[0].id]
   }
 
   egress {
@@ -725,10 +729,12 @@ resource "aws_athena_named_query" "waf_recent_matches" {
 }
 
 resource "aws_lb" "api" {
+  count = var.ecs_platform_enabled ? 1 : 0
+
   name               = "${local.name_prefix}-alb"
   load_balancer_type = "application"
   idle_timeout       = 70
-  security_groups    = [aws_security_group.alb.id]
+  security_groups    = [aws_security_group.alb[0].id]
   subnets            = values(aws_subnet.public)[*].id
 
   dynamic "access_logs" {
@@ -869,9 +875,9 @@ resource "aws_wafv2_web_acl" "alb" {
 }
 
 resource "aws_wafv2_web_acl_association" "alb" {
-  count = var.waf_count_enabled ? 1 : 0
+  count = var.ecs_platform_enabled && var.waf_count_enabled ? 1 : 0
 
-  resource_arn = aws_lb.api.arn
+  resource_arn = aws_lb.api[0].arn
   web_acl_arn  = aws_wafv2_web_acl.alb[0].arn
 }
 
@@ -928,6 +934,8 @@ resource "aws_wafv2_web_acl_logging_configuration" "alb" {
 }
 
 resource "aws_lb_target_group" "api" {
+  count = var.ecs_platform_enabled ? 1 : 0
+
   name        = "${local.name_prefix}-api"
   port        = var.container_port
   protocol    = "HTTP"
@@ -946,6 +954,8 @@ resource "aws_lb_target_group" "api" {
 }
 
 resource "aws_lb_target_group" "ai" {
+  count = var.ecs_platform_enabled ? 1 : 0
+
   name        = "${local.name_prefix}-ai"
   port        = var.ai_container_port
   protocol    = "HTTP"
@@ -964,7 +974,9 @@ resource "aws_lb_target_group" "ai" {
 }
 
 resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.api.arn
+  count = var.ecs_platform_enabled ? 1 : 0
+
+  load_balancer_arn = aws_lb.api[0].arn
   port              = 80
   protocol          = "HTTP"
 
@@ -973,7 +985,7 @@ resource "aws_lb_listener" "http" {
 
     content {
       type             = "forward"
-      target_group_arn = aws_lb_target_group.api.arn
+      target_group_arn = aws_lb_target_group.api[0].arn
     }
   }
 
@@ -995,14 +1007,14 @@ resource "aws_lb_listener" "http" {
 resource "aws_lb_listener" "https" {
   count = local.enable_https ? 1 : 0
 
-  load_balancer_arn = aws_lb.api.arn
+  load_balancer_arn = aws_lb.api[0].arn
   port              = 443
   protocol          = "HTTPS"
   certificate_arn   = var.alb_certificate_arn
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.api.arn
+    target_group_arn = aws_lb_target_group.api[0].arn
   }
 }
 
@@ -1014,7 +1026,7 @@ resource "aws_lb_listener_rule" "api_host" {
 
   action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.api.arn
+    target_group_arn = aws_lb_target_group.api[0].arn
   }
 
   condition {
@@ -1032,7 +1044,7 @@ resource "aws_lb_listener_rule" "ai_host" {
 
   action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.ai.arn
+    target_group_arn = aws_lb_target_group.ai[0].arn
   }
 
   condition {
@@ -1286,12 +1298,16 @@ data "aws_iam_policy_document" "ecs_task_assume_role" {
 }
 
 resource "aws_iam_role" "execution" {
+  count = var.ecs_platform_enabled ? 1 : 0
+
   name               = "${local.name_prefix}-ecs-execution"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume_role.json
 }
 
 resource "aws_iam_role_policy_attachment" "execution" {
-  role       = aws_iam_role.execution.name
+  count = var.ecs_platform_enabled ? 1 : 0
+
+  role       = aws_iam_role.execution[0].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
@@ -1316,17 +1332,23 @@ data "aws_iam_policy_document" "execution_ssm" {
 }
 
 resource "aws_iam_role_policy" "execution_ssm" {
+  count = var.ecs_platform_enabled ? 1 : 0
+
   name   = "${local.name_prefix}-ssm"
-  role   = aws_iam_role.execution.id
+  role   = aws_iam_role.execution[0].id
   policy = data.aws_iam_policy_document.execution_ssm.json
 }
 
 resource "aws_iam_role" "api_task" {
+  count = var.ecs_platform_enabled ? 1 : 0
+
   name               = "${local.name_prefix}-api-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume_role.json
 }
 
 resource "aws_iam_role" "worker_task" {
+  count = var.ecs_platform_enabled ? 1 : 0
+
   name               = "${local.name_prefix}-worker-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume_role.json
 }
@@ -1361,8 +1383,10 @@ data "aws_iam_policy_document" "api_task" {
 }
 
 resource "aws_iam_role_policy" "api_task" {
+  count = var.ecs_platform_enabled ? 1 : 0
+
   name   = "${local.name_prefix}-api"
-  role   = aws_iam_role.api_task.id
+  role   = aws_iam_role.api_task[0].id
   policy = data.aws_iam_policy_document.api_task.json
 }
 
@@ -1394,23 +1418,29 @@ data "aws_iam_policy_document" "worker_task" {
 }
 
 resource "aws_iam_role_policy" "worker_task" {
+  count = var.ecs_platform_enabled ? 1 : 0
+
   name   = "${local.name_prefix}-worker"
-  role   = aws_iam_role.worker_task.id
+  role   = aws_iam_role.worker_task[0].id
   policy = data.aws_iam_policy_document.worker_task.json
 }
 
 resource "aws_ecs_cluster" "this" {
+  count = var.ecs_platform_enabled ? 1 : 0
+
   name = "${local.name_prefix}-cluster"
 }
 
 resource "aws_ecs_task_definition" "api" {
+  count = var.ecs_platform_enabled ? 1 : 0
+
   family                   = "${local.name_prefix}-api"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = var.api_cpu
   memory                   = var.api_memory
-  execution_role_arn       = aws_iam_role.execution.arn
-  task_role_arn            = aws_iam_role.api_task.arn
+  execution_role_arn       = aws_iam_role.execution[0].arn
+  task_role_arn            = aws_iam_role.api_task[0].arn
 
   container_definitions = jsonencode([
     {
@@ -1483,13 +1513,15 @@ resource "aws_ecs_task_definition" "api" {
 }
 
 resource "aws_ecs_task_definition" "worker" {
+  count = var.ecs_platform_enabled ? 1 : 0
+
   family                   = "${local.name_prefix}-worker"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = var.worker_cpu
   memory                   = var.worker_memory
-  execution_role_arn       = aws_iam_role.execution.arn
-  task_role_arn            = aws_iam_role.worker_task.arn
+  execution_role_arn       = aws_iam_role.execution[0].arn
+  task_role_arn            = aws_iam_role.worker_task[0].arn
 
   container_definitions = jsonencode([
     {
@@ -1555,9 +1587,11 @@ resource "aws_ecs_task_definition" "worker" {
 }
 
 resource "aws_ecs_service" "api" {
+  count = var.ecs_platform_enabled ? 1 : 0
+
   name                              = "${local.name_prefix}-api"
-  cluster                           = aws_ecs_cluster.this.id
-  task_definition                   = aws_ecs_task_definition.api.arn
+  cluster                           = aws_ecs_cluster.this[0].id
+  task_definition                   = aws_ecs_task_definition.api[0].arn
   desired_count                     = var.api_desired_count
   launch_type                       = "FARGATE"
   health_check_grace_period_seconds = var.api_health_check_grace_period_seconds
@@ -1566,12 +1600,12 @@ resource "aws_ecs_service" "api" {
 
   network_configuration {
     subnets          = values(aws_subnet.public)[*].id
-    security_groups  = [aws_security_group.ecs_tasks.id]
+    security_groups  = [aws_security_group.ecs_tasks[0].id]
     assign_public_ip = true
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.api.arn
+    target_group_arn = aws_lb_target_group.api[0].arn
     container_name   = "api"
     container_port   = var.container_port
   }
@@ -1580,9 +1614,11 @@ resource "aws_ecs_service" "api" {
 }
 
 resource "aws_ecs_service" "worker" {
+  count = var.ecs_platform_enabled ? 1 : 0
+
   name                              = "${local.name_prefix}-worker"
-  cluster                           = aws_ecs_cluster.this.id
-  task_definition                   = aws_ecs_task_definition.worker.arn
+  cluster                           = aws_ecs_cluster.this[0].id
+  task_definition                   = aws_ecs_task_definition.worker[0].arn
   desired_count                     = var.worker_desired_count
   launch_type                       = "FARGATE"
   health_check_grace_period_seconds = local.enable_ai_host_rule ? var.ai_health_check_grace_period_seconds : null
@@ -1591,7 +1627,7 @@ resource "aws_ecs_service" "worker" {
 
   network_configuration {
     subnets          = values(aws_subnet.public)[*].id
-    security_groups  = [aws_security_group.ecs_tasks.id]
+    security_groups  = [aws_security_group.ecs_tasks[0].id]
     assign_public_ip = true
   }
 
@@ -1599,7 +1635,7 @@ resource "aws_ecs_service" "worker" {
     for_each = local.enable_ai_host_rule ? [1] : []
 
     content {
-      target_group_arn = aws_lb_target_group.ai.arn
+      target_group_arn = aws_lb_target_group.ai[0].arn
       container_name   = "worker"
       container_port   = var.ai_container_port
     }

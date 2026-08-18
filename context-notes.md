@@ -2,11 +2,12 @@
 
 ## 2026-08-18 LAN-284 개발 DNS 전환과 ECS·ALB 제거
 
-- AI develop 배포 `32129924802`는 ECS 검증 뒤 SHA `f276c4b19ed7519523f365d30e931bcb18a8922c`를 EC2에 배포했고 전체 단계가 성공했다.
-- BE PR 105를 squash merge한 SHA는 `a5a0efa6489767b24573234e12b1f253475167a9`다. develop 배포 `32135072626`에서 Flyway, 애플리케이션 테스트, ECS 안정화, 동일 SHA EC2 배포가 순서대로 성공했다.
-- 외부 임시 도메인의 BE·AI health와 Compose 내부 BE 컨테이너에서 `ai:8000` TCP 연결이 성공했다. 기존 개발 DNS는 아직 ALB를 가리키며 ECS·ALB도 유지 중이다.
-- 현재 Caddyfile은 임시 EC2 도메인만 수신한다. 기존 개발 DNS를 전환하기 전에 임시 도메인과 기존 도메인을 같은 API·AI site block에 함께 등록하고 live Caddy 설정을 검증해야 한다.
-- Grafana 애플리케이션 지표는 ECS와 같은 `service_name`, `deployment_environment_name=develop`을 사용하므로 DNS 전환에 따른 재설정은 필요 없다. EC2 host 지표는 `Landit/EC2`, CPU credit은 `AWS/EC2` CloudWatch namespace에서 별도로 확인한다.
+- Caddy는 임시 도메인과 기존 개발 도메인을 함께 수신한다. 실행 중 설정 반영 뒤 Caddy 컨테이너만 재생성해 bind mount inode를 갱신했고 네 도메인의 HTTPS health를 확인했다.
+- Vercel DNS의 `api-develop.landit.im`, `ai-develop.landit.im`을 EC2 EIP `3.35.41.213`의 A record로 전환했다. 외부 API·AI health와 Compose 내부 `http://ai:8000/health` 호출이 모두 성공했다.
+- BE PR 109와 AI PR 59를 병합해 ECS 의존성을 제거한 EC2 전용 workflow를 적용했다. BE 배포는 Flyway 뒤 SHA `03923db3db259406706f4ae05d8a3e0afc009278`, AI 배포는 SHA `790cb4459bfe0651010586396a666997bf0659e1` 이미지를 EC2에 배포했고 두 컨테이너가 실행 중이다.
+- BE·AI 컨테이너에 기존 OTLP 환경 변수 이름이 모두 주입돼 있다. Grafana 애플리케이션 설정 변경은 필요 없고, EC2 host 지표는 `Landit/EC2`, CPU credit은 `AWS/EC2` CloudWatch namespace에서 확인한다.
+- 제거 saved plan은 `0 add, 0 change, 21 destroy`다. 개발 ECS cluster·service·task definition, ALB·listener·target group, 전용 security group과 IAM만 제거하고 EC2·EIP, VPC, ECR, S3, SQS, SSM, CloudWatch Logs와 Grafana 전달 경로는 보존한다.
+- 사용자는 정상 이전과 GitHub Actions 재배포 확인 뒤 24~48시간 관찰 없이 기존 개발 ECS·ALB를 바로 제거하도록 승인했다.
 
 ## 2026-08-15 LAN-284 최신 state 적용 전 plan 분리 감사
 

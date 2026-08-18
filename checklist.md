@@ -3,10 +3,10 @@
 ## 2026-08-18 LAN-284 개발 DNS 전환과 ECS·ALB 제거
 
 - [x] BE·AI dual deploy와 Flyway, ECS 안정화, 동일 SHA EC2 배포를 검증한다.
-- [ ] Caddy가 임시·기존 개발 도메인을 함께 수신하도록 보완하고 계약 테스트를 통과한다.
-- [ ] 실행 중 EC2 Caddy에 동일 설정을 반영하고 임시 도메인을 재검증한다.
-- [ ] 기존 개발 DNS를 EC2 EIP로 전환하고 BE·AI·BE→AI 경로를 검증한다.
-- [ ] ECS·ALB 제거 plan에서 삭제 대상을 확인하고 사용자 승인 범위만 적용한다.
+- [x] Caddy가 임시·기존 개발 도메인을 함께 수신하도록 보완하고 계약 테스트를 통과한다.
+- [x] 실행 중 EC2 Caddy에 동일 설정을 반영하고 임시 도메인을 재검증한다.
+- [x] 기존 개발 DNS를 EC2 EIP로 전환하고 BE·AI·BE→AI 경로를 검증한다.
+- [x] ECS·ALB 제거 plan이 `0 add, 0 change, 21 destroy`이고 공유 리소스를 보존하는지 확인한다.
 - [ ] 제거 뒤 EC2, DNS, GitHub Actions, CloudWatch·Grafana 경로를 최종 확인한다.
 
 ## 2026-08-08 LAN-284 개발 BE·AI 단일 EC2 통합
@@ -20,13 +20,13 @@
 - [x] Terraform fmt, validate와 dev saved plan을 검증한다.
 - [x] 세 저장소의 LAN-284 diff, IAM·secret·rollback 경계와 재실행한 검증 결과를 교차 검토한다.
 - [x] 실제 apply와 DNS 변경은 별도 승인 전까지 보류한다.
-- [ ] IaC LAN-284 PR을 먼저 병합한 뒤 최신 state 기준 EC2 create-only plan을 재생성·승인하고 EC2를 apply한다.
-- [ ] SSM·Docker·Caddy·loopback health·로그·rollback을 검증한다.
-- [ ] 임시 Vercel DNS `api-ec2-develop.landit.im`, `ai-ec2-develop.landit.im` 등록 승인을 받고, 외부 HTTPS·API·AI·BE→AI를 검증한다.
-- [ ] 그 뒤 BE·AI GitHub Environment `EC2_INSTANCE_ID`를 등록한다.
-- [ ] EC2와 `EC2_INSTANCE_ID` 준비 전에는 BE·AI application workflow PR을 병합하지 않고, 준비 뒤 두 PR을 병합해 ECS 검증 뒤 같은 SHA를 EC2에 미러링하는 dual deploy를 검증한다.
-- [ ] dual deploy 뒤 24~48시간 병행 관찰을 거쳐 원래 개발 DNS 전환의 별도 승인을 받는다.
-- [ ] EC2 이전 검증 후 기존 ECS·ALB 제거를 별도 작업으로 진행한다.
+- [x] IaC LAN-284 PR을 병합하고 최신 state 기준 EC2 create-only plan 승인 뒤 EC2를 apply한다.
+- [x] SSM·Docker·Caddy·loopback health·로그·rollback을 검증한다.
+- [x] 임시 Vercel DNS `api-ec2-develop.landit.im`, `ai-ec2-develop.landit.im`을 등록하고 외부 HTTPS·API·AI·BE→AI를 검증한다.
+- [x] BE·AI GitHub Environment `EC2_INSTANCE_ID`를 등록한다.
+- [x] BE·AI workflow를 EC2 전용으로 전환하고 Flyway와 실제 재배포를 검증한다.
+- [x] 사용자 결정에 따라 24~48시간 관찰 없이 검증 직후 원래 개발 DNS를 EC2로 전환한다.
+- [ ] 검증된 제거 plan으로 기존 ECS·ALB를 제거한다.
 
 ## 2026-08-15 LAN-284 최신 state 적용 전 plan 분리 감사
 

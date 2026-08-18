@@ -8,6 +8,9 @@
 - BE·AI 컨테이너에 기존 OTLP 환경 변수 이름이 모두 주입돼 있다. Grafana 애플리케이션 설정 변경은 필요 없고, EC2 host 지표는 `Landit/EC2`, CPU credit은 `AWS/EC2` CloudWatch namespace에서 확인한다.
 - 제거 saved plan은 `0 add, 0 change, 21 destroy`다. 개발 ECS cluster·service·task definition, ALB·listener·target group, 전용 security group과 IAM만 제거하고 EC2·EIP, VPC, ECR, S3, SQS, SSM, CloudWatch Logs와 Grafana 전달 경로는 보존한다.
 - 사용자는 정상 이전과 GitHub Actions 재배포 확인 뒤 24~48시간 관찰 없이 기존 개발 ECS·ALB를 바로 제거하도록 승인했다.
+- IaC PR 13 병합 뒤 saved plan을 적용해 `0 added, 0 changed, 21 destroyed`로 제거를 완료했고 post-apply plan은 `No changes`다.
+- AWS 확인에서 개발 ECS cluster와 ALB는 없고, EC2 `i-05436b2754740db41`은 `t3.small`, EIP `3.35.41.213`으로 실행 중이다. Firehose `develop-landit-grafana-logs`는 `ACTIVE`이고 API·worker CloudWatch Log Group도 보존됐다.
+- 제거 후 API·AI 외부 health, BE→AI 내부 health와 실제 BE·AI 이미지 SHA를 다시 확인했다.
 
 ## 2026-08-15 LAN-284 최신 state 적용 전 plan 분리 감사
 

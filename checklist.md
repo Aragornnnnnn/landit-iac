@@ -7,7 +7,7 @@
 - [x] 실행 중 EC2 Caddy에 동일 설정을 반영하고 임시 도메인을 재검증한다.
 - [x] 기존 개발 DNS를 EC2 EIP로 전환하고 BE·AI·BE→AI 경로를 검증한다.
 - [x] ECS·ALB 제거 plan이 `0 add, 0 change, 21 destroy`이고 공유 리소스를 보존하는지 확인한다.
-- [ ] 제거 뒤 EC2, DNS, GitHub Actions, CloudWatch·Grafana 경로를 최종 확인한다.
+- [x] 제거 뒤 EC2, DNS, GitHub Actions, CloudWatch·Grafana 경로를 최종 확인한다.
 
 ## 2026-08-08 LAN-284 개발 BE·AI 단일 EC2 통합
 
@@ -26,7 +26,7 @@
 - [x] BE·AI GitHub Environment `EC2_INSTANCE_ID`를 등록한다.
 - [x] BE·AI workflow를 EC2 전용으로 전환하고 Flyway와 실제 재배포를 검증한다.
 - [x] 사용자 결정에 따라 24~48시간 관찰 없이 검증 직후 원래 개발 DNS를 EC2로 전환한다.
-- [ ] 검증된 제거 plan으로 기존 ECS·ALB를 제거한다.
+- [x] 검증된 제거 plan으로 기존 ECS·ALB를 제거한다.
 
 ## 2026-08-15 LAN-284 최신 state 적용 전 plan 분리 감사
 

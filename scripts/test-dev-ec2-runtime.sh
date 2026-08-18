@@ -33,8 +33,8 @@ locals {
       aws_region         = "ap-northeast-2"
     })
     caddyfile = templatefile("${ROOT_DIR}/environments/dev/templates/Caddyfile.tftpl", {
-      api_domain_name = "api-ec2-develop.landit.im"
-      ai_domain_name  = "ai-ec2-develop.landit.im"
+      api_domain_names = "api-ec2-develop.landit.im, api-develop.landit.im"
+      ai_domain_names  = "ai-ec2-develop.landit.im, ai-develop.landit.im"
     })
   })
 }

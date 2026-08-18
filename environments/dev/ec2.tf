@@ -192,8 +192,8 @@ resource "aws_instance" "app" {
       aws_region         = var.aws_region
     })
     caddyfile = templatefile("${path.module}/templates/Caddyfile.tftpl", {
-      api_domain_name = var.api_ec2_domain_name
-      ai_domain_name  = var.ai_ec2_domain_name
+      api_domain_names = "${var.api_ec2_domain_name}, ${var.api_domain_name}"
+      ai_domain_names  = "${var.ai_ec2_domain_name}, ${var.ai_domain_name}"
     })
   })
 

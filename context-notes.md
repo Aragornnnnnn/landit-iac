@@ -1,5 +1,13 @@
 # Context Notes
 
+## 2026-08-18 LAN-284 개발 DNS 전환과 ECS·ALB 제거
+
+- AI develop 배포 `32129924802`는 ECS 검증 뒤 SHA `f276c4b19ed7519523f365d30e931bcb18a8922c`를 EC2에 배포했고 전체 단계가 성공했다.
+- BE PR 105를 squash merge한 SHA는 `a5a0efa6489767b24573234e12b1f253475167a9`다. develop 배포 `32135072626`에서 Flyway, 애플리케이션 테스트, ECS 안정화, 동일 SHA EC2 배포가 순서대로 성공했다.
+- 외부 임시 도메인의 BE·AI health와 Compose 내부 BE 컨테이너에서 `ai:8000` TCP 연결이 성공했다. 기존 개발 DNS는 아직 ALB를 가리키며 ECS·ALB도 유지 중이다.
+- 현재 Caddyfile은 임시 EC2 도메인만 수신한다. 기존 개발 DNS를 전환하기 전에 임시 도메인과 기존 도메인을 같은 API·AI site block에 함께 등록하고 live Caddy 설정을 검증해야 한다.
+- Grafana 애플리케이션 지표는 ECS와 같은 `service_name`, `deployment_environment_name=develop`을 사용하므로 DNS 전환에 따른 재설정은 필요 없다. EC2 host 지표는 `Landit/EC2`, CPU credit은 `AWS/EC2` CloudWatch namespace에서 별도로 확인한다.
+
 ## 2026-08-15 LAN-284 최신 state 적용 전 plan 분리 감사
 
 - 기준은 `origin/main` `145980a`와 Task 1 clean `feat/284` `2431187`이며, `origin/main`은 feature HEAD의 조상이다. 두 plan은 같은 develop state에서 `terraform apply` 없이 생성했고 saved plan·JSON은 `/tmp`에만 저장했다.

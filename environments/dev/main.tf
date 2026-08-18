@@ -19,8 +19,9 @@ module "app_platform" {
   content_bucket_name    = data.terraform_remote_state.shared.outputs.content_bucket_name
   content_cloudfront_url = data.terraform_remote_state.shared.outputs.cloudfront_url
 
-  vpc_cidr            = var.vpc_cidr
-  public_subnet_cidrs = var.public_subnet_cidrs
+  vpc_cidr             = var.vpc_cidr
+  public_subnet_cidrs  = var.public_subnet_cidrs
+  ecs_platform_enabled = false
 
   container_port       = var.container_port
   api_domain_name      = var.api_domain_name

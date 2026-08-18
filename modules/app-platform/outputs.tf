@@ -1,12 +1,12 @@
 # ECS 기반 Landit application platform module의 출력값을 정의한다.
 output "alb_dns_name" {
   description = "ALB DNS name for public service routing."
-  value       = aws_lb.api.dns_name
+  value       = try(aws_lb.api[0].dns_name, null)
 }
 
 output "alb_zone_id" {
   description = "ALB hosted zone ID for alias records."
-  value       = aws_lb.api.zone_id
+  value       = try(aws_lb.api[0].zone_id, null)
 }
 
 output "api_domain_name" {
@@ -111,5 +111,5 @@ output "worker_log_group_name" {
 
 output "ecs_cluster_name" {
   description = "ECS cluster name."
-  value       = aws_ecs_cluster.this.name
+  value       = try(aws_ecs_cluster.this[0].name, null)
 }

@@ -38,9 +38,9 @@ terraform -chdir=environments/dev validate
 AWS_PROFILE=landit terraform -chdir=environments/dev plan
 ```
 
-## 개발 EC2 병행 전환 검증
+## 개발 EC2 배포와 제거 검증
 
-개발 EC2는 기존 ECS·ALB를 대체하지 않고 병행 검증한다. saved plan을 만든 뒤 주소별 변경을 감사하고, plan 파일과 JSON은 `/tmp`에만 둔다.
+개발 BE·AI는 단일 EC2에서 실행한다. ECS·ALB 제거 전에는 saved plan을 만든 뒤 주소별 변경을 감사하고 plan 파일과 JSON은 `/tmp`에만 둔다.
 
 ```bash
 AWS_PROFILE=landit terraform -chdir=environments/dev plan -input=false -out=/tmp/lan284-dev.tfplan
@@ -52,18 +52,15 @@ jq -r '.resource_changes[] | select(.change.actions != ["no-op"]) | [.address, (
 
 2026-08-15 최신 `origin/main` baseline은 `No changes`이며 LAN-184 destroy는 더 이상 없다. 리뷰 보완 뒤 LAN-284 plan은 EC2·EIP·security group·IAM과 전용 SSM 배포 문서의 `10 add, 0 change, 0 destroy`만 포함하고 ALB·listener·target group과 ECS Service 변경은 없다. 따라서 현재 LAN-184 apply·post-apply 확인은 승인 게이트가 아니다.
 
-BE·AI workflow의 EC2 미러링 구현과 로컬 검증은 완료됐다. 현재 순서는 다음과 같다.
+BE·AI workflow는 ECR push 뒤 SSM으로 EC2 컨테이너를 배포하며, BE는 먼저 Flyway migration을 실행한다. 제거 절차는 다음과 같다.
 
-1. IaC LAN-284 PR만 병합한다.
-2. 최신 state 기준 EC2 create-only plan을 재생성하고 별도 apply 승인을 받은 뒤 EC2를 apply한다.
-3. SSM, Docker, Caddy, loopback health, 로그, rollback을 검증한다.
-4. 임시 Vercel DNS `api-ec2-develop.landit.im`, `ai-ec2-develop.landit.im` 등록 승인을 받는다.
-5. 임시 도메인으로 외부 HTTPS, API, AI, BE→AI를 검증한다.
-6. BE·AI GitHub Environment에 `EC2_INSTANCE_ID`를 등록한다.
-7. 그 뒤에만 BE·AI application workflow PR을 병합하고, 각 workflow의 ECS 검증 뒤 동일 SHA EC2 미러링 dual deploy를 검증한다.
-8. 24~48시간 병행 관찰 뒤 원래 개발 DNS 전환의 별도 승인을 받는다.
+1. BE·AI GitHub Actions 재배포와 Flyway 성공을 확인한다.
+2. EC2의 실제 이미지 SHA, 컨테이너 상태, 외부 HTTPS와 BE→AI 내부 health를 확인한다.
+3. 기존 개발 DNS가 EC2 Elastic IP를 가리키는지 확인한다.
+4. 제거 plan이 개발 ECS·ALB 전용 리소스만 삭제하고 EC2·EIP, VPC, ECR, S3, SQS, SSM, CloudWatch Logs를 보존하는지 확인한다.
+5. 승인된 saved plan을 적용하고 post-apply `No changes`와 외부 health를 재확인한다.
 
-EC2 runtime과 두 `EC2_INSTANCE_ID` 준비 전에는 BE·AI application workflow PR을 병합하지 않는다. 실제 instance ID와 SHA를 확인하기 전에는 아래 명령도 실행하지 않는다.
+실제 instance ID와 SHA를 확인하기 전에는 아래 명령을 실행하지 않는다.
 
 ```bash
 aws ssm send-command --region ap-northeast-2 \
@@ -81,7 +78,7 @@ aws ssm send-command --region ap-northeast-2 \
   --parameters 'service=api,imageSha=<PREVIOUS_GIT_SHA>'
 ```
 
-EC2 복구는 ECS·ALB 변경을 포함하지 않는다. 원래 개발 DNS가 ALB를 가리키는 동안 EC2 실패는 EC2에서만 롤백한다. DNS 전환 뒤 장애가 나면 먼저 Vercel DNS를 ALB로 되돌리고, ECS 장애가 확인된 경우에만 기존 ECS 배포 절차로 복구한다. ECS·ALB 제거는 DNS 전환과 24~48시간 관찰을 마친 뒤 별도 승인으로만 수행한다.
+ECS·ALB 제거 전 장애가 나면 Vercel DNS를 기존 ALB로 되돌릴 수 있다. 제거 뒤에는 EC2의 직전 이미지 SHA 자동 복구와 Terraform 재생성이 복구 경계다.
 
 production root도 같은 흐름을 사용합니다.
 

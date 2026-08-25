@@ -12,8 +12,8 @@
 - [x] production 질문 source snapshot을 재생성하고 초기 audit 대비 drift가 없음을 확인한다.
 - [x] 캐릭터별 샘플 3개를 생성·검수하고 전체 생성 승인을 받는다.
 - [x] 전체 120개 MP3를 생성하고 source·오디오 계약을 검증한다.
-- [ ] shared S3 변경 목록을 검토받은 뒤 별도 승인으로 업로드한다.
-- [ ] 업로드 객체 수, metadata와 SHA-256을 manifest와 대조한다.
+- [x] shared S3 변경 목록을 검토받은 뒤 별도 승인으로 업로드한다.
+- [x] 업로드 객체 수, metadata와 SHA-256을 manifest와 대조한다.
 
 ## 2026-08-18 LAN-284 개발 DNS 전환과 ECS·ALB 제거
 

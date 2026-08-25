@@ -22,7 +22,9 @@
 - Task 6 전체 생성은 승인된 샘플 3개를 resume하고 나머지 117개를 호출해 `completed=120, failed=0`으로 끝났다. 결과는 Chloe 9개, Marco 24개, Teddy 87개, 총 4,915,152 bytes, 총 819.192초이며 MP3 120개와 `.part` 잔여 0개를 확인했다.
 - canonical manifest SHA-256은 `2e084d63e194f984f0160341889d3df7e610b9de99f8dc528ee3f95211874509`다. source와 manifest 동시 검증에서 MP3 120개의 decoder probe, byte size, audio SHA-256과 generation fingerprint가 모두 일치했고 단위 테스트 39개, Terraform format, 기존 콘텐츠 업로드 계약과 `git diff --check`가 통과했다.
 - 전체 생성 후 OpenRouter credits API 잔액은 `$578.103948301`이었다. 전체 생성 직전 확인값 대비 관찰된 감소액은 `$0.346230750`이며 같은 key의 다른 동시 사용 가능성이 있어 LAN-351 단독 청구액으로 단정하지 않는다.
-- Task 7 사전 S3 dry-run은 shared bucket `landit-content-982529430654`의 MP3 120개와 manifest 1개 key를 `head-object`로만 조회했다. 대상 121개가 모두 신규이고 재사용 0개, metadata 충돌 0개였으며 `put-object`와 실제 업로드는 0건이다. 실제 게시에는 사용자 별도 승인이 필요하다.
+- Task 7 사전 S3 dry-run은 shared bucket의 MP3 120개와 manifest 1개 key를 `head-object`로만 조회했다. 대상 121개가 모두 신규이고 재사용 0개, metadata 충돌 0개였으며 `put-object`와 실제 업로드는 0건이었다. 사용자가 이 변경 목록을 검토하고 실제 게시를 별도로 승인했다.
+- 승인 후 MP3 120개를 먼저 `If-None-Match: *`로 게시·검증하고 canonical manifest 1개를 마지막 completion marker로 게시했다. 실행 결과는 신규 업로드 121개, 검증 121개, 충돌 0개였고 후속 dry-run은 신규 0개, 재사용 121개, 충돌 0개였다.
+- 원격 prefix를 임시 디렉터리에 다시 내려받아 MP3 120개의 실제 bytes를 전수 계산했다. manifest의 byte size·audio SHA-256 불일치는 0개였고 원격 manifest bytes도 로컬 SHA-256 `2e084d63e194f984f0160341889d3df7e610b9de99f8dc528ee3f95211874509` manifest와 정확히 일치했다. 기존 객체 overwrite와 delete는 수행하지 않았다.
 
 ## 2026-08-18 LAN-284 개발 DNS 전환과 ECS·ALB 제거
 

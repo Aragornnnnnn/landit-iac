@@ -702,3 +702,12 @@
 - develop API revision `10`과 production API revision `8`은 desired/running `1/1`, pending `0`, rollout `COMPLETED`, failed task `0`으로 안정화됐고 두 ALB에는 새 healthy target만 남았다. 두 외부 `/actuator/health` endpoint는 `UP`을 반환했다.
 - AWS 실상태에서 CORS 7개 origin, 두 API task role의 `content/inbox/*` `s3:PutObject`, 두 task definition의 콘텐츠 bucket·CloudFront 환경 변수를 확인했다. 기존 콘텐츠 객체의 CloudFront HEAD 요청은 `HTTP 200`, `image/png`을 반환했다.
 - post-apply shared·develop·production 전체 plan은 모두 `No changes`다. presigned URL을 이용한 신규 임시 객체 업로드는 BE 구현 후 검증 범위이므로 아직 실행하지 않았다.
+
+## 2026-08-25 LAN-372 개발 Sentry 오류 대응
+
+- BE 개발 Sentry의 S3 presign 오류 원인은 개발 EC2 컨테이너에 `CONTENT_BUCKET_NAME`, `CONTENT_CLOUDFRONT_URL`이 주입되지 않은 상태였다. shared remote state의 `content_bucket_name`, `cloudfront_url`을 dev EC2 user-data에 전달하도록 수정했다.
+- 개발 EC2 role에는 shared bucket 전체가 아닌 `content/inbox/*`에 대한 `s3:PutObject`만 추가했다. API ECS task role의 기존 권한은 변경하지 않았다.
+- 최초 develop apply는 EC2 role의 IAM 정책만 변경했다. production은 변경 사항이 없었다. 두 role의 IAM simulation에서 `content/inbox/*` PutObject는 허용되고 다른 prefix는 거부되는 것을 확인했다.
+- 개발 EC2의 `user_data`는 lifecycle에서 변경을 무시하므로 기존 인스턴스의 `/opt/landit/bin/runtime-env`와 실행 컨테이너에는 콘텐츠 환경 변수가 반영되지 않았다.
+- runtime env를 별도 템플릿으로 분리하고, EC2 user-data와 SSM 배포 문서가 같은 렌더링 결과를 사용하도록 수정했다. SSM은 매 배포 전 임시 파일을 생성해 `runtime-env`를 원자적으로 교체한 뒤 기존 `deploy-service`를 실행한다.
+- IAC 변경을 적용해 SSM 문서를 갱신한 뒤 BE 핫픽스를 배포해야 실행 중인 개발 API 컨테이너에 새 환경 변수가 반영된다. 현재 API는 재기동하지 않았다.

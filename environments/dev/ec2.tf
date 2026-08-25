@@ -9,6 +9,20 @@ data "aws_iam_role" "github_actions_deploy" {
   name = "landit-github-actions-develop-deploy"
 }
 
+locals {
+  ec2_runtime_env = templatefile("${path.module}/templates/ec2-runtime-env.sh.tftpl", {
+    aws_region             = var.aws_region
+    parameter_store_path   = var.parameter_store_path
+    environment            = var.environment
+    app_bucket_name        = module.app_platform.app_bucket_name
+    content_bucket_name    = data.terraform_remote_state.shared.outputs.content_bucket_name
+    content_cloudfront_url = data.terraform_remote_state.shared.outputs.cloudfront_url
+    jobs_queue_url         = module.app_platform.jobs_queue_url
+    grafana_otlp_enabled   = tostring(var.grafana_otlp_enabled)
+    grafana_otlp_endpoint  = var.grafana_otlp_endpoint
+  })
+}
+
 data "aws_iam_policy_document" "ec2_assume_role" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -88,6 +102,13 @@ data "aws_iam_policy_document" "ec2_app" {
   statement {
     actions   = ["s3:ListBucket"]
     resources = [module.app_platform.app_bucket_arn]
+  }
+
+  statement {
+    actions = ["s3:PutObject"]
+    resources = [
+      "arn:aws:s3:::${data.terraform_remote_state.shared.outputs.content_bucket_name}/content/inbox/*"
+    ]
   }
 
   statement {
@@ -174,18 +195,14 @@ resource "aws_instance" "app" {
   iam_instance_profile        = aws_iam_instance_profile.ec2_app.name
   associate_public_ip_address = true
   user_data = templatefile("${path.module}/templates/ec2-user-data.sh.tftpl", {
-    api_image             = module.app_platform.api_ecr_repository_url
-    ai_image              = module.app_platform.worker_ecr_repository_url
-    api_log_group_name    = module.app_platform.api_log_group_name
-    ai_log_group_name     = module.app_platform.worker_log_group_name
-    aws_region            = var.aws_region
-    parameter_store_path  = var.parameter_store_path
-    ecr_registry          = split("/", module.app_platform.api_ecr_repository_url)[0]
-    environment           = var.environment
-    app_bucket_name       = module.app_platform.app_bucket_name
-    jobs_queue_url        = module.app_platform.jobs_queue_url
-    grafana_otlp_enabled  = tostring(var.grafana_otlp_enabled)
-    grafana_otlp_endpoint = var.grafana_otlp_endpoint
+    api_image            = module.app_platform.api_ecr_repository_url
+    ai_image             = module.app_platform.worker_ecr_repository_url
+    api_log_group_name   = module.app_platform.api_log_group_name
+    ai_log_group_name    = module.app_platform.worker_log_group_name
+    aws_region           = var.aws_region
+    parameter_store_path = var.parameter_store_path
+    ecr_registry         = split("/", module.app_platform.api_ecr_repository_url)[0]
+    runtime_env          = local.ec2_runtime_env
     docker_compose = templatefile("${path.module}/templates/docker-compose.yml.tftpl", {
       api_log_group_name = module.app_platform.api_log_group_name
       ai_log_group_name  = module.app_platform.worker_log_group_name
@@ -257,6 +274,11 @@ resource "aws_ssm_document" "ec2_deploy" {
       }
       inputs = {
         runCommand = [
+          "runtime_env_file=\"$(mktemp /opt/landit/bin/runtime-env.XXXXXX)\"",
+          "trap 'rm -f \"$runtime_env_file\"' EXIT",
+          "printf '%s' '${base64encode(local.ec2_runtime_env)}' | base64 --decode > \"$runtime_env_file\"",
+          "chmod 0750 \"$runtime_env_file\"",
+          "mv \"$runtime_env_file\" /opt/landit/bin/runtime-env",
           "/opt/landit/bin/deploy-service \"$SSM_service\" \"$SSM_imageSha\""
         ]
       }

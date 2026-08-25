@@ -49,13 +49,24 @@ if rg -q 'AWS-RunShellScript' "${DEV_EC2}"; then
 fi
 
 USER_DATA="${ROOT_DIR}/environments/dev/templates/ec2-user-data.sh.tftpl"
+RUNTIME_ENV="${ROOT_DIR}/environments/dev/templates/ec2-runtime-env.sh.tftpl"
 COMPOSE="${ROOT_DIR}/environments/dev/templates/docker-compose.yml.tftpl"
 CADDY="${ROOT_DIR}/environments/dev/templates/Caddyfile.tftpl"
 test -f "${USER_DATA}"
+test -f "${RUNTIME_ENV}"
 test -f "${COMPOSE}"
 test -f "${CADDY}"
-rg -q 'LANDIT_AI_BASE_URL=http://ai:8000' "${USER_DATA}"
-rg -q 'chmod 0600' "${USER_DATA}"
+rg -q 'ec2_runtime_env[[:space:]]*=[[:space:]]*templatefile' "${DEV_EC2}"
+rg -q 'runtime_env[[:space:]]*=[[:space:]]*local.ec2_runtime_env' "${DEV_EC2}"
+rg -Fq 'base64encode(local.ec2_runtime_env)' "${DEV_EC2}"
+runtime_install_line="$(rg -n 'mv .*runtime-env' "${DEV_EC2}" | cut -d: -f1)"
+deploy_service_line="$(rg -n '/opt/landit/bin/deploy-service' "${DEV_EC2}" | cut -d: -f1)"
+if [[ -z "${runtime_install_line}" || -z "${deploy_service_line}" || "${runtime_install_line}" -ge "${deploy_service_line}" ]]; then
+  echo '계약 위반. SSM 배포는 runtime-env를 먼저 갱신한 뒤 deploy-service를 실행해야 한다.' >&2
+  exit 1
+fi
+rg -q 'LANDIT_AI_BASE_URL=http://ai:8000' "${RUNTIME_ENV}"
+rg -q 'chmod 0600' "${RUNTIME_ENV}"
 rg -q 'flock' "${USER_DATA}"
 rg -q 'mkswap' "${USER_DATA}"
 rg -q 'amazon-cloudwatch-agent' "${USER_DATA}"
@@ -70,7 +81,7 @@ rg -q 'wait_for_initial_health ai' "${USER_DATA}"
 rg -q 'grafana_otlp_enabled' "${DEV_EC2}"
 rg -q 'grafana_otlp_endpoint' "${DEV_EC2}"
 for otel_key in OTEL_EXPORTER_OTLP_METRICS_ENDPOINT MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED MANAGEMENT_OTLP_METRICS_EXPORT_STEP OTEL_METRICS_ENABLED OTEL_EXPORTER_OTLP_PROTOCOL OTEL_EXPORTER_OTLP_ENDPOINT OTEL_SERVICE_NAME OTEL_RESOURCE_ATTRIBUTES; do
-  rg -q "${otel_key}" "${USER_DATA}"
+  rg -q "${otel_key}" "${RUNTIME_ENV}"
 done
 rg -q 'LANDIT_LOCK_FILE' "${USER_DATA}"
 rg -Fq 'if [[ ! -s "$${LANDIT_DIR}/api.tag" ]]' "${USER_DATA}"

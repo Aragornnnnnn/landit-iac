@@ -1,0 +1,92 @@
+#!/bin/bash
+# SSM runtime 값을 root 전용 Compose env 파일로 갱신한다.
+set -euo pipefail
+umask 077
+
+AWS_REGION="${aws_region}"
+SSM_PATH="${parameter_store_path}"
+RUNTIME_DIR="/run/landit"
+ENVIRONMENT="${environment}"
+APP_BUCKET_NAME="${app_bucket_name}"
+CONTENT_BUCKET_NAME="${content_bucket_name}"
+CONTENT_CLOUDFRONT_URL="${content_cloudfront_url}"
+JOBS_QUEUE_URL="${jobs_queue_url}"
+GRAFANA_OTLP_ENABLED="${grafana_otlp_enabled}"
+GRAFANA_OTLP_ENDPOINT="${grafana_otlp_endpoint}"
+
+write_ssm_env() {
+  local destination="$1"
+  shift
+  local expected_parameters
+  local temporary_file
+
+  install -d -m 0700 "$${RUNTIME_DIR}"
+  expected_parameters="$(jq -cn '$ARGS.positional' --args "$@")"
+
+  temporary_file="$(mktemp "$${destination}.XXXXXX")"
+  trap 'rm -f "$${temporary_file}"' RETURN
+  aws ssm get-parameters-by-path --region "$${AWS_REGION}" --path "$${SSM_PATH}" --recursive \
+    --with-decryption --output json |
+    jq -er --arg prefix "$${SSM_PATH}/" --argjson expected "$${expected_parameters}" '
+      .Parameters as $parameters
+      | [$expected[] as $name | $parameters[] | select(.Name == ($prefix + $name))
+         | {name: (.Name | ltrimstr($prefix)), value: .Value}]
+      | if length != ($expected | length) then error("required SSM parameter is missing") else . end
+      | sort_by(.name)[]
+      | "\(.name)=\(.value | gsub("\\$"; "$$") | @json)"
+    ' > "$${temporary_file}"
+  chmod 0600 "$${temporary_file}"
+  mv "$${temporary_file}" "$${destination}"
+  chmod 0600 "$${destination}"
+}
+
+write_ssm_env "$${RUNTIME_DIR}/api.env" \
+  DB_URL DB_USERNAME DB_PASSWORD LANDIT_CORS_ALLOWED_ORIGINS LANDIT_AUTH_TOKEN_SECRET \
+  LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS \
+  LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES LANDIT_AUTH_OIDC_KAKAO_AUDIENCES \
+  LANDIT_AUTH_OIDC_APPLE_AUDIENCES LANDIT_AI_CLIENT_MODE LANDIT_BE_SENTRY_DSN \
+  LANDIT_GRAFANA_CLOUD_OTLP_HEADERS
+sed -i 's/^LANDIT_BE_SENTRY_DSN=/SENTRY_DSN=/' "$${RUNTIME_DIR}/api.env"
+sed -i 's/^LANDIT_GRAFANA_CLOUD_OTLP_HEADERS=/OTEL_EXPORTER_OTLP_HEADERS=/' "$${RUNTIME_DIR}/api.env"
+printf '%s\n' "AWS_REGION=$${AWS_REGION}" >> "$${RUNTIME_DIR}/api.env"
+printf '%s\n' "ENVIRONMENT=$${ENVIRONMENT}" >> "$${RUNTIME_DIR}/api.env"
+printf '%s\n' "SENTRY_ENVIRONMENT=$${ENVIRONMENT}" >> "$${RUNTIME_DIR}/api.env"
+printf '%s\n' 'SPRING_FLYWAY_BASELINE_ON_MIGRATE=true' >> "$${RUNTIME_DIR}/api.env"
+printf '%s\n' "SPRING_PROFILES_ACTIVE=$${ENVIRONMENT}" >> "$${RUNTIME_DIR}/api.env"
+printf '%s\n' "S3_BUCKET_NAME=$${APP_BUCKET_NAME}" >> "$${RUNTIME_DIR}/api.env"
+printf '%s\n' "CONTENT_BUCKET_NAME=$${CONTENT_BUCKET_NAME}" >> "$${RUNTIME_DIR}/api.env"
+printf '%s\n' "CONTENT_CLOUDFRONT_URL=$${CONTENT_CLOUDFRONT_URL}" >> "$${RUNTIME_DIR}/api.env"
+printf '%s\n' "SQS_JOBS_QUEUE_URL=$${JOBS_QUEUE_URL}" >> "$${RUNTIME_DIR}/api.env"
+printf '%s\n' 'LANDIT_AI_BASE_URL=http://ai:8000' >> "$${RUNTIME_DIR}/api.env"
+if [[ "$${GRAFANA_OTLP_ENABLED}" == true ]]; then
+  printf '%s\n' "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=$${GRAFANA_OTLP_ENDPOINT%/}/v1/metrics" >> "$${RUNTIME_DIR}/api.env"
+  printf '%s\n' 'OTEL_TRACES_EXPORTER=none' >> "$${RUNTIME_DIR}/api.env"
+  printf '%s\n' 'OTEL_LOGS_EXPORTER=none' >> "$${RUNTIME_DIR}/api.env"
+  printf '%s\n' 'OTEL_SERVICE_NAME=landit-be' >> "$${RUNTIME_DIR}/api.env"
+  printf '%s\n' "OTEL_RESOURCE_ATTRIBUTES=service.namespace=landit,deployment.environment.name=$${ENVIRONMENT}" >> "$${RUNTIME_DIR}/api.env"
+  printf '%s\n' 'MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED=true' >> "$${RUNTIME_DIR}/api.env"
+  printf '%s\n' 'MANAGEMENT_OTLP_METRICS_EXPORT_STEP=30s' >> "$${RUNTIME_DIR}/api.env"
+fi
+chmod 0600 "$${RUNTIME_DIR}/api.env"
+
+write_ssm_env "$${RUNTIME_DIR}/ai.env" \
+  DB_URL DB_USERNAME DB_PASSWORD LLM_PROVIDER OPENROUTER_BASE_URL OPENROUTER_MODEL \
+  MESSAGE_FEEDBACK_MODEL MESSAGE_FEEDBACK_REVIEW_ENABLED OPENROUTER_API_KEY \
+  LANDIT_AI_SENTRY_DSN LANDIT_GRAFANA_CLOUD_OTLP_HEADERS
+sed -i 's/^LANDIT_AI_SENTRY_DSN=/SENTRY_DSN=/' "$${RUNTIME_DIR}/ai.env"
+sed -i 's/^LANDIT_GRAFANA_CLOUD_OTLP_HEADERS=/OTEL_EXPORTER_OTLP_HEADERS=/' "$${RUNTIME_DIR}/ai.env"
+printf '%s\n' "AWS_REGION=$${AWS_REGION}" >> "$${RUNTIME_DIR}/ai.env"
+printf '%s\n' "ENVIRONMENT=$${ENVIRONMENT}" >> "$${RUNTIME_DIR}/ai.env"
+printf '%s\n' "APP_ENV=$${ENVIRONMENT}" >> "$${RUNTIME_DIR}/ai.env"
+printf '%s\n' "S3_BUCKET_NAME=$${APP_BUCKET_NAME}" >> "$${RUNTIME_DIR}/ai.env"
+printf '%s\n' "SQS_JOBS_QUEUE_URL=$${JOBS_QUEUE_URL}" >> "$${RUNTIME_DIR}/ai.env"
+if [[ "$${GRAFANA_OTLP_ENABLED}" == true ]]; then
+  printf '%s\n' 'OTEL_METRICS_ENABLED=true' >> "$${RUNTIME_DIR}/ai.env"
+  printf '%s\n' 'OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf' >> "$${RUNTIME_DIR}/ai.env"
+  printf '%s\n' "OTEL_EXPORTER_OTLP_ENDPOINT=$${GRAFANA_OTLP_ENDPOINT}" >> "$${RUNTIME_DIR}/ai.env"
+  printf '%s\n' 'OTEL_TRACES_EXPORTER=none' >> "$${RUNTIME_DIR}/ai.env"
+  printf '%s\n' 'OTEL_LOGS_EXPORTER=none' >> "$${RUNTIME_DIR}/ai.env"
+  printf '%s\n' 'OTEL_SERVICE_NAME=landit-ai' >> "$${RUNTIME_DIR}/ai.env"
+  printf '%s\n' "OTEL_RESOURCE_ATTRIBUTES=service.namespace=landit,deployment.environment.name=$${ENVIRONMENT}" >> "$${RUNTIME_DIR}/ai.env"
+fi
+chmod 0600 "$${RUNTIME_DIR}/ai.env"

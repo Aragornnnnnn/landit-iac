@@ -702,3 +702,10 @@
 - develop API revision `10`과 production API revision `8`은 desired/running `1/1`, pending `0`, rollout `COMPLETED`, failed task `0`으로 안정화됐고 두 ALB에는 새 healthy target만 남았다. 두 외부 `/actuator/health` endpoint는 `UP`을 반환했다.
 - AWS 실상태에서 CORS 7개 origin, 두 API task role의 `content/inbox/*` `s3:PutObject`, 두 task definition의 콘텐츠 bucket·CloudFront 환경 변수를 확인했다. 기존 콘텐츠 객체의 CloudFront HEAD 요청은 `HTTP 200`, `image/png`을 반환했다.
 - post-apply shared·develop·production 전체 plan은 모두 `No changes`다. presigned URL을 이용한 신규 임시 객체 업로드는 BE 구현 후 검증 범위이므로 아직 실행하지 않았다.
+
+## 2026-08-25 LAN-372 개발 Sentry 오류 대응
+
+- BE 개발 Sentry의 S3 presign 오류 원인은 개발 EC2 컨테이너에 `CONTENT_BUCKET_NAME`, `CONTENT_CLOUDFRONT_URL`이 주입되지 않은 상태였다. shared remote state의 `content_bucket_name`, `cloudfront_url`을 dev EC2 user-data에 전달하도록 수정했다.
+- 개발 EC2 role에는 shared bucket 전체가 아닌 `content/inbox/*`에 대한 `s3:PutObject`만 추가했다. API ECS task role의 기존 권한은 변경하지 않았다.
+- `scripts/test-dev-ec2-runtime.sh`와 `scripts/test-admin-content-upload-contract.sh`가 통과했다. Terraform fmt도 실행했다.
+- 현재 변경은 코드와 IaC에만 반영했으며, `aws_instance.app`의 `user_data`는 기존 lifecycle 정책에서 ignore 대상이므로 live 반영 여부는 사용자 승인 후 plan에서 확인해야 한다. apply와 재배포는 실행하지 않았다.

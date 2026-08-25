@@ -24,6 +24,8 @@ locals {
     ecr_registry         = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com"
     environment          = "develop"
     app_bucket_name      = "develop-landit-app-123456789012"
+    content_bucket_name  = "develop-landit-content-123456789012"
+    content_cloudfront_url = "https://d1234567890.cloudfront.net"
     jobs_queue_url       = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/develop-landit-jobs"
     grafana_otlp_enabled = "true"
     grafana_otlp_endpoint = "https://otlp.example.com/otlp"
@@ -48,6 +50,14 @@ EOF
 )
 sed '1d;$d' "${TEST_DIR}/user-data.sh" > "${TEST_DIR}/user-data.rendered.sh"
 mv "${TEST_DIR}/user-data.rendered.sh" "${TEST_DIR}/user-data.sh"
+if ! rg -q 'CONTENT_BUCKET_NAME="?develop-landit-content-123456789012' "${TEST_DIR}/user-data.sh"; then
+  echo 'rendered runtime must provide CONTENT_BUCKET_NAME to the API.' >&2
+  exit 1
+fi
+if ! rg -q 'CONTENT_CLOUDFRONT_URL="?https://d1234567890\.cloudfront\.net' "${TEST_DIR}/user-data.sh"; then
+  echo 'rendered runtime must provide CONTENT_CLOUDFRONT_URL to the API.' >&2
+  exit 1
+fi
 awk '
   /<<.DEPLOY_SERVICE.$/ { capture = 1; next }
   /^DEPLOY_SERVICE$/ { exit }

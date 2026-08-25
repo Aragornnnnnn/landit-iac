@@ -91,6 +91,13 @@ data "aws_iam_policy_document" "ec2_app" {
   }
 
   statement {
+    actions = ["s3:PutObject"]
+    resources = [
+      "arn:aws:s3:::${data.terraform_remote_state.shared.outputs.content_bucket_name}/content/inbox/*"
+    ]
+  }
+
+  statement {
     actions = [
       "sqs:ChangeMessageVisibility",
       "sqs:DeleteMessage",
@@ -174,18 +181,20 @@ resource "aws_instance" "app" {
   iam_instance_profile        = aws_iam_instance_profile.ec2_app.name
   associate_public_ip_address = true
   user_data = templatefile("${path.module}/templates/ec2-user-data.sh.tftpl", {
-    api_image             = module.app_platform.api_ecr_repository_url
-    ai_image              = module.app_platform.worker_ecr_repository_url
-    api_log_group_name    = module.app_platform.api_log_group_name
-    ai_log_group_name     = module.app_platform.worker_log_group_name
-    aws_region            = var.aws_region
-    parameter_store_path  = var.parameter_store_path
-    ecr_registry          = split("/", module.app_platform.api_ecr_repository_url)[0]
-    environment           = var.environment
-    app_bucket_name       = module.app_platform.app_bucket_name
-    jobs_queue_url        = module.app_platform.jobs_queue_url
-    grafana_otlp_enabled  = tostring(var.grafana_otlp_enabled)
-    grafana_otlp_endpoint = var.grafana_otlp_endpoint
+    api_image              = module.app_platform.api_ecr_repository_url
+    ai_image               = module.app_platform.worker_ecr_repository_url
+    api_log_group_name     = module.app_platform.api_log_group_name
+    ai_log_group_name      = module.app_platform.worker_log_group_name
+    aws_region             = var.aws_region
+    parameter_store_path   = var.parameter_store_path
+    ecr_registry           = split("/", module.app_platform.api_ecr_repository_url)[0]
+    environment            = var.environment
+    app_bucket_name        = module.app_platform.app_bucket_name
+    content_bucket_name    = data.terraform_remote_state.shared.outputs.content_bucket_name
+    content_cloudfront_url = data.terraform_remote_state.shared.outputs.cloudfront_url
+    jobs_queue_url         = module.app_platform.jobs_queue_url
+    grafana_otlp_enabled   = tostring(var.grafana_otlp_enabled)
+    grafana_otlp_endpoint  = var.grafana_otlp_endpoint
     docker_compose = templatefile("${path.module}/templates/docker-compose.yml.tftpl", {
       api_log_group_name = module.app_platform.api_log_group_name
       ai_log_group_name  = module.app_platform.worker_log_group_name

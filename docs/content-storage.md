@@ -55,6 +55,8 @@ presigned PUT 요청은 `Content-Type`, `Cache-Control: public, max-age=31536000
 
 API ECS는 `CONTENT_BUCKET_NAME`과 `CONTENT_CLOUDFRONT_URL` 환경 변수로 shared 저장 위치와 조회 기준 URL을 받습니다. 업로드가 끝나면 이미지 블록에는 `${CONTENT_CLOUDFRONT_URL}/content/inbox/{uuid}.{ext}` 형태의 CloudFront URL과 관리자가 입력한 대체 텍스트를 저장합니다.
 
+develop EC2의 Compose API도 shared Terraform state의 같은 두 값을 runtime env로 받으며, EC2 role은 `content/inbox/*`에 대한 `s3:PutObject`만 허용합니다.
+
 관리자 인증, 허용 MIME type·확장자·파일 크기 검증, presigned URL 만료 시간과 이미지 블록 저장은 landit-be 구현 범위입니다. 미사용 객체 자동 삭제와 정리 작업은 후속 범위로 둡니다.
 
 ## 범위

@@ -19,6 +19,9 @@
 - 동일 필드의 `scenarioId|scenarioQuestionId|displayOrder|characterId|questionText` 행을 newline으로 연결한 MD5는 초기 audit와 같은 `9c79b5aec3333eb7022dca5b9da10f39`였다. 질문 원문, ID, 순서와 캐릭터 drift가 없으므로 이 snapshot을 샘플 생성 입력으로 고정한다.
 - Task 5 과금 직전 Codex 프로세스의 OpenRouter key는 credits API HTTP 200이었고 잔액은 `$578.450179051`이었다. `landit-ai/.env`의 별도 key는 `401 User not found`였으므로 사용하지 않았으며 key 원문은 출력하거나 기록하지 않았다.
 - 캐릭터별 중앙 길이 샘플은 Teddy 질문 45번 40,464 bytes·6.744초, Chloe 질문 59번 37,584 bytes·6.264초, Marco 질문 95번 35,136 bytes·5.856초로 생성됐다. 세 파일은 decoder probe, byte size와 SHA-256 검증을 통과했고 사용자가 세 voice와 결과를 모두 승인해 전체 생성 gate를 열었다.
+- Task 6 전체 생성은 승인된 샘플 3개를 resume하고 나머지 117개를 호출해 `completed=120, failed=0`으로 끝났다. 결과는 Chloe 9개, Marco 24개, Teddy 87개, 총 4,915,152 bytes, 총 819.192초이며 MP3 120개와 `.part` 잔여 0개를 확인했다.
+- canonical manifest SHA-256은 `2e084d63e194f984f0160341889d3df7e610b9de99f8dc528ee3f95211874509`다. source와 manifest 동시 검증에서 MP3 120개의 decoder probe, byte size, audio SHA-256과 generation fingerprint가 모두 일치했고 단위 테스트 39개, Terraform format, 기존 콘텐츠 업로드 계약과 `git diff --check`가 통과했다.
+- 전체 생성 후 OpenRouter credits API 잔액은 `$578.103948301`이었다. 전체 생성 직전 확인값 대비 관찰된 감소액은 `$0.346230750`이며 같은 key의 다른 동시 사용 가능성이 있어 LAN-351 단독 청구액으로 단정하지 않는다.
 
 ## 2026-08-18 LAN-284 개발 DNS 전환과 ECS·ALB 제거
 

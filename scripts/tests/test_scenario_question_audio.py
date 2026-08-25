@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from scripts.scenario_question_audio import (
     GeneratedAsset,
@@ -804,6 +804,43 @@ class ManifestTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "audio sha256 mismatch"):
                 verify_manifest(manifest, Path(directory))
+
+    def test_verify_cli_checks_source_assets_and_manifest_together(self) -> None:
+        snapshot = make_valid_snapshot()
+        generated = make_generated_assets(snapshot)
+        manifest = build_manifest(snapshot, generated)
+        with tempfile.TemporaryDirectory() as directory:
+            manifest_path = Path(directory) / "manifest.json"
+            manifest_path.write_bytes(canonical_manifest_bytes(manifest))
+            with (
+                patch(
+                    "scripts.scenario_question_audio.load_source",
+                    return_value=snapshot,
+                ),
+                patch(
+                    "scripts.scenario_question_audio.verify_generated_assets",
+                    return_value=generated,
+                ) as verify_generated,
+                patch(
+                    "scripts.scenario_question_audio.verify_manifest"
+                ) as verify_saved_manifest,
+                redirect_stdout(io.StringIO()),
+            ):
+                result = main(
+                    [
+                        "verify",
+                        "--source",
+                        "source.json",
+                        "--manifest",
+                        str(manifest_path),
+                        "--work-dir",
+                        directory,
+                    ]
+                )
+
+        self.assertEqual(0, result)
+        verify_generated.assert_called_once()
+        verify_saved_manifest.assert_called_once()
 
 
 class S3UploadTests(unittest.TestCase):

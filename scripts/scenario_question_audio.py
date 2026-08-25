@@ -955,9 +955,8 @@ def main(argv: list[str] | None = None) -> int:
     generate_parser.add_argument("--work-dir", required=True, type=Path)
     generate_parser.add_argument("--sample-only", action="store_true")
     verify_parser = subparsers.add_parser("verify")
-    verify_input = verify_parser.add_mutually_exclusive_group(required=True)
-    verify_input.add_argument("--source", type=Path)
-    verify_input.add_argument("--manifest", type=Path)
+    verify_parser.add_argument("--source", type=Path)
+    verify_parser.add_argument("--manifest", type=Path)
     verify_parser.add_argument("--work-dir", required=True, type=Path)
     verify_parser.add_argument("--sample-only", action="store_true")
     build_manifest_parser = subparsers.add_parser("build-manifest")
@@ -986,15 +985,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"completed={len(generated)}, failed=0")
     elif args.command == "verify":
-        if args.manifest:
-            if args.sample_only:
-                parser.error("--sample-only cannot be used with --manifest")
-            manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
-            verify_manifest(manifest, args.work_dir)
-            print(
-                f"verified=120, manifest_sha256={manifest_sha256(manifest)}"
-            )
-        else:
+        if not args.source and not args.manifest:
+            parser.error("verify requires --source, --manifest, or both")
+        if args.manifest and args.sample_only:
+            parser.error("--sample-only cannot be used with --manifest")
+        if args.source:
             snapshot = load_source(args.source)
             verified = verify_generated_assets(
                 snapshot,
@@ -1015,6 +1010,13 @@ def main(argv: list[str] | None = None) -> int:
                 f"marco={character_counts['marco']}, "
                 f"teddy={character_counts['teddy']}, "
                 f"total_bytes={sum(asset.audio_byte_size for asset in verified)}"
+            )
+        if args.manifest:
+            manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+            verify_manifest(manifest, args.work_dir)
+            print(
+                f"manifest_assets=120, "
+                f"manifest_sha256={manifest_sha256(manifest)}"
             )
     elif args.command == "build-manifest":
         snapshot = load_source(args.source)

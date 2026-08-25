@@ -6,6 +6,9 @@
 - [x] Chloe, Marco, Teddy의 LAN-351 voice와 MP3·immutable S3 key 계약을 확정한다.
 - [x] 승인된 설계 문서를 작성하고 자체 검토한 뒤 커밋한다.
 - [x] production 질문 snapshot과 생성 manifest를 만드는 구현 계획을 작성한다.
+- [x] source JSON 계약, generation fingerprint와 캐릭터별 sample 선택을 TDD로 구현한다.
+- [ ] OpenRouter 생성, MP3 검증, 재시도와 resume을 TDD로 구현한다.
+- [ ] manifest 완성과 승인형 S3 dry-run·업로드를 TDD로 구현한다.
 - [ ] 캐릭터별 샘플 3개를 생성·검수하고 전체 생성 승인을 받는다.
 - [ ] 전체 120개 MP3를 생성하고 source·오디오 계약을 검증한다.
 - [ ] shared S3 변경 목록을 검토받은 뒤 별도 승인으로 업로드한다.

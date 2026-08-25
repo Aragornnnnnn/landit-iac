@@ -9,6 +9,8 @@
 - 실제 OpenRouter 과금 호출과 S3 업로드는 아직 실행하지 않았다. 캐릭터별 샘플 승인 뒤 전체 생성하며, 전체 로컬 검증과 S3 변경 목록 승인 뒤에만 업로드한다.
 - 설계 문서는 `docs/superpowers/specs/2026-08-25-lan-351-scenario-question-audio-design.md`에 기록했다. 동시 작업 수 4개, 최대 시도 4회, 연결 timeout 10초와 전체 timeout 120초를 고정했고 placeholder 검사와 `git diff --check`를 통과했다.
 - 구현 계획은 `docs/superpowers/plans/2026-08-25-lan-351-scenario-question-audio.md`에 기록했다. source 계약, OpenRouter 생성·resume, manifest·S3 gate, production export, 샘플 승인, 전체 생성과 별도 업로드 승인의 일곱 작업으로 나눴다.
+- Task 1에서 Python 표준 라이브러리만 사용해 production `EN`/`KR` source의 40개 시나리오·120개 질문, 캐릭터별 9·24·87개, 시나리오별 순서, 중복·빈 원문을 검증한다. 질문 원문·model·voice·MP3 계약의 SHA-256 fingerprint와 캐릭터별 UTF-8 중앙 길이 sample 선택도 추가했고 12개 단위 테스트가 통과했다.
+- 새 Python 테스트 실행이 생성하는 `__pycache__/`만 `.gitignore`에 추가했다. MP3나 작업 source는 `/tmp/landit-lan-351-audio`에만 두므로 별도 저장소 ignore 경로를 만들지 않는다.
 
 ## 2026-08-18 LAN-284 개발 DNS 전환과 ECS·ALB 제거
 

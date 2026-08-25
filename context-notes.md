@@ -22,6 +22,7 @@
 - Task 6 전체 생성은 승인된 샘플 3개를 resume하고 나머지 117개를 호출해 `completed=120, failed=0`으로 끝났다. 결과는 Chloe 9개, Marco 24개, Teddy 87개, 총 4,915,152 bytes, 총 819.192초이며 MP3 120개와 `.part` 잔여 0개를 확인했다.
 - canonical manifest SHA-256은 `2e084d63e194f984f0160341889d3df7e610b9de99f8dc528ee3f95211874509`다. source와 manifest 동시 검증에서 MP3 120개의 decoder probe, byte size, audio SHA-256과 generation fingerprint가 모두 일치했고 단위 테스트 39개, Terraform format, 기존 콘텐츠 업로드 계약과 `git diff --check`가 통과했다.
 - 전체 생성 후 OpenRouter credits API 잔액은 `$578.103948301`이었다. 전체 생성 직전 확인값 대비 관찰된 감소액은 `$0.346230750`이며 같은 key의 다른 동시 사용 가능성이 있어 LAN-351 단독 청구액으로 단정하지 않는다.
+- Task 7 사전 S3 dry-run은 shared bucket `landit-content-982529430654`의 MP3 120개와 manifest 1개 key를 `head-object`로만 조회했다. 대상 121개가 모두 신규이고 재사용 0개, metadata 충돌 0개였으며 `put-object`와 실제 업로드는 0건이다. 실제 게시에는 사용자 별도 승인이 필요하다.
 
 ## 2026-08-18 LAN-284 개발 DNS 전환과 ECS·ALB 제거
 

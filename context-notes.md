@@ -1,5 +1,14 @@
 # Context Notes
 
+## 2026-08-25 LAN-351 시나리오 고정 질문 TTS 게시
+
+- 이번 저장소 범위는 production DB를 기준으로 고정 질문 MP3를 생성·검증하고 기존 shared private content S3 bucket에 게시하는 작업이다. BE·AI 코드, runtime IAM, DB 컬럼과 런타임 오디오 결합은 후속 이슈로 분리한다.
+- production 읽기 전용 집계는 활성 시나리오 40개, 영어 고정 질문 120개, 빈 질문 0개, 시나리오별 3개 질문과 `display_order=1..3` 완전성을 확인했다. 원문·순서·캐릭터 기준 초기 MD5는 `9c79b5aec3333eb7022dca5b9da10f39`다.
+- 생성 분포는 Chloe 9개, Marco 24개, Teddy 87개다. LAN-351은 production의 Chloe `microsoft/mai-voice-2` 매핑을 의도적으로 사용하지 않고 사용자 지정 `deepgram/aura-2`의 `aura-2-luna-en`을 사용한다. Marco는 `aura-2-hyperion-en`, Teddy는 `aura-2-draco-en`을 사용한다.
+- 출력은 용량과 전송 효율을 위해 OpenRouter `/api/v1/audio/speech`의 MP3 raw byte stream을 변환 없이 저장한다. key fingerprint에는 질문 원문, model, voice와 response format을 포함한다.
+- 실제 OpenRouter 과금 호출과 S3 업로드는 아직 실행하지 않았다. 캐릭터별 샘플 승인 뒤 전체 생성하며, 전체 로컬 검증과 S3 변경 목록 승인 뒤에만 업로드한다.
+- 설계 문서는 `docs/superpowers/specs/2026-08-25-lan-351-scenario-question-audio-design.md`에 기록했다. 동시 작업 수 4개, 최대 시도 4회, 연결 timeout 10초와 전체 timeout 120초를 고정했고 placeholder 검사와 `git diff --check`를 통과했다.
+
 ## 2026-08-18 LAN-284 개발 DNS 전환과 ECS·ALB 제거
 
 - Caddy는 임시 도메인과 기존 개발 도메인을 함께 수신한다. 실행 중 설정 반영 뒤 Caddy 컨테이너만 재생성해 bind mount inode를 갱신했고 네 도메인의 HTTPS health를 확인했다.

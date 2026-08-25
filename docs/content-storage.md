@@ -1,4 +1,4 @@
-# 콘텐츠 이미지 저장과 CloudFront 조회
+# 콘텐츠 저장과 CloudFront 조회
 
 시나리오 썸네일과 연습 예문 이미지는 환경과 무관한 공통 콘텐츠 S3 버킷에 저장하고 CloudFront로 조회합니다. 사용자 음성과 Grafana 실패 로그는 기존처럼 환경별 application bucket에 저장합니다.
 
@@ -46,6 +46,19 @@ URL: https://{cloudFrontDomain}/content/scenarios/101/thumbnail/{assetId}.webp
 7. 이전 URL 참조가 모두 사라지고 최대 캐시 TTL이 지난 뒤 이전 객체를 삭제한다.
 
 같은 key를 덮어쓰지 않으므로 파일 교체 시 CloudFront invalidation은 필요하지 않습니다.
+
+## 시나리오 고정 질문 오디오
+
+production의 고정 질문 MP3와 생성 manifest는 shared private 콘텐츠 버킷의 신규 immutable 객체로 저장합니다.
+
+```text
+content/scenario-question-audio/{scenarioQuestionId}/{generationFingerprint}.mp3
+content/scenario-question-audio/manifests/{manifestSha256}.json
+```
+
+MP3에는 `Content-Type: audio/mpeg`과 `Cache-Control: public, max-age=31536000, immutable`을 설정합니다. 질문 원문, model, voice 또는 출력 형식이 바뀌면 generation fingerprint와 key가 함께 바뀌며, 모든 업로드는 `If-None-Match: *`로 기존 객체 덮어쓰기를 거부합니다.
+
+후속 BE·AI runtime은 커밋된 manifest의 정확한 `s3Key`를 사용하고 질문 ID로 key를 추측하지 않습니다. 맞장구 음성과 고정 질문 MP3를 결합할 때는 두 음성을 디코딩한 뒤 하나의 출력으로 인코딩해야 하며 MP3 byte stream을 단순 연결하지 않습니다. runtime의 shared bucket `GetObject` 권한과 실제 결합 구현은 LAN-351 게시 작업 범위에 포함하지 않습니다.
 
 ## 관리자 본문 이미지 직접 업로드
 

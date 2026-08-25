@@ -15,6 +15,7 @@ import random
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 from typing import Callable, Mapping
 
@@ -86,6 +87,42 @@ class GeneratedAsset:
     audio_sha256: str
     generation_id: str
     duration_seconds: float
+
+
+@dataclass(frozen=True)
+class UploadObject:
+    key: str
+    body_path: Path | None
+    body_bytes: bytes | None
+    content_length: int
+    content_type: str
+    cache_control: str
+    metadata: Mapping[str, str]
+    manifest_object: bool
+
+
+@dataclass(frozen=True)
+class UploadPlan:
+    bucket: str
+    new_keys: tuple[str, ...]
+    reused_keys: tuple[str, ...]
+    conflict_keys: tuple[str, ...]
+    objects: tuple[UploadObject, ...]
+
+    @property
+    def reused_count(self) -> int:
+        return len(self.reused_keys)
+
+    @property
+    def conflict_count(self) -> int:
+        return len(self.conflict_keys)
+
+
+@dataclass(frozen=True)
+class UploadResult:
+    uploaded: int
+    verified: int
+    conflicts: int
 
 
 def resolve_probe(which: Callable[[str], str | None] = shutil.which) -> str:
@@ -537,16 +574,401 @@ def source_sha256(snapshot: SourceSnapshot) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def build_manifest(
+    snapshot: SourceSnapshot,
+    generated_assets: list[GeneratedAsset],
+) -> dict:
+    validate_source(snapshot)
+    if len(generated_assets) != 120:
+        raise ValueError("manifest requires exactly 120 generated assets")
+    generated_by_question_id = {
+        asset.scenario_question_id: asset for asset in generated_assets
+    }
+    source_question_ids = {
+        asset.scenario_question_id for asset in snapshot.assets
+    }
+    if (
+        len(generated_by_question_id) != 120
+        or set(generated_by_question_id) != source_question_ids
+    ):
+        raise ValueError("manifest requires exactly 120 generated assets")
+
+    manifest_assets = []
+    for source_asset in sorted(
+        snapshot.assets,
+        key=lambda item: (
+            item.scenario_id,
+            item.display_order,
+            item.scenario_question_id,
+        ),
+    ):
+        generated = generated_by_question_id[source_asset.scenario_question_id]
+        expected_fingerprint = generation_fingerprint(source_asset)
+        if generated.generation_fingerprint != expected_fingerprint:
+            raise ValueError("generated asset fingerprint mismatch")
+        if (
+            generated.audio_byte_size <= 0
+            or not re.fullmatch(r"[0-9a-f]{64}", generated.audio_sha256)
+            or not generated.generation_id
+            or generated.duration_seconds <= 0
+        ):
+            raise ValueError("generated asset metadata is invalid")
+        manifest_assets.append(
+            {
+                "scenarioId": source_asset.scenario_id,
+                "scenarioQuestionId": source_asset.scenario_question_id,
+                "displayOrder": source_asset.display_order,
+                "characterId": source_asset.character_id,
+                "questionText": source_asset.question_text,
+                "model": MODEL,
+                "providerVoiceId": VOICE_BY_CHARACTER[source_asset.character_id],
+                "responseFormat": RESPONSE_FORMAT,
+                "generationFingerprint": expected_fingerprint,
+                "s3Key": (
+                    "content/scenario-question-audio/"
+                    f"{source_asset.scenario_question_id}/{expected_fingerprint}.mp3"
+                ),
+                "audioByteSize": generated.audio_byte_size,
+                "audioSha256": generated.audio_sha256,
+                "openRouterGenerationId": generated.generation_id,
+            }
+        )
+    return {
+        "schemaVersion": 1,
+        "issue": "LAN-351",
+        "source": {
+            "environment": snapshot.environment,
+            "targetLocale": snapshot.target_locale,
+            "baseLocale": snapshot.base_locale,
+            "snapshotSha256": source_sha256(snapshot),
+            "scenarioCount": 40,
+            "questionCount": 120,
+        },
+        "assets": manifest_assets,
+    }
+
+
+def canonical_manifest_bytes(manifest: dict) -> bytes:
+    return (
+        json.dumps(
+            manifest,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def manifest_sha256(manifest: dict) -> str:
+    return hashlib.sha256(canonical_manifest_bytes(manifest)).hexdigest()
+
+
+def verify_manifest(manifest: dict, work_dir: Path) -> None:
+    if (
+        manifest.get("schemaVersion") != 1
+        or manifest.get("issue") != "LAN-351"
+        or manifest.get("source", {}).get("scenarioCount") != 40
+        or manifest.get("source", {}).get("questionCount") != 120
+        or len(manifest.get("assets", [])) != 120
+    ):
+        raise ValueError("manifest must contain exactly 120 generated assets")
+    question_ids = [asset["scenarioQuestionId"] for asset in manifest["assets"]]
+    if len(set(question_ids)) != 120:
+        raise ValueError("manifest contains duplicate question ids")
+    snapshot = SourceSnapshot(
+        schema_version=1,
+        environment=manifest["source"]["environment"],
+        target_locale=manifest["source"]["targetLocale"],
+        base_locale=manifest["source"]["baseLocale"],
+        assets=tuple(
+            SourceAsset(
+                scenario_id=asset["scenarioId"],
+                scenario_question_id=asset["scenarioQuestionId"],
+                display_order=asset["displayOrder"],
+                character_id=asset["characterId"],
+                question_text=asset["questionText"],
+            )
+            for asset in manifest["assets"]
+        ),
+    )
+    validate_source(snapshot)
+    if source_sha256(snapshot) != manifest["source"]["snapshotSha256"]:
+        raise ValueError("manifest source sha256 mismatch")
+    source_assets_by_question_id = {
+        asset.scenario_question_id: asset for asset in snapshot.assets
+    }
+    for asset in manifest["assets"]:
+        source_asset = source_assets_by_question_id[asset["scenarioQuestionId"]]
+        fingerprint = asset["generationFingerprint"]
+        if (
+            asset["model"] != MODEL
+            or asset["providerVoiceId"]
+            != VOICE_BY_CHARACTER[source_asset.character_id]
+            or asset["responseFormat"] != RESPONSE_FORMAT
+            or fingerprint != generation_fingerprint(source_asset)
+        ):
+            raise ValueError("manifest generation contract mismatch")
+        expected_key = (
+            "content/scenario-question-audio/"
+            f"{asset['scenarioQuestionId']}/{fingerprint}.mp3"
+        )
+        if asset["s3Key"] != expected_key:
+            raise ValueError("manifest s3 key mismatch")
+        audio_path = (
+            work_dir
+            / "mp3"
+            / f"{asset['scenarioQuestionId']}-{fingerprint}.mp3"
+        )
+        if not audio_path.is_file():
+            raise ValueError("manifest audio file is missing")
+        audio_bytes = audio_path.read_bytes()
+        if hashlib.sha256(audio_bytes).hexdigest() != asset["audioSha256"]:
+            raise ValueError("audio sha256 mismatch")
+        if len(audio_bytes) != asset["audioByteSize"]:
+            raise ValueError("audio byte size mismatch")
+
+
+def _upload_objects(manifest: dict, work_dir: Path) -> tuple[UploadObject, ...]:
+    cache_control = "public, max-age=31536000, immutable"
+    source_sha = manifest["source"]["snapshotSha256"]
+    objects = [
+        UploadObject(
+            key=asset["s3Key"],
+            body_path=(
+                work_dir
+                / "mp3"
+                / (
+                    f"{asset['scenarioQuestionId']}-"
+                    f"{asset['generationFingerprint']}.mp3"
+                )
+            ),
+            body_bytes=None,
+            content_length=asset["audioByteSize"],
+            content_type="audio/mpeg",
+            cache_control=cache_control,
+            metadata={
+                "source-sha256": source_sha,
+                "audio-sha256": asset["audioSha256"],
+                "model": asset["model"],
+                "voice": asset["providerVoiceId"],
+            },
+            manifest_object=False,
+        )
+        for asset in manifest["assets"]
+    ]
+    manifest_body = canonical_manifest_bytes(manifest)
+    digest = manifest_sha256(manifest)
+    objects.append(
+        UploadObject(
+            key=f"content/scenario-question-audio/manifests/{digest}.json",
+            body_path=None,
+            body_bytes=manifest_body,
+            content_length=len(manifest_body),
+            content_type="application/json",
+            cache_control=cache_control,
+            metadata={
+                "source-sha256": source_sha,
+                "manifest-sha256": digest,
+            },
+            manifest_object=True,
+        )
+    )
+    return tuple(objects)
+
+
+def _head_object(
+    bucket: str,
+    upload_object: UploadObject,
+    aws_runner: Callable,
+) -> dict | None:
+    completed = aws_runner(
+        [
+            "aws",
+            "s3api",
+            "head-object",
+            "--bucket",
+            bucket,
+            "--key",
+            upload_object.key,
+            "--output",
+            "json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode == 0:
+        return json.loads(completed.stdout)
+    missing_markers = ("404", "Not Found", "NoSuchKey")
+    if any(marker in completed.stderr for marker in missing_markers):
+        return None
+    raise RuntimeError(
+        f"S3 head-object failed for key {upload_object.key}"
+    )
+
+
+def _head_matches(upload_object: UploadObject, head: dict) -> bool:
+    remote_metadata = {
+        key.lower(): str(value) for key, value in head.get("Metadata", {}).items()
+    }
+    return (
+        head.get("ContentLength") == upload_object.content_length
+        and head.get("ContentType") == upload_object.content_type
+        and head.get("CacheControl") == upload_object.cache_control
+        and remote_metadata == dict(upload_object.metadata)
+    )
+
+
+def plan_s3_upload(
+    manifest: dict,
+    bucket: str,
+    *,
+    work_dir: Path = Path("."),
+    aws_runner: Callable = subprocess.run,
+) -> UploadPlan:
+    objects = _upload_objects(manifest, work_dir)
+    new_keys = []
+    reused_keys = []
+    conflict_keys = []
+    for upload_object in objects:
+        head = _head_object(bucket, upload_object, aws_runner)
+        if head is None:
+            new_keys.append(upload_object.key)
+        elif _head_matches(upload_object, head):
+            reused_keys.append(upload_object.key)
+        else:
+            conflict_keys.append(upload_object.key)
+    if conflict_keys:
+        raise ValueError(
+            "existing object conflict: " + ", ".join(conflict_keys)
+        )
+    return UploadPlan(
+        bucket=bucket,
+        new_keys=tuple(new_keys),
+        reused_keys=tuple(reused_keys),
+        conflict_keys=tuple(conflict_keys),
+        objects=objects,
+    )
+
+
+def _put_object(
+    plan: UploadPlan,
+    upload_object: UploadObject,
+    body_path: Path,
+    aws_runner: Callable,
+) -> None:
+    metadata = ",".join(
+        f"{key}={value}" for key, value in upload_object.metadata.items()
+    )
+    completed = aws_runner(
+        [
+            "aws",
+            "s3api",
+            "put-object",
+            "--bucket",
+            plan.bucket,
+            "--key",
+            upload_object.key,
+            "--body",
+            str(body_path),
+            "--if-none-match",
+            "*",
+            "--content-type",
+            upload_object.content_type,
+            "--cache-control",
+            upload_object.cache_control,
+            "--metadata",
+            metadata,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"S3 put-object failed for key {upload_object.key}"
+        )
+
+
+def execute_s3_upload(
+    plan: UploadPlan,
+    *,
+    execute: bool = False,
+    aws_runner: Callable = subprocess.run,
+) -> UploadResult:
+    if not execute:
+        return UploadResult(
+            uploaded=0,
+            verified=plan.reused_count,
+            conflicts=plan.conflict_count,
+        )
+
+    objects_by_key = {item.key: item for item in plan.objects}
+    new_objects = [objects_by_key[key] for key in plan.new_keys]
+    ordered_new_objects = sorted(
+        new_objects,
+        key=lambda item: item.manifest_object,
+    )
+    uploaded = 0
+    verified = plan.reused_count
+    for upload_object in ordered_new_objects:
+        temporary_manifest_path = None
+        body_path = upload_object.body_path
+        if upload_object.body_bytes is not None:
+            with tempfile.NamedTemporaryFile(
+                prefix="lan-351-manifest-",
+                suffix=".json",
+                delete=False,
+            ) as temporary_file:
+                temporary_file.write(upload_object.body_bytes)
+                temporary_manifest_path = Path(temporary_file.name)
+            body_path = temporary_manifest_path
+        if body_path is None:
+            raise ValueError("upload object body path is missing")
+        try:
+            _put_object(plan, upload_object, body_path, aws_runner)
+        finally:
+            if temporary_manifest_path is not None:
+                temporary_manifest_path.unlink(missing_ok=True)
+        head = _head_object(plan.bucket, upload_object, aws_runner)
+        if head is None or not _head_matches(upload_object, head):
+            raise ValueError(
+                f"uploaded object verification conflict: {upload_object.key}"
+            )
+        uploaded += 1
+        verified += 1
+    return UploadResult(
+        uploaded=uploaded,
+        verified=verified,
+        conflicts=0,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
     validate_parser = subparsers.add_parser("validate-source")
     validate_parser.add_argument("--source", required=True, type=Path)
-    for command in ("generate", "verify"):
-        command_parser = subparsers.add_parser(command)
-        command_parser.add_argument("--source", required=True, type=Path)
-        command_parser.add_argument("--work-dir", required=True, type=Path)
-        command_parser.add_argument("--sample-only", action="store_true")
+    generate_parser = subparsers.add_parser("generate")
+    generate_parser.add_argument("--source", required=True, type=Path)
+    generate_parser.add_argument("--work-dir", required=True, type=Path)
+    generate_parser.add_argument("--sample-only", action="store_true")
+    verify_parser = subparsers.add_parser("verify")
+    verify_input = verify_parser.add_mutually_exclusive_group(required=True)
+    verify_input.add_argument("--source", type=Path)
+    verify_input.add_argument("--manifest", type=Path)
+    verify_parser.add_argument("--work-dir", required=True, type=Path)
+    verify_parser.add_argument("--sample-only", action="store_true")
+    build_manifest_parser = subparsers.add_parser("build-manifest")
+    build_manifest_parser.add_argument("--source", required=True, type=Path)
+    build_manifest_parser.add_argument("--work-dir", required=True, type=Path)
+    build_manifest_parser.add_argument("--output", required=True, type=Path)
+    upload_parser = subparsers.add_parser("upload")
+    upload_parser.add_argument("--manifest", required=True, type=Path)
+    upload_parser.add_argument("--work-dir", required=True, type=Path)
+    upload_parser.add_argument("--bucket", required=True)
+    upload_parser.add_argument("--execute", action="store_true")
     args = parser.parse_args(argv)
 
     if args.command == "validate-source":
@@ -564,24 +986,66 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"completed={len(generated)}, failed=0")
     elif args.command == "verify":
+        if args.manifest:
+            if args.sample_only:
+                parser.error("--sample-only cannot be used with --manifest")
+            manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+            verify_manifest(manifest, args.work_dir)
+            print(
+                f"verified=120, manifest_sha256={manifest_sha256(manifest)}"
+            )
+        else:
+            snapshot = load_source(args.source)
+            verified = verify_generated_assets(
+                snapshot,
+                args.work_dir,
+                args.sample_only,
+            )
+            character_by_question_id = {
+                asset.scenario_question_id: asset.character_id
+                for asset in snapshot.assets
+            }
+            character_counts = Counter(
+                character_by_question_id[asset.scenario_question_id]
+                for asset in verified
+            )
+            print(
+                f"verified={len(verified)}, "
+                f"chloe={character_counts['chloe']}, "
+                f"marco={character_counts['marco']}, "
+                f"teddy={character_counts['teddy']}, "
+                f"total_bytes={sum(asset.audio_byte_size for asset in verified)}"
+            )
+    elif args.command == "build-manifest":
         snapshot = load_source(args.source)
-        verified = verify_generated_assets(
-            snapshot,
-            args.work_dir,
-            args.sample_only,
+        generated = verify_generated_assets(snapshot, args.work_dir, False)
+        manifest = build_manifest(snapshot, generated)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = Path(f"{args.output}.part")
+        temporary_path.write_bytes(canonical_manifest_bytes(manifest))
+        os.replace(temporary_path, args.output)
+        print(
+            f"assets=120, manifest_sha256={manifest_sha256(manifest)}, "
+            f"output={args.output}"
         )
-        character_by_question_id = {
-            asset.scenario_question_id: asset.character_id for asset in snapshot.assets
-        }
-        character_counts = Counter(
-            character_by_question_id[asset.scenario_question_id] for asset in verified
+    elif args.command == "upload":
+        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+        verify_manifest(manifest, args.work_dir)
+        plan = plan_s3_upload(
+            manifest,
+            args.bucket,
+            work_dir=args.work_dir,
         )
         print(
-            f"verified={len(verified)}, "
-            f"chloe={character_counts['chloe']}, "
-            f"marco={character_counts['marco']}, "
-            f"teddy={character_counts['teddy']}, "
-            f"total_bytes={sum(asset.audio_byte_size for asset in verified)}"
+            f"new={len(plan.new_keys)}, reused={plan.reused_count}, "
+            f"conflicts={plan.conflict_count}"
+        )
+        for key in plan.new_keys:
+            print(key)
+        result = execute_s3_upload(plan, execute=args.execute)
+        print(
+            f"uploaded={result.uploaded}, verified={result.verified}, "
+            f"conflicts={result.conflicts}"
         )
     return 0
 

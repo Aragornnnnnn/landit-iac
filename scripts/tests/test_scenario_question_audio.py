@@ -22,16 +22,22 @@ from scripts.scenario_question_audio import (
     SourceSnapshot,
     SpeechResponse,
     audio_path_for,
+    build_manifest,
+    canonical_manifest_bytes,
+    execute_s3_upload,
     generate_assets,
     generation_fingerprint,
     load_source,
     load_generation_state,
     main,
+    manifest_sha256,
+    plan_s3_upload,
     request_speech,
     resolve_probe,
     select_sample_ids,
     validate_source,
     validate_mp3,
+    verify_manifest,
     verify_generated_assets,
 )
 
@@ -136,6 +142,96 @@ def seed_verified_generation_state(
         encoding="utf-8",
     )
     return generated
+
+
+def make_generated_assets(
+    snapshot: SourceSnapshot | None = None,
+    work_dir: Path = Path("/tmp/lan-351-test"),
+) -> list[GeneratedAsset]:
+    source = snapshot or make_valid_snapshot()
+    return [
+        GeneratedAsset(
+            scenario_question_id=asset.scenario_question_id,
+            generation_fingerprint=generation_fingerprint(asset),
+            path=audio_path_for(work_dir, asset),
+            audio_byte_size=len(f"ID3audio-{asset.scenario_question_id}".encode()),
+            audio_sha256=hashlib.sha256(
+                f"ID3audio-{asset.scenario_question_id}".encode()
+            ).hexdigest(),
+            generation_id=f"generation-{asset.scenario_question_id}",
+            duration_seconds=1.25,
+        )
+        for asset in source.assets
+    ]
+
+
+def seed_full_manifest(work_dir: Path) -> tuple[SourceSnapshot, list[GeneratedAsset], dict]:
+    snapshot = make_valid_snapshot()
+    generated_assets = make_generated_assets(snapshot, work_dir)
+    for generated in generated_assets:
+        generated.path.parent.mkdir(parents=True, exist_ok=True)
+        generated.path.write_bytes(
+            f"ID3audio-{generated.scenario_question_id}".encode()
+        )
+    manifest = build_manifest(snapshot, generated_assets)
+    return snapshot, generated_assets, manifest
+
+
+def valid_manifest() -> dict:
+    return build_manifest(make_valid_snapshot(), make_generated_assets())
+
+
+def matching_head_results(manifest: dict) -> dict[str, dict]:
+    source_sha = manifest["source"]["snapshotSha256"]
+    results = {
+        asset["s3Key"]: {
+            "ContentLength": asset["audioByteSize"],
+            "ContentType": "audio/mpeg",
+            "CacheControl": "public, max-age=31536000, immutable",
+            "Metadata": {
+                "source-sha256": source_sha,
+                "audio-sha256": asset["audioSha256"],
+                "model": asset["model"],
+                "voice": asset["providerVoiceId"],
+            },
+        }
+        for asset in manifest["assets"]
+    }
+    digest = manifest_sha256(manifest)
+    results[f"content/scenario-question-audio/manifests/{digest}.json"] = {
+        "ContentLength": len(canonical_manifest_bytes(manifest)),
+        "ContentType": "application/json",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "Metadata": {
+            "source-sha256": source_sha,
+            "manifest-sha256": digest,
+        },
+    }
+    return results
+
+
+class RecordingAwsRunner:
+    def __init__(self, head_results: dict[str, dict]) -> None:
+        self.head_results = head_results.copy()
+        self.expected_results = matching_head_results(valid_manifest())
+        self.calls: list[list[str]] = []
+
+    def __call__(self, command, **kwargs) -> subprocess.CompletedProcess:
+        self.calls.append(command)
+        key = command[command.index("--key") + 1]
+        if "head-object" in command:
+            if key not in self.head_results:
+                return subprocess.CompletedProcess(command, 254, "", "Not Found")
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps(self.head_results[key]),
+                "",
+            )
+        if "put-object" in command:
+            self.head_results[key] = self.expected_results[key]
+            return subprocess.CompletedProcess(command, 0, "{}", "")
+        raise AssertionError(f"unexpected AWS command: {command}")
 
 
 class SourceContractTests(unittest.TestCase):
@@ -668,6 +764,123 @@ class GenerationTests(unittest.TestCase):
             )
 
         self.assertEqual(3, len(verified))
+
+
+class ManifestTests(unittest.TestCase):
+    def test_manifest_requires_all_120_generated_assets(self) -> None:
+        with self.assertRaisesRegex(ValueError, "120 generated assets"):
+            build_manifest(make_valid_snapshot(), make_generated_assets()[:-1])
+
+    def test_manifest_contains_source_and_audio_digests_and_exact_s3_keys(
+        self,
+    ) -> None:
+        manifest = build_manifest(make_valid_snapshot(), make_generated_assets())
+        first = manifest["assets"][0]
+
+        self.assertRegex(manifest["source"]["snapshotSha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(first["audioSha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(
+            f"content/scenario-question-audio/1/{first['generationFingerprint']}.mp3",
+            first["s3Key"],
+        )
+
+    def test_manifest_is_canonical_and_has_stable_sha256(self) -> None:
+        manifest = build_manifest(make_valid_snapshot(), make_generated_assets())
+
+        first = canonical_manifest_bytes(manifest)
+        second = canonical_manifest_bytes(json.loads(first))
+
+        self.assertEqual(first, second)
+        self.assertTrue(first.endswith(b"\n"))
+        self.assertEqual(
+            hashlib.sha256(first).hexdigest(),
+            manifest_sha256(manifest),
+        )
+
+    def test_verify_manifest_detects_changed_audio_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            _, generated, manifest = seed_full_manifest(Path(directory))
+            generated[0].path.write_bytes(b"changed")
+
+            with self.assertRaisesRegex(ValueError, "audio sha256 mismatch"):
+                verify_manifest(manifest, Path(directory))
+
+
+class S3UploadTests(unittest.TestCase):
+    def test_upload_defaults_to_dry_run_without_aws_put(self) -> None:
+        runner = RecordingAwsRunner(head_results={})
+        plan = plan_s3_upload(valid_manifest(), "bucket", aws_runner=runner)
+
+        result = execute_s3_upload(plan, execute=False, aws_runner=runner)
+
+        self.assertEqual(0, result.uploaded)
+        self.assertFalse(any("put-object" in call for call in runner.calls))
+
+    def test_upload_uses_if_none_match_and_required_metadata(self) -> None:
+        manifest = valid_manifest()
+        runner = RecordingAwsRunner(head_results={})
+        plan = plan_s3_upload(manifest, "bucket", aws_runner=runner)
+
+        execute_s3_upload(plan, execute=True, aws_runner=runner)
+
+        put_call = next(
+            call
+            for call in runner.calls
+            if "put-object" in call
+            and call[call.index("--key") + 1].endswith(".mp3")
+        )
+        self.assertEqual("*", put_call[put_call.index("--if-none-match") + 1])
+        self.assertEqual(
+            "audio/mpeg",
+            put_call[put_call.index("--content-type") + 1],
+        )
+        self.assertIn("--metadata", put_call)
+
+    def test_existing_matching_objects_are_reused(self) -> None:
+        manifest = valid_manifest()
+        runner = RecordingAwsRunner(matching_head_results(manifest))
+
+        plan = plan_s3_upload(manifest, "bucket", aws_runner=runner)
+
+        self.assertEqual(121, plan.reused_count)
+        self.assertEqual(0, plan.conflict_count)
+
+    def test_existing_mismatched_object_fails_without_overwrite(self) -> None:
+        manifest = valid_manifest()
+        head_results = matching_head_results(manifest)
+        first_key = manifest["assets"][0]["s3Key"]
+        head_results[first_key]["Metadata"]["audio-sha256"] = "0" * 64
+        runner = RecordingAwsRunner(head_results)
+
+        with self.assertRaisesRegex(ValueError, "existing object conflict"):
+            plan_s3_upload(manifest, "bucket", aws_runner=runner)
+
+        self.assertFalse(any("put-object" in call for call in runner.calls))
+
+    def test_manifest_upload_runs_after_all_mp3_objects(self) -> None:
+        runner = RecordingAwsRunner(head_results={})
+        plan = plan_s3_upload(valid_manifest(), "bucket", aws_runner=runner)
+
+        execute_s3_upload(plan, execute=True, aws_runner=runner)
+
+        put_keys = [
+            call[call.index("--key") + 1]
+            for call in runner.calls
+            if "put-object" in call
+        ]
+        self.assertTrue(
+            put_keys[-1].startswith("content/scenario-question-audio/manifests/")
+        )
+
+    def test_post_upload_head_matches_manifest_metadata(self) -> None:
+        runner = RecordingAwsRunner(head_results={})
+        plan = plan_s3_upload(valid_manifest(), "bucket", aws_runner=runner)
+
+        result = execute_s3_upload(plan, execute=True, aws_runner=runner)
+
+        self.assertEqual(121, result.uploaded)
+        self.assertEqual(121, result.verified)
+        self.assertEqual(0, result.conflicts)
 
 
 if __name__ == "__main__":

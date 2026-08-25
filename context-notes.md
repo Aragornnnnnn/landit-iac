@@ -13,6 +13,8 @@
 - 새 Python 테스트 실행이 생성하는 `__pycache__/`만 `.gitignore`에 추가했다. MP3나 작업 source는 `/tmp/landit-lan-351-audio`에만 두므로 별도 저장소 ignore 경로를 만들지 않는다.
 - Task 2에서 OpenRouter speech 요청의 네 필드 계약, 10초 연결·120초 응답 timeout, 429·5xx·연결 오류 최대 4회 재시도와 영구 오류 즉시 실패를 구현했다. 응답은 `audio/mpeg`, 비어 있지 않은 body와 generation ID를 모두 요구하며 key는 오류에 포함하지 않는다.
 - MP3는 `.part` 파일을 `afinfo` 또는 `ffprobe`로 디코딩해 양수 duration을 확인한 뒤 원자적으로 교체한다. 동시성은 4개이며 resume 시 fingerprint, 경로, byte 크기, SHA-256과 decoder probe가 모두 일치하는 파일만 재사용한다. 변조 파일 선택 재생성과 sample 3개 제한을 포함한 전체 단위 테스트 28개가 통과했고 실제 과금 호출은 아직 실행하지 않았다.
+- Task 3에서 source SHA-256, 질문·voice 계약, generation ID, MP3 크기·SHA-256과 immutable S3 key를 포함하는 canonical manifest를 구현했다. 게시 계획은 120개 MP3와 content-addressed manifest의 원격 metadata를 먼저 조회하고 일치 객체만 재사용하며, 충돌 객체가 하나라도 있으면 쓰기 전에 실패한다.
+- S3 게시 CLI는 기본 dry-run이고 명시적인 `--execute`에서만 `If-None-Match: *`로 신규 객체를 쓴다. 각 MP3를 업로드 직후 검증하고 모든 MP3가 끝난 뒤 manifest를 마지막 completion marker로 올린다. AWS와 OpenRouter를 호출하지 않는 전체 단위 테스트 38개가 통과했으며 실제 S3 변경은 별도 사용자 승인 전까지 금지한다.
 
 ## 2026-08-18 LAN-284 개발 DNS 전환과 ECS·ALB 제거
 

@@ -9,6 +9,7 @@
 - [x] source JSON 계약, generation fingerprint와 캐릭터별 sample 선택을 TDD로 구현한다.
 - [x] OpenRouter 생성, MP3 검증, 재시도와 resume을 TDD로 구현한다.
 - [x] manifest 완성과 승인형 S3 dry-run·업로드를 TDD로 구현한다.
+- [x] production 질문 source snapshot을 재생성하고 초기 audit 대비 drift가 없음을 확인한다.
 - [ ] 캐릭터별 샘플 3개를 생성·검수하고 전체 생성 승인을 받는다.
 - [ ] 전체 120개 MP3를 생성하고 source·오디오 계약을 검증한다.
 - [ ] shared S3 변경 목록을 검토받은 뒤 별도 승인으로 업로드한다.

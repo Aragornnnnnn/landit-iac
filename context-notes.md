@@ -15,6 +15,8 @@
 - MP3는 `.part` 파일을 `afinfo` 또는 `ffprobe`로 디코딩해 양수 duration을 확인한 뒤 원자적으로 교체한다. 동시성은 4개이며 resume 시 fingerprint, 경로, byte 크기, SHA-256과 decoder probe가 모두 일치하는 파일만 재사용한다. 변조 파일 선택 재생성과 sample 3개 제한을 포함한 전체 단위 테스트 28개가 통과했고 실제 과금 호출은 아직 실행하지 않았다.
 - Task 3에서 source SHA-256, 질문·voice 계약, generation ID, MP3 크기·SHA-256과 immutable S3 key를 포함하는 canonical manifest를 구현했다. 게시 계획은 120개 MP3와 content-addressed manifest의 원격 metadata를 먼저 조회하고 일치 객체만 재사용하며, 충돌 객체가 하나라도 있으면 쓰기 전에 실패한다.
 - S3 게시 CLI는 기본 dry-run이고 명시적인 `--execute`에서만 `If-None-Match: *`로 신규 객체를 쓴다. 각 MP3를 업로드 직후 검증하고 모든 MP3가 끝난 뒤 manifest를 마지막 completion marker로 올린다. AWS와 OpenRouter를 호출하지 않는 전체 단위 테스트 38개가 통과했으며 실제 S3 변경은 별도 사용자 승인 전까지 금지한다.
+- Task 4에서 production SSM credential을 파일이나 출력에 남기지 않고 JDBC read-only transaction으로 source를 재조회했다. 결과는 40개 시나리오, 120개 질문, Chloe 9개, Marco 24개, Teddy 87개이며 source SHA-256은 `bf534681837848ebb45644d2c7add05b023d4fd18880f3139f769017c14c5fce`다.
+- 동일 필드의 `scenarioId|scenarioQuestionId|displayOrder|characterId|questionText` 행을 newline으로 연결한 MD5는 초기 audit와 같은 `9c79b5aec3333eb7022dca5b9da10f39`였다. 질문 원문, ID, 순서와 캐릭터 drift가 없으므로 이 snapshot을 샘플 생성 입력으로 고정한다.
 
 ## 2026-08-18 LAN-284 개발 DNS 전환과 ECS·ALB 제거
 

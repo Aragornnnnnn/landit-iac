@@ -1,5 +1,21 @@
 # Checklist
 
+## 2026-08-25 LAN-351 시나리오 고정 질문 TTS 게시
+
+- [x] production DB의 활성 시나리오 40개와 영어 고정 질문 120개를 읽기 전용으로 확인한다.
+- [x] Chloe, Marco, Teddy의 LAN-351 voice와 MP3·immutable S3 key 계약을 확정한다.
+- [x] 승인된 설계 문서를 작성하고 자체 검토한 뒤 커밋한다.
+- [x] production 질문 snapshot과 생성 manifest를 만드는 구현 계획을 작성한다.
+- [x] source JSON 계약, generation fingerprint와 캐릭터별 sample 선택을 TDD로 구현한다.
+- [x] OpenRouter 생성, MP3 검증, 재시도와 resume을 TDD로 구현한다.
+- [x] manifest 완성과 승인형 S3 dry-run·업로드를 TDD로 구현한다.
+- [x] production 질문 source snapshot을 재생성하고 초기 audit 대비 drift가 없음을 확인한다.
+- [x] 캐릭터별 샘플 3개를 생성·검수하고 전체 생성 승인을 받는다.
+- [x] 전체 120개 MP3를 생성하고 source·오디오 계약을 검증한다.
+- [x] shared S3 변경 목록을 검토받은 뒤 별도 승인으로 업로드한다.
+- [x] 업로드 객체 수, metadata와 SHA-256을 manifest와 대조한다.
+- [x] BE 전달용 CloudFront URL 조회 계약과 manifest 사용법을 문서화한다.
+
 ## 2026-08-18 LAN-284 개발 DNS 전환과 ECS·ALB 제거
 
 - [x] BE·AI dual deploy와 Flyway, ECS 안정화, 동일 SHA EC2 배포를 검증한다.

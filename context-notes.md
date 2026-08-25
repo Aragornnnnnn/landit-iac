@@ -1,5 +1,32 @@
 # Context Notes
 
+## 2026-08-25 LAN-351 시나리오 고정 질문 TTS 게시
+
+- 이번 저장소 범위는 production DB를 기준으로 고정 질문 MP3를 생성·검증하고 기존 shared private content S3 bucket에 게시하는 작업이다. BE·AI 코드, runtime IAM, DB 컬럼과 런타임 오디오 결합은 후속 이슈로 분리한다.
+- production 읽기 전용 집계는 활성 시나리오 40개, 영어 고정 질문 120개, 빈 질문 0개, 시나리오별 3개 질문과 `display_order=1..3` 완전성을 확인했다. 원문·순서·캐릭터 기준 초기 MD5는 `9c79b5aec3333eb7022dca5b9da10f39`다.
+- 생성 분포는 Chloe 9개, Marco 24개, Teddy 87개다. LAN-351은 production의 Chloe `microsoft/mai-voice-2` 매핑을 의도적으로 사용하지 않고 사용자 지정 `deepgram/aura-2`의 `aura-2-luna-en`을 사용한다. Marco는 `aura-2-hyperion-en`, Teddy는 `aura-2-draco-en`을 사용한다.
+- 출력은 용량과 전송 효율을 위해 OpenRouter `/api/v1/audio/speech`의 MP3 raw byte stream을 변환 없이 저장한다. key fingerprint에는 질문 원문, model, voice와 response format을 포함한다.
+- 실제 OpenRouter 과금 호출과 S3 업로드는 아직 실행하지 않았다. 캐릭터별 샘플 승인 뒤 전체 생성하며, 전체 로컬 검증과 S3 변경 목록 승인 뒤에만 업로드한다.
+- 설계 문서는 `docs/superpowers/specs/2026-08-25-lan-351-scenario-question-audio-design.md`에 기록했다. 동시 작업 수 4개, 최대 시도 4회, 연결 timeout 10초와 전체 timeout 120초를 고정했고 placeholder 검사와 `git diff --check`를 통과했다.
+- 구현 계획은 `docs/superpowers/plans/2026-08-25-lan-351-scenario-question-audio.md`에 기록했다. source 계약, OpenRouter 생성·resume, manifest·S3 gate, production export, 샘플 승인, 전체 생성과 별도 업로드 승인의 일곱 작업으로 나눴다.
+- Task 1에서 Python 표준 라이브러리만 사용해 production `EN`/`KR` source의 40개 시나리오·120개 질문, 캐릭터별 9·24·87개, 시나리오별 순서, 중복·빈 원문을 검증한다. 질문 원문·model·voice·MP3 계약의 SHA-256 fingerprint와 캐릭터별 UTF-8 중앙 길이 sample 선택도 추가했고 12개 단위 테스트가 통과했다.
+- 새 Python 테스트 실행이 생성하는 `__pycache__/`만 `.gitignore`에 추가했다. MP3나 작업 source는 `/tmp/landit-lan-351-audio`에만 두므로 별도 저장소 ignore 경로를 만들지 않는다.
+- Task 2에서 OpenRouter speech 요청의 네 필드 계약, 10초 연결·120초 응답 timeout, 429·5xx·연결 오류 최대 4회 재시도와 영구 오류 즉시 실패를 구현했다. 응답은 `audio/mpeg`, 비어 있지 않은 body와 generation ID를 모두 요구하며 key는 오류에 포함하지 않는다.
+- MP3는 `.part` 파일을 `afinfo` 또는 `ffprobe`로 디코딩해 양수 duration을 확인한 뒤 원자적으로 교체한다. 동시성은 4개이며 resume 시 fingerprint, 경로, byte 크기, SHA-256과 decoder probe가 모두 일치하는 파일만 재사용한다. 변조 파일 선택 재생성과 sample 3개 제한을 포함한 전체 단위 테스트 28개가 통과했고 실제 과금 호출은 아직 실행하지 않았다.
+- Task 3에서 source SHA-256, 질문·voice 계약, generation ID, MP3 크기·SHA-256과 immutable S3 key를 포함하는 canonical manifest를 구현했다. 게시 계획은 120개 MP3와 content-addressed manifest의 원격 metadata를 먼저 조회하고 일치 객체만 재사용하며, 충돌 객체가 하나라도 있으면 쓰기 전에 실패한다.
+- S3 게시 CLI는 기본 dry-run이고 명시적인 `--execute`에서만 `If-None-Match: *`로 신규 객체를 쓴다. 각 MP3를 업로드 직후 검증하고 모든 MP3가 끝난 뒤 manifest를 마지막 completion marker로 올린다. AWS와 OpenRouter를 호출하지 않는 전체 단위 테스트 38개가 통과했으며 실제 S3 변경은 별도 사용자 승인 전까지 금지한다.
+- Task 4에서 production SSM credential을 파일이나 출력에 남기지 않고 JDBC read-only transaction으로 source를 재조회했다. 결과는 40개 시나리오, 120개 질문, Chloe 9개, Marco 24개, Teddy 87개이며 source SHA-256은 `bf534681837848ebb45644d2c7add05b023d4fd18880f3139f769017c14c5fce`다.
+- 동일 필드의 `scenarioId|scenarioQuestionId|displayOrder|characterId|questionText` 행을 newline으로 연결한 MD5는 초기 audit와 같은 `9c79b5aec3333eb7022dca5b9da10f39`였다. 질문 원문, ID, 순서와 캐릭터 drift가 없으므로 이 snapshot을 샘플 생성 입력으로 고정한다.
+- Task 5 과금 직전 Codex 프로세스의 OpenRouter key는 credits API HTTP 200이었고 잔액은 `$578.450179051`이었다. `landit-ai/.env`의 별도 key는 `401 User not found`였으므로 사용하지 않았으며 key 원문은 출력하거나 기록하지 않았다.
+- 캐릭터별 중앙 길이 샘플은 Teddy 질문 45번 40,464 bytes·6.744초, Chloe 질문 59번 37,584 bytes·6.264초, Marco 질문 95번 35,136 bytes·5.856초로 생성됐다. 세 파일은 decoder probe, byte size와 SHA-256 검증을 통과했고 사용자가 세 voice와 결과를 모두 승인해 전체 생성 gate를 열었다.
+- Task 6 전체 생성은 승인된 샘플 3개를 resume하고 나머지 117개를 호출해 `completed=120, failed=0`으로 끝났다. 결과는 Chloe 9개, Marco 24개, Teddy 87개, 총 4,915,152 bytes, 총 819.192초이며 MP3 120개와 `.part` 잔여 0개를 확인했다.
+- canonical manifest SHA-256은 `2e084d63e194f984f0160341889d3df7e610b9de99f8dc528ee3f95211874509`다. source와 manifest 동시 검증에서 MP3 120개의 decoder probe, byte size, audio SHA-256과 generation fingerprint가 모두 일치했고 단위 테스트 39개, Terraform format, 기존 콘텐츠 업로드 계약과 `git diff --check`가 통과했다.
+- 전체 생성 후 OpenRouter credits API 잔액은 `$578.103948301`이었다. 전체 생성 직전 확인값 대비 관찰된 감소액은 `$0.346230750`이며 같은 key의 다른 동시 사용 가능성이 있어 LAN-351 단독 청구액으로 단정하지 않는다.
+- Task 7 사전 S3 dry-run은 shared bucket의 MP3 120개와 manifest 1개 key를 `head-object`로만 조회했다. 대상 121개가 모두 신규이고 재사용 0개, metadata 충돌 0개였으며 `put-object`와 실제 업로드는 0건이었다. 사용자가 이 변경 목록을 검토하고 실제 게시를 별도로 승인했다.
+- 승인 후 MP3 120개를 먼저 `If-None-Match: *`로 게시·검증하고 canonical manifest 1개를 마지막 completion marker로 게시했다. 실행 결과는 신규 업로드 121개, 검증 121개, 충돌 0개였고 후속 dry-run은 신규 0개, 재사용 121개, 충돌 0개였다.
+- 원격 prefix를 임시 디렉터리에 다시 내려받아 MP3 120개의 실제 bytes를 전수 계산했다. manifest의 byte size·audio SHA-256 불일치는 0개였고 원격 manifest bytes도 로컬 SHA-256 `2e084d63e194f984f0160341889d3df7e610b9de99f8dc528ee3f95211874509` manifest와 정확히 일치했다. 기존 객체 overwrite와 delete는 수행하지 않았다.
+- BE 전달 문서는 `docs/handoffs/lan-351-be-audio-urls.md`에 정리했다. BE는 `scenarioQuestionId`로 manifest 항목을 찾고 shared CloudFront base URL과 정확한 `s3Key`를 결합하며, 대표 MP3와 content-addressed manifest URL의 HTTP 200, content type, content length와 immutable cache header를 확인했다.
+
 ## 2026-08-18 LAN-284 개발 DNS 전환과 ECS·ALB 제거
 
 - Caddy는 임시 도메인과 기존 개발 도메인을 함께 수신한다. 실행 중 설정 반영 뒤 Caddy 컨테이너만 재생성해 bind mount inode를 갱신했고 네 도메인의 HTTPS health를 확인했다.

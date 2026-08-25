@@ -707,5 +707,7 @@
 
 - BE 개발 Sentry의 S3 presign 오류 원인은 개발 EC2 컨테이너에 `CONTENT_BUCKET_NAME`, `CONTENT_CLOUDFRONT_URL`이 주입되지 않은 상태였다. shared remote state의 `content_bucket_name`, `cloudfront_url`을 dev EC2 user-data에 전달하도록 수정했다.
 - 개발 EC2 role에는 shared bucket 전체가 아닌 `content/inbox/*`에 대한 `s3:PutObject`만 추가했다. API ECS task role의 기존 권한은 변경하지 않았다.
-- `scripts/test-dev-ec2-runtime.sh`와 `scripts/test-admin-content-upload-contract.sh`가 통과했다. Terraform fmt도 실행했다.
-- 현재 변경은 코드와 IaC에만 반영했으며, `aws_instance.app`의 `user_data`는 기존 lifecycle 정책에서 ignore 대상이므로 live 반영 여부는 사용자 승인 후 plan에서 확인해야 한다. apply와 재배포는 실행하지 않았다.
+- 최초 develop apply는 EC2 role의 IAM 정책만 변경했다. production은 변경 사항이 없었다. 두 role의 IAM simulation에서 `content/inbox/*` PutObject는 허용되고 다른 prefix는 거부되는 것을 확인했다.
+- 개발 EC2의 `user_data`는 lifecycle에서 변경을 무시하므로 기존 인스턴스의 `/opt/landit/bin/runtime-env`와 실행 컨테이너에는 콘텐츠 환경 변수가 반영되지 않았다.
+- runtime env를 별도 템플릿으로 분리하고, EC2 user-data와 SSM 배포 문서가 같은 렌더링 결과를 사용하도록 수정했다. SSM은 매 배포 전 임시 파일을 생성해 `runtime-env`를 원자적으로 교체한 뒤 기존 `deploy-service`를 실행한다.
+- IAC 변경을 적용해 SSM 문서를 갱신한 뒤 BE 핫픽스를 배포해야 실행 중인 개발 API 컨테이너에 새 환경 변수가 반영된다. 현재 API는 재기동하지 않았다.

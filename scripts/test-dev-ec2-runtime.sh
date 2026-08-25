@@ -14,6 +14,17 @@ trap cleanup EXIT
 
 cat > "${TEST_DIR}/main.tf" <<EOF
 locals {
+  runtime_env = templatefile("${ROOT_DIR}/environments/dev/templates/ec2-runtime-env.sh.tftpl", {
+    aws_region             = "ap-northeast-2"
+    parameter_store_path   = "/landit/develop"
+    environment            = "develop"
+    app_bucket_name        = "develop-landit-app-123456789012"
+    content_bucket_name    = "develop-landit-content-123456789012"
+    content_cloudfront_url = "https://d1234567890.cloudfront.net"
+    jobs_queue_url         = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/develop-landit-jobs"
+    grafana_otlp_enabled   = "true"
+    grafana_otlp_endpoint  = "https://otlp.example.com/otlp"
+  })
   user_data = templatefile("${ROOT_DIR}/environments/dev/templates/ec2-user-data.sh.tftpl", {
     api_image            = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/develop-landit-api"
     ai_image             = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/develop-landit-worker"
@@ -22,13 +33,7 @@ locals {
     aws_region           = "ap-northeast-2"
     parameter_store_path = "/landit/develop"
     ecr_registry         = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com"
-    environment          = "develop"
-    app_bucket_name      = "develop-landit-app-123456789012"
-    content_bucket_name  = "develop-landit-content-123456789012"
-    content_cloudfront_url = "https://d1234567890.cloudfront.net"
-    jobs_queue_url       = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/develop-landit-jobs"
-    grafana_otlp_enabled = "true"
-    grafana_otlp_endpoint = "https://otlp.example.com/otlp"
+    runtime_env          = local.runtime_env
     docker_compose = templatefile("${ROOT_DIR}/environments/dev/templates/docker-compose.yml.tftpl", {
       api_log_group_name = "/landit/develop/api"
       ai_log_group_name  = "/landit/develop/worker"
@@ -50,6 +55,7 @@ EOF
 )
 sed '1d;$d' "${TEST_DIR}/user-data.sh" > "${TEST_DIR}/user-data.rendered.sh"
 mv "${TEST_DIR}/user-data.rendered.sh" "${TEST_DIR}/user-data.sh"
+bash -n "${TEST_DIR}/user-data.sh"
 if ! rg -q 'CONTENT_BUCKET_NAME="?develop-landit-content-123456789012' "${TEST_DIR}/user-data.sh"; then
   echo 'rendered runtime must provide CONTENT_BUCKET_NAME to the API.' >&2
   exit 1
@@ -58,6 +64,12 @@ if ! rg -q 'CONTENT_CLOUDFRONT_URL="?https://d1234567890\.cloudfront\.net' "${TE
   echo 'rendered runtime must provide CONTENT_CLOUDFRONT_URL to the API.' >&2
   exit 1
 fi
+awk '
+  /<<.RUNTIME_ENV.$/ { capture = 1; next }
+  /^RUNTIME_ENV$/ { exit }
+  capture { print }
+' "${TEST_DIR}/user-data.sh" > "${TEST_DIR}/runtime-env"
+bash -n "${TEST_DIR}/runtime-env"
 awk '
   /<<.DEPLOY_SERVICE.$/ { capture = 1; next }
   /^DEPLOY_SERVICE$/ { exit }

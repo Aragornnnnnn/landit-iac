@@ -504,5 +504,8 @@
 - [x] 개발 EC2 role에 `content/inbox/*` 업로드 권한을 최소 범위로 추가한다.
 - [x] user-data 렌더링·콘텐츠 업로드 IaC 계약 테스트를 통과한다.
 - [x] `terraform fmt -recursive`를 실행한다.
-- [ ] 사용자 승인 후 개발 Terraform plan/apply와 API 재배포를 실행한다.
-- [ ] apply 후 SSM 환경 변수와 관리자 presigned URL 흐름을 live에서 확인한다.
+- [x] 개발·운영 Terraform plan/apply와 IAM 최소 권한을 live에서 확인한다.
+- [x] 기존 EC2에도 반영되도록 SSM 배포 전 `runtime-env` 동기화 경로를 추가한다.
+- [x] EC2 생성과 SSM 배포가 같은 runtime 템플릿을 사용하는 계약 테스트를 통과한다.
+- [ ] IAC 변경 적용 후 BE 핫픽스를 배포해 실행 컨테이너의 환경 변수를 확인한다.
+- [ ] 관리자 presigned URL 흐름을 live에서 확인한다.

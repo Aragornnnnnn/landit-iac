@@ -3,19 +3,36 @@
 import unittest
 from contextlib import redirect_stdout
 from dataclasses import replace
+import hashlib
 import io
 import json
 from pathlib import Path
+import subprocess
 import tempfile
+from unittest.mock import Mock
 
 from scripts.scenario_question_audio import (
+    GeneratedAsset,
+    InvalidAudioResponse,
+    InvalidMp3Error,
+    OpenRouterSpeechClient,
+    PermanentTtsError,
+    SpeechHttpResult,
     SourceAsset,
     SourceSnapshot,
+    SpeechResponse,
+    audio_path_for,
+    generate_assets,
     generation_fingerprint,
     load_source,
+    load_generation_state,
     main,
+    request_speech,
+    resolve_probe,
     select_sample_ids,
     validate_source,
+    validate_mp3,
+    verify_generated_assets,
 )
 
 
@@ -63,6 +80,62 @@ def snapshot_payload(snapshot: SourceSnapshot) -> dict:
             for asset in snapshot.assets
         ],
     }
+
+
+def successful_probe(*args, **kwargs) -> subprocess.CompletedProcess:
+    return subprocess.CompletedProcess(
+        ["afinfo", "audio.mp3"],
+        0,
+        "estimated duration: 1.25 sec\n",
+        "",
+    )
+
+
+def seed_verified_generation_state(
+    work_dir: Path,
+    asset: SourceAsset,
+    body: bytes,
+) -> GeneratedAsset:
+    path = audio_path_for(work_dir, asset)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body)
+    generated = GeneratedAsset(
+        scenario_question_id=asset.scenario_question_id,
+        generation_fingerprint=generation_fingerprint(asset),
+        path=path,
+        audio_byte_size=len(body),
+        audio_sha256=hashlib.sha256(body).hexdigest(),
+        generation_id="seed-generation",
+        duration_seconds=1.25,
+    )
+    existing_assets = []
+    state_path = work_dir / "state.json"
+    if state_path.exists():
+        existing_assets = json.loads(state_path.read_text(encoding="utf-8"))["assets"]
+    existing_assets = [
+        item
+        for item in existing_assets
+        if item["scenarioQuestionId"] != generated.scenario_question_id
+    ]
+    state_payload = {
+        "schemaVersion": 1,
+        "assets": existing_assets + [
+            {
+                "scenarioQuestionId": generated.scenario_question_id,
+                "generationFingerprint": generated.generation_fingerprint,
+                "path": str(generated.path),
+                "audioByteSize": generated.audio_byte_size,
+                "audioSha256": generated.audio_sha256,
+                "generationId": generated.generation_id,
+                "durationSeconds": generated.duration_seconds,
+            }
+        ],
+    }
+    state_path.write_text(
+        json.dumps(state_payload),
+        encoding="utf-8",
+    )
+    return generated
 
 
 class SourceContractTests(unittest.TestCase):
@@ -176,6 +249,425 @@ class SourceContractTests(unittest.TestCase):
         self.assertIn("40 scenarios, 120 questions", output.getvalue())
         self.assertIn("chloe=9, marco=24, teddy=87", output.getvalue())
         self.assertRegex(output.getvalue(), r"source_sha256=[0-9a-f]{64}")
+
+
+class OpenRouterSpeechClientTests(unittest.TestCase):
+    def test_default_requester_posts_json_with_separate_timeouts(self) -> None:
+        calls = {}
+
+        class FakeSocket:
+            def settimeout(self, value):
+                calls["socket_timeout"] = value
+
+        class FakeResponse:
+            status = 200
+
+            @staticmethod
+            def getheaders():
+                return [("Content-Type", "audio/mpeg"), ("X-Generation-Id", "g-1")]
+
+            @staticmethod
+            def read():
+                return b"ID3audio"
+
+        class FakeConnection:
+            def __init__(self, host, timeout):
+                calls["host"] = host
+                calls["connect_timeout"] = timeout
+                self.sock = FakeSocket()
+
+            def connect(self):
+                calls["connected"] = True
+
+            def request(self, method, path, body, headers):
+                calls["request"] = (method, path, body, headers)
+
+            @staticmethod
+            def getresponse():
+                return FakeResponse()
+
+            def close(self):
+                calls["closed"] = True
+
+        result = request_speech(
+            {"model": "deepgram/aura-2"},
+            {"Authorization": "Bearer secret-key"},
+            10,
+            120,
+            connection_factory=FakeConnection,
+        )
+
+        self.assertEqual("openrouter.ai", calls["host"])
+        self.assertEqual(10, calls["connect_timeout"])
+        self.assertEqual(120, calls["socket_timeout"])
+        self.assertEqual("POST", calls["request"][0])
+        self.assertEqual("/api/v1/audio/speech", calls["request"][1])
+        self.assertEqual(b'{"model":"deepgram/aura-2"}', calls["request"][2])
+        self.assertTrue(calls["closed"])
+        self.assertEqual(200, result.status)
+        self.assertEqual(b"ID3audio", result.body)
+
+    def test_sends_exact_tts_contract_and_returns_binary_metadata(self) -> None:
+        calls = []
+
+        def requester(payload, headers, connect_timeout, total_timeout):
+            calls.append((payload, headers, connect_timeout, total_timeout))
+            return SpeechHttpResult(
+                status=200,
+                headers={
+                    "Content-Type": "audio/mpeg",
+                    "X-Generation-Id": "generation-1",
+                },
+                body=b"ID3audio",
+            )
+
+        response = OpenRouterSpeechClient(
+            "secret-key",
+            requester=requester,
+        ).synthesize(make_valid_snapshot().assets[0])
+
+        self.assertEqual("generation-1", response.generation_id)
+        self.assertEqual(b"ID3audio", response.body)
+        self.assertEqual(
+            {
+                "model": "deepgram/aura-2",
+                "input": "Question 1?",
+                "voice": "aura-2-luna-en",
+                "response_format": "mp3",
+            },
+            calls[0][0],
+        )
+        self.assertEqual("Bearer secret-key", calls[0][1]["Authorization"])
+        self.assertEqual(10, calls[0][2])
+        self.assertEqual(120, calls[0][3])
+
+    def test_retries_429_then_succeeds_on_fourth_attempt(self) -> None:
+        results = iter(
+            [
+                SpeechHttpResult(429, {}, b"rate limited"),
+                SpeechHttpResult(429, {}, b"rate limited"),
+                SpeechHttpResult(429, {}, b"rate limited"),
+                SpeechHttpResult(
+                    200,
+                    {
+                        "Content-Type": "audio/mpeg",
+                        "X-Generation-Id": "generation-4",
+                    },
+                    b"ID3audio",
+                ),
+            ]
+        )
+        sleeps = []
+        client = OpenRouterSpeechClient(
+            "secret-key",
+            requester=lambda *args: next(results),
+            sleep=sleeps.append,
+            jitter=lambda: 0.5,
+        )
+
+        response = client.synthesize(make_valid_snapshot().assets[0])
+
+        self.assertEqual("generation-4", response.generation_id)
+        self.assertEqual([1.5, 2.5, 4.5], sleeps)
+
+    def test_does_not_retry_permanent_errors_or_expose_key(self) -> None:
+        for status in (400, 401, 402, 404):
+            calls = []
+
+            def requester(*args):
+                calls.append(status)
+                return SpeechHttpResult(status, {}, b"request failed")
+
+            client = OpenRouterSpeechClient("secret-key", requester=requester)
+
+            with self.assertRaises(PermanentTtsError) as caught:
+                client.synthesize(make_valid_snapshot().assets[0])
+
+            self.assertEqual([status], calls)
+            self.assertNotIn("secret-key", str(caught.exception))
+
+    def test_retries_connection_error_then_succeeds(self) -> None:
+        calls = []
+
+        def requester(*args):
+            calls.append(None)
+            if len(calls) == 1:
+                raise TimeoutError("connection timed out")
+            return SpeechHttpResult(
+                200,
+                {
+                    "Content-Type": "audio/mpeg",
+                    "X-Generation-Id": "generation-2",
+                },
+                b"ID3audio",
+            )
+
+        client = OpenRouterSpeechClient(
+            "secret-key",
+            requester=requester,
+            sleep=lambda seconds: None,
+            jitter=lambda: 0,
+        )
+
+        response = client.synthesize(make_valid_snapshot().assets[0])
+
+        self.assertEqual("generation-2", response.generation_id)
+        self.assertEqual(2, len(calls))
+
+    def test_rejects_invalid_success_response(self) -> None:
+        invalid_results = (
+            SpeechHttpResult(
+                200,
+                {
+                    "Content-Type": "application/json",
+                    "X-Generation-Id": "bad-content-type",
+                },
+                b"{}",
+            ),
+            SpeechHttpResult(
+                200,
+                {
+                    "Content-Type": "audio/mpeg",
+                    "X-Generation-Id": "empty-body",
+                },
+                b"",
+            ),
+            SpeechHttpResult(200, {"Content-Type": "audio/mpeg"}, b"ID3audio"),
+        )
+        for result in invalid_results:
+            with self.subTest(result=result):
+                client = OpenRouterSpeechClient(
+                    "secret-key",
+                    requester=lambda *args: result,
+                )
+                with self.assertRaises(InvalidAudioResponse):
+                    client.synthesize(make_valid_snapshot().assets[0])
+
+
+class GenerationTests(unittest.TestCase):
+    def test_resolve_probe_prefers_afinfo_then_ffprobe(self) -> None:
+        self.assertEqual(
+            "afinfo",
+            resolve_probe(lambda name: "/usr/bin/afinfo" if name == "afinfo" else None),
+        )
+        self.assertEqual(
+            "ffprobe",
+            resolve_probe(lambda name: "/usr/bin/ffprobe" if name == "ffprobe" else None),
+        )
+        with self.assertRaisesRegex(InvalidMp3Error, "afinfo or ffprobe"):
+            resolve_probe(lambda name: None)
+
+    def test_validate_mp3_accepts_positive_afinfo_duration(self) -> None:
+        completed = subprocess.CompletedProcess(
+            ["afinfo", "audio.mp3"],
+            0,
+            "estimated duration: 1.25 sec\n",
+            "",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            audio_path = Path(directory) / "audio.mp3"
+            audio_path.write_bytes(b"ID3audio")
+
+            probe = validate_mp3(
+                audio_path,
+                probe_runner=lambda *args, **kwargs: completed,
+                probe_name="afinfo",
+            )
+
+        self.assertEqual(1.25, probe.duration_seconds)
+
+    def test_validate_mp3_accepts_ffprobe_duration(self) -> None:
+        calls = []
+        completed = subprocess.CompletedProcess(
+            ["ffprobe", "audio.mp3"],
+            0,
+            "1.75\n",
+            "",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            audio_path = Path(directory) / "audio.mp3"
+            audio_path.write_bytes(b"ID3audio")
+
+            probe = validate_mp3(
+                audio_path,
+                probe_runner=lambda *args, **kwargs: calls.append(args[0]) or completed,
+                probe_name="ffprobe",
+            )
+
+        self.assertEqual(1.75, probe.duration_seconds)
+        self.assertEqual(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(audio_path),
+            ],
+            calls[0],
+        )
+
+    def test_validate_mp3_rejects_probe_failure_and_zero_duration(self) -> None:
+        invalid_results = (
+            subprocess.CompletedProcess(
+                ["afinfo", "audio.mp3"],
+                1,
+                "",
+                "invalid audio",
+            ),
+            subprocess.CompletedProcess(
+                ["afinfo", "audio.mp3"],
+                0,
+                "estimated duration: 0.0 sec\n",
+                "",
+            ),
+        )
+        for completed in invalid_results:
+            with self.subTest(completed=completed):
+                with tempfile.TemporaryDirectory() as directory:
+                    audio_path = Path(directory) / "audio.mp3"
+                    audio_path.write_bytes(b"ID3audio")
+                    with self.assertRaises(InvalidMp3Error):
+                        validate_mp3(
+                            audio_path,
+                            probe_runner=lambda *args, **kwargs: completed,
+                            probe_name="afinfo",
+                        )
+
+    def test_validate_mp3_rejects_missing_or_empty_file(self) -> None:
+        completed = subprocess.CompletedProcess(
+            ["afinfo", "audio.mp3"],
+            0,
+            "estimated duration: 1.0 sec\n",
+            "",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            missing_path = Path(directory) / "missing.mp3"
+            empty_path = Path(directory) / "empty.mp3"
+            empty_path.touch()
+
+            for audio_path in (missing_path, empty_path):
+                with self.subTest(audio_path=audio_path):
+                    with self.assertRaises(InvalidMp3Error):
+                        validate_mp3(
+                            audio_path,
+                            probe_runner=lambda *args, **kwargs: completed,
+                            probe_name="afinfo",
+                        )
+
+    def test_generate_assets_reuses_matching_verified_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory)
+            snapshot = make_valid_snapshot()
+            sample_ids = select_sample_ids(snapshot)
+            for asset in snapshot.assets:
+                if asset.scenario_question_id in sample_ids:
+                    seed_verified_generation_state(
+                        work_dir,
+                        asset,
+                        f"ID3audio-{asset.scenario_question_id}".encode(),
+                    )
+            client = Mock()
+
+            results = generate_assets(
+                snapshot,
+                work_dir,
+                sample_only=True,
+                client=client,
+                probe_runner=successful_probe,
+                probe_name="afinfo",
+            )
+
+        self.assertEqual(
+            sample_ids,
+            {item.scenario_question_id for item in results},
+        )
+        client.synthesize.assert_not_called()
+
+    def test_generate_assets_regenerates_tampered_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory)
+            snapshot = make_valid_snapshot()
+            sample_ids = select_sample_ids(snapshot)
+            assets = [
+                asset
+                for asset in snapshot.assets
+                if asset.scenario_question_id in sample_ids
+            ]
+            for asset in assets:
+                seed_verified_generation_state(work_dir, asset, b"ID3audio")
+            tampered_asset = assets[0]
+            audio_path_for(work_dir, tampered_asset).write_bytes(b"tampered")
+            client = Mock()
+            client.synthesize.return_value = SpeechResponse(
+                b"ID3replacement",
+                "replacement",
+            )
+
+            generate_assets(
+                snapshot,
+                work_dir,
+                sample_only=True,
+                client=client,
+                probe_runner=successful_probe,
+                probe_name="afinfo",
+            )
+
+        client.synthesize.assert_called_once_with(tampered_asset)
+
+    def test_sample_only_generates_exactly_three_assets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            client = Mock()
+            client.synthesize.return_value = SpeechResponse(
+                b"ID3audio",
+                "generation",
+            )
+
+            results = generate_assets(
+                make_valid_snapshot(),
+                Path(directory),
+                sample_only=True,
+                client=client,
+                probe_runner=successful_probe,
+                probe_name="afinfo",
+            )
+
+        self.assertEqual(3, len(results))
+        self.assertEqual(3, client.synthesize.call_count)
+
+    def test_verify_generated_assets_requires_every_selected_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory)
+            snapshot = make_valid_snapshot()
+
+            with self.assertRaisesRegex(InvalidMp3Error, "3 generated assets"):
+                verify_generated_assets(
+                    snapshot,
+                    work_dir,
+                    sample_only=True,
+                    probe_runner=successful_probe,
+                    probe_name="afinfo",
+                )
+
+    def test_verify_generated_assets_returns_verified_sample_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory)
+            snapshot = make_valid_snapshot()
+            for asset in snapshot.assets:
+                if asset.scenario_question_id in select_sample_ids(snapshot):
+                    seed_verified_generation_state(work_dir, asset, b"ID3audio")
+
+            verified = verify_generated_assets(
+                snapshot,
+                work_dir,
+                sample_only=True,
+                probe_runner=successful_probe,
+                probe_name="afinfo",
+            )
+
+        self.assertEqual(3, len(verified))
 
 
 if __name__ == "__main__":

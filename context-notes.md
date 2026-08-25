@@ -17,6 +17,8 @@
 - S3 게시 CLI는 기본 dry-run이고 명시적인 `--execute`에서만 `If-None-Match: *`로 신규 객체를 쓴다. 각 MP3를 업로드 직후 검증하고 모든 MP3가 끝난 뒤 manifest를 마지막 completion marker로 올린다. AWS와 OpenRouter를 호출하지 않는 전체 단위 테스트 38개가 통과했으며 실제 S3 변경은 별도 사용자 승인 전까지 금지한다.
 - Task 4에서 production SSM credential을 파일이나 출력에 남기지 않고 JDBC read-only transaction으로 source를 재조회했다. 결과는 40개 시나리오, 120개 질문, Chloe 9개, Marco 24개, Teddy 87개이며 source SHA-256은 `bf534681837848ebb45644d2c7add05b023d4fd18880f3139f769017c14c5fce`다.
 - 동일 필드의 `scenarioId|scenarioQuestionId|displayOrder|characterId|questionText` 행을 newline으로 연결한 MD5는 초기 audit와 같은 `9c79b5aec3333eb7022dca5b9da10f39`였다. 질문 원문, ID, 순서와 캐릭터 drift가 없으므로 이 snapshot을 샘플 생성 입력으로 고정한다.
+- Task 5 과금 직전 Codex 프로세스의 OpenRouter key는 credits API HTTP 200이었고 잔액은 `$578.450179051`이었다. `landit-ai/.env`의 별도 key는 `401 User not found`였으므로 사용하지 않았으며 key 원문은 출력하거나 기록하지 않았다.
+- 캐릭터별 중앙 길이 샘플은 Teddy 질문 45번 40,464 bytes·6.744초, Chloe 질문 59번 37,584 bytes·6.264초, Marco 질문 95번 35,136 bytes·5.856초로 생성됐다. 세 파일은 decoder probe, byte size와 SHA-256 검증을 통과했고 사용자가 세 voice와 결과를 모두 승인해 전체 생성 gate를 열었다.
 
 ## 2026-08-18 LAN-284 개발 DNS 전환과 ECS·ALB 제거
 

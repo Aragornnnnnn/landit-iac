@@ -1488,6 +1488,8 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_AUTH_OIDC_APPLE_AUDIENCES", valueFrom = "${local.ssm_path}/LANDIT_AUTH_OIDC_APPLE_AUDIENCES" },
         { name = "LANDIT_AI_CLIENT_MODE", valueFrom = "${local.ssm_path}/LANDIT_AI_CLIENT_MODE" },
         { name = "LANDIT_AI_BASE_URL", valueFrom = "${local.ssm_path}/LANDIT_AI_BASE_URL" },
+        { name = "LANDIT_MEMORY_WRITE_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_MEMORY_WRITE_ENABLED" },
+        { name = "LANDIT_MEMORY_USE_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_MEMORY_USE_ENABLED" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_BE_SENTRY_DSN" }
         ], var.grafana_otlp_enabled ? [
         { name = "OTEL_EXPORTER_OTLP_HEADERS", valueFrom = "${local.ssm_path}/LANDIT_GRAFANA_CLOUD_OTLP_HEADERS" }

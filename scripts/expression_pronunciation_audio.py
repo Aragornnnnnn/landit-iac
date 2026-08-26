@@ -338,7 +338,8 @@ class OpenRouterSpeechClient:
                         "OpenRouter returned an invalid MP3 response"
                     )
                 return SpeechResponse(body=result.body, generation_id=generation_id)
-            if result.status not in {429, 500, 502, 503}:
+            # 520~524는 Cloudflare 일시 오류 — 전량 생성 실측에서 520 순단 확인
+            if result.status not in {429, 500, 502, 503, 520, 521, 522, 523, 524}:
                 raise PermanentTtsError(
                     f"OpenRouter TTS rejected the request with HTTP {result.status}"
                 )

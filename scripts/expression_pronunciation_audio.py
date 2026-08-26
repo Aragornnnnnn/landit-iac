@@ -1135,6 +1135,10 @@ def _head_matches(upload_object: UploadObject, head: dict) -> bool:
     # generation-id 메타데이터 도입 전에 게시된 객체는 그 키가 없다 — 하위 호환
     if "generation-id" not in remote_metadata:
         expected_metadata.pop("generation-id", None)
+    # source-sha256은 처음 게시한 배치의 스냅샷 기록일 뿐 객체 정체성이 아니다.
+    # 증분 게시에서는 배치가 달라지므로 비교에서 제외한다.
+    expected_metadata.pop("source-sha256", None)
+    remote_metadata.pop("source-sha256", None)
     return (
         head.get("ContentLength") == upload_object.content_length
         and head.get("ContentType") == upload_object.content_type

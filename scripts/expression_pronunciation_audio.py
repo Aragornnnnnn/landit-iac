@@ -514,15 +514,18 @@ def load_source(path: Path) -> SourceSnapshot:
     for expression in payload["expressions"]:
         expression_id = expression["expressionId"]
         for locale in expression["accentLocales"]:
-            assets.append(
-                SourceAsset(
-                    expression_id=expression_id,
-                    accent_locale=locale,
-                    kind=KIND_EXPRESSION,
-                    word_order=None,
-                    text=expression["expressionText"],
+            # 패턴형 표현("be busy ~ing" 등)은 그대로 읽힐 수 없어 표현 음성을
+            # 생략한다 (expressionText 미포함). 문장·단어 음성은 정상 생성한다.
+            if expression.get("expressionText"):
+                assets.append(
+                    SourceAsset(
+                        expression_id=expression_id,
+                        accent_locale=locale,
+                        kind=KIND_EXPRESSION,
+                        word_order=None,
+                        text=expression["expressionText"],
+                    )
                 )
-            )
             assets.append(
                 SourceAsset(
                     expression_id=expression_id,
@@ -588,9 +591,13 @@ def validate_source(snapshot: SourceSnapshot) -> None:
     for asset in snapshot.assets:
         counts[(asset.expression_id, asset.accent_locale, asset.kind)] += 1
     for (expression_id, locale, kind), count in counts.items():
-        if kind in (KIND_EXPRESSION, KIND_SENTENCE) and count != 1:
+        if kind == KIND_SENTENCE and count != 1:
             raise ValueError(
-                f"expression {expression_id} ({locale}) must have exactly one {kind}"
+                f"expression {expression_id} ({locale}) must have exactly one sentence"
+            )
+        if kind == KIND_EXPRESSION and count > 1:
+            raise ValueError(
+                f"expression {expression_id} ({locale}) must have at most one expression"
             )
 
 

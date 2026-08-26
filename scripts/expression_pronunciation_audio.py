@@ -1139,6 +1139,38 @@ def _head_matches(upload_object: UploadObject, head: dict) -> bool:
     )
 
 
+def _list_existing_keys(
+    bucket: str, prefix: str, aws_runner: Callable
+) -> set[str]:
+    """prefix 아래 기존 키 전체를 한 번에 나열한다 (CLI가 페이지네이션 처리).
+
+    수만 개 키를 개별 head-object로 확인하면 계획만 수 시간 걸리므로, 목록에 없는
+    키는 head 없이 신규로 분류하고 목록에 있는 키만 head로 대조한다.
+    """
+    completed = aws_runner(
+        [
+            "aws",
+            "s3api",
+            "list-objects-v2",
+            "--bucket",
+            bucket,
+            "--prefix",
+            prefix,
+            "--query",
+            "Contents[].Key",
+            "--output",
+            "json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError("S3 list-objects-v2 failed")
+    keys = json.loads(completed.stdout or "null")
+    return set(keys or [])
+
+
 def plan_s3_upload(
     manifest: dict,
     bucket: str,
@@ -1147,10 +1179,14 @@ def plan_s3_upload(
     aws_runner: Callable = subprocess.run,
 ) -> UploadPlan:
     objects = _upload_objects(manifest, work_dir)
+    existing = _list_existing_keys(bucket, KEY_PREFIX, aws_runner)
     new_keys = []
     reused_keys = []
     conflict_keys = []
     for upload_object in objects:
+        if upload_object.key not in existing:
+            new_keys.append(upload_object.key)
+            continue
         head = _head_object(bucket, upload_object, aws_runner)
         if head is None:
             new_keys.append(upload_object.key)

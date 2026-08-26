@@ -529,6 +529,12 @@ class UploadPlanTests(unittest.TestCase):
             def head_conflict(command, **kwargs):
                 result = Mock()
                 result.returncode = 0
+                if "list-objects-v2" in command:
+                    # 모든 매니페스트 키가 이미 존재한다고 응답한다
+                    result.stdout = json.dumps(
+                        [asset["s3Key"] for asset in manifest["assets"]]
+                    )
+                    return result
                 result.stdout = json.dumps(
                     {
                         "ContentLength": 1,

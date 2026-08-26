@@ -455,6 +455,18 @@ def check_accent_pronunciation(
     return answer == "A", heard if isinstance(heard, str) else None
 
 
+def _is_flap_class(contrast: AccentContrast) -> bool:
+    """d/t(flap)·r 유무만 다른 대조인지 — 미국 단독 인용형은 flap을 안 하는 게 정상이다."""
+
+    def normalize(option: str) -> str:
+        inner = option
+        if "「" in option:
+            inner = option.split("「", 1)[1].rstrip("」")
+        return inner.replace("d", "t").replace("er", "uh").replace("r", "")
+
+    return normalize(contrast.expected) == normalize(contrast.other)
+
+
 def verify_accent_pronunciations(
     snapshot: SourceSnapshot,
     work_dir: Path,
@@ -478,6 +490,15 @@ def verify_accent_pronunciations(
         ]
         for target in targets:
             if target is None:
+                continue
+            # 미국 단독 발음(인용형)은 flap을 안 하는 게 표준이라 flap류 대조를
+            # 단어 음성에는 적용하지 않는다 (문장 음성은 검사 유지).
+            # GB/AU는 인용형도 clear-t가 기대값이라 그대로 검사한다.
+            if (
+                target.kind == KIND_WORD
+                and target.accent_locale == "EN_US"
+                and _is_flap_class(contrast)
+            ):
                 continue
             audio_path = audio_path_for(work_dir, target)
             if not audio_path.is_file():

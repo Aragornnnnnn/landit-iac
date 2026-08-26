@@ -1131,11 +1131,15 @@ def _head_matches(upload_object: UploadObject, head: dict) -> bool:
     remote_metadata = {
         key.lower(): str(value) for key, value in head.get("Metadata", {}).items()
     }
+    expected_metadata = dict(upload_object.metadata)
+    # generation-id 메타데이터 도입 전에 게시된 객체는 그 키가 없다 — 하위 호환
+    if "generation-id" not in remote_metadata:
+        expected_metadata.pop("generation-id", None)
     return (
         head.get("ContentLength") == upload_object.content_length
         and head.get("ContentType") == upload_object.content_type
         and head.get("CacheControl") == upload_object.cache_control
-        and remote_metadata == dict(upload_object.metadata)
+        and remote_metadata == expected_metadata
     )
 
 

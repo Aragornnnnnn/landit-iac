@@ -52,8 +52,7 @@ locals {
     "logs:DescribeSubscriptionFilters",
     "logs:ListTagsForResource",
     "s3:GetBucketAcl",
-    "s3:GetBucketCors",
-    "s3:GetBucketLifecycleConfiguration",
+    "s3:GetBucketCORS",
     "s3:GetBucketLocation",
     "s3:GetBucketLogging",
     "s3:GetBucketNotification",
@@ -64,6 +63,7 @@ locals {
     "s3:GetBucketTagging",
     "s3:GetBucketVersioning",
     "s3:GetEncryptionConfiguration",
+    "s3:GetLifecycleConfiguration",
     "s3:ListAllMyBuckets",
     "sqs:GetQueueAttributes",
     "sqs:GetQueueUrl",
@@ -82,8 +82,9 @@ locals {
       "cloudfront:GetOriginAccessControl",
       "cloudfront:ListTagsForResource",
       "s3:GetBucketAcl",
-      "s3:GetBucketCors",
+      "s3:GetBucketCORS",
       "s3:GetBucketLocation",
+      "s3:GetBucketOwnershipControls",
       "s3:GetBucketPolicy",
       "s3:GetBucketPublicAccessBlock",
       "s3:GetBucketTagging",
@@ -211,15 +212,13 @@ locals {
     "logs:UntagResource",
     "s3:CreateBucket",
     "s3:DeleteBucket",
-    "s3:DeleteBucketLifecycle",
     "s3:DeleteBucketPolicy",
-    "s3:DeleteBucketPublicAccessBlock",
-    "s3:PutBucketLifecycleConfiguration",
     "s3:PutBucketPolicy",
     "s3:PutBucketPublicAccessBlock",
     "s3:PutBucketTagging",
     "s3:PutBucketVersioning",
     "s3:PutEncryptionConfiguration",
+    "s3:PutLifecycleConfiguration",
     "sqs:CreateQueue",
     "sqs:DeleteQueue",
     "sqs:SetQueueAttributes",
@@ -248,10 +247,9 @@ locals {
       "cloudfront:UpdateOriginAccessControl",
       "s3:CreateBucket",
       "s3:DeleteBucket",
-      "s3:DeleteBucketCors",
       "s3:DeleteBucketPolicy",
-      "s3:DeleteBucketPublicAccessBlock",
-      "s3:PutBucketCors",
+      "s3:PutBucketCORS",
+      "s3:PutBucketOwnershipControls",
       "s3:PutBucketPolicy",
       "s3:PutBucketPublicAccessBlock",
       "s3:PutBucketTagging",
@@ -297,6 +295,8 @@ locals {
     "firehose.amazonaws.com",
     "lambda.amazonaws.com"
   ]
+
+  plan_bucket_arn = "arn:aws:s3:::${var.plan_bucket_name}"
 
   common_tags = {
     Project    = var.project_name

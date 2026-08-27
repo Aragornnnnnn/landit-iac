@@ -97,8 +97,8 @@ data "aws_iam_policy_document" "plans_https_only" {
 
     actions = ["s3:*"]
     resources = [
-      aws_s3_bucket.plans.arn,
-      "${aws_s3_bucket.plans.arn}/*"
+      local.plan_bucket_arn,
+      "${local.plan_bucket_arn}/*"
     ]
 
     condition {
@@ -166,7 +166,7 @@ data "aws_iam_policy_document" "terraform" {
   statement {
     sid       = "ListTargetPlans"
     actions   = ["s3:ListBucket"]
-    resources = [aws_s3_bucket.plans.arn]
+    resources = [local.plan_bucket_arn]
 
     condition {
       test     = "StringLike"
@@ -178,7 +178,7 @@ data "aws_iam_policy_document" "terraform" {
   statement {
     sid       = each.value.phase == "plan" ? "WriteTargetPlan" : "ReadTargetPlan"
     actions   = each.value.phase == "plan" ? ["s3:PutObject"] : ["s3:GetObject"]
-    resources = ["${aws_s3_bucket.plans.arn}/plans/${each.value.target}/*"]
+    resources = ["${local.plan_bucket_arn}/plans/${each.value.target}/*"]
   }
 
   statement {

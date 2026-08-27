@@ -1269,9 +1269,7 @@ def execute_s3_upload(
         (objects_by_key[key] for key in plan.new_keys),
         key=lambda item: item.manifest_object,
     )
-    uploaded = 0
-    verified = plan.reused_count
-    for upload_object in ordered_new_objects:
+    def upload_one(upload_object: UploadObject) -> None:
         temporary_manifest_path = None
         body_path = upload_object.body_path
         if upload_object.body_bytes is not None:
@@ -1293,6 +1291,20 @@ def execute_s3_upload(
             raise ValueError(
                 f"uploaded object verification conflict: {upload_object.key}"
             )
+
+    # 객체별 put+head를 직렬로 하면 수만 개 게시에 수 시간이 걸린다(실측 0.7개/초).
+    # 객체들은 서로 독립이므로 병렬로 올리되, 게시 완료의 표식인 매니페스트는
+    # 데이터 객체가 전부 성공한 뒤 마지막에 단독으로 올린다.
+    data_objects = [o for o in ordered_new_objects if not o.manifest_object]
+    marker_objects = [o for o in ordered_new_objects if o.manifest_object]
+    uploaded = 0
+    verified = plan.reused_count
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        for _ in executor.map(upload_one, data_objects):
+            uploaded += 1
+            verified += 1
+    for upload_object in marker_objects:
+        upload_one(upload_object)
         uploaded += 1
         verified += 1
     return UploadResult(uploaded=uploaded, verified=verified, conflicts=0)

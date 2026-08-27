@@ -188,8 +188,15 @@ data "aws_iam_policy_document" "terraform" {
   }
 
   statement {
-    sid       = "ReadTargetBuckets"
-    actions   = ["s3:ListBucket"]
+    sid = "ReadTargetBuckets"
+    actions = [
+      "s3:GetAccelerateConfiguration",
+      "s3:GetBucketObjectLockConfiguration",
+      "s3:GetBucketRequestPayment",
+      "s3:GetBucketWebsite",
+      "s3:GetReplicationConfiguration",
+      "s3:ListBucket"
+    ]
     resources = local.managed_bucket_arns_by_target[each.value.target]
   }
 

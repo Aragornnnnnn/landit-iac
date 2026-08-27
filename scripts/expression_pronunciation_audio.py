@@ -444,8 +444,15 @@ def check_accent_pronunciation(
         raise AccentVerificationError(
             f"judgment request failed with HTTP {result.status}"
         )
-    body = json.loads(result.body.decode("utf-8"))
-    raw = (body["choices"][0]["message"]["content"] or "").strip()
+    # OpenRouter는 일시 장애 때 200이면서 choices가 없거나 null인 몸통을 줄 수 있다.
+    # HTTP 실패와 동일하게 fail-closed로 처리해 검증이 조용히 오판하지 않게 한다.
+    try:
+        body = json.loads(result.body.decode("utf-8"))
+        raw = (body["choices"][0]["message"]["content"] or "").strip()
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError) as error:
+        raise AccentVerificationError(
+            f"judgment response body is malformed: {type(error).__name__}"
+        ) from error
     if raw.startswith("```"):
         raw = raw.strip("`").removeprefix("json").strip()
     try:
@@ -1426,7 +1433,7 @@ def build_be_manifest(
 ) -> dict:
     """작업 매니페스트를 BE importTts가 기대하는 모양으로 변환한다.
 
-    BE 계약(확정 DTO): 표현×억양당 1행, CDN URL. 필드명은 assets/expressionId/
+    BE 계약(확정 DTO): 표현x억양당 1행, CDN URL. 필드명은 assets/expressionId/
     accentLocale/expressionAudioUrl/sentenceAudioUrl/words/order/audioUrl 철자 그대로.
     BE는 기준 데이터 words의 order로 조인하므로 소스와 order 집합이 어긋난 표현은
     임포트 실패 처리된다 — 게시 전에 소스와 교차 검증해 중단한다.

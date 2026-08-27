@@ -81,7 +81,7 @@ class SourceTests(unittest.TestCase):
     def test_expressions_expand_to_assets_per_locale(self):
         snapshot = load_snapshot(make_source_payload())
 
-        # locale 2개 × (표현 1 + 문장 1 + 단어 4) = 12
+        # locale 2개 x (표현 1 + 문장 1 + 단어 4) = 12
         self.assertEqual(len(snapshot.assets), 12)
         kinds = {asset.kind for asset in snapshot.assets}
         self.assertEqual(kinds, {"expression", "sentence", "word"})
@@ -886,7 +886,7 @@ class BeManifestTests(unittest.TestCase):
             build_be_manifest(manifest, snapshot)
 
     def test_manifest_from_different_source_fails(self):
-        snapshot, manifest = self.build_fixture()
+        _snapshot, manifest = self.build_fixture()
         other_snapshot = load_snapshot(make_source_payload())
 
         with self.assertRaises(ValueError):

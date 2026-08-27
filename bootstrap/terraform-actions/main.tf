@@ -187,6 +187,12 @@ data "aws_iam_policy_document" "terraform" {
     resources = ["*"]
   }
 
+  statement {
+    sid       = "ReadTargetBuckets"
+    actions   = ["s3:ListBucket"]
+    resources = local.managed_bucket_arns_by_target[each.value.target]
+  }
+
   dynamic "statement" {
     for_each = each.value.target == "develop" ? [1] : []
     content {

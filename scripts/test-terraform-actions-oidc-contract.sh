@@ -79,6 +79,8 @@ assert_contains "${bootstrap}" '"elasticloadbalancing:DescribeLoadBalancerAttrib
 assert_contains "${bootstrap}" '"elasticloadbalancing:DescribeTargetGroupAttributes"' "target group attribute 조회 권한이 필요하다."
 assert_contains "${bootstrap}" '"ec2:DescribeInstanceCreditSpecifications"' "EC2 credit specification 조회 권한이 필요하다."
 assert_contains "${bootstrap}" '"elasticloadbalancing:DescribeListenerAttributes"' "listener attribute 조회 권한이 필요하다."
+assert_contains "${bootstrap}" 'sid       = "ReadTargetBuckets"' "관리 대상 버킷의 존재 확인 권한을 별도 statement로 제한해야 한다."
+assert_contains "${bootstrap}" 'resources = local.managed_bucket_arns_by_target[each.value.target]' "버킷 존재 확인 대상을 target별 ARN으로 제한해야 한다."
 assert_contains "${bootstrap}" 'shared = []' "shared apply role은 AWS resource mutation을 허용하면 안 된다."
 assert_contains "${bootstrap}" 'document/develop-${var.project_name}-ec2-deploy' "develop SSM document 변경 대상을 정확히 제한해야 한다."
 assert_contains "${bootstrap}" 'service/prod-${var.project_name}-cluster/prod-${var.project_name}-api' "production ECS service 변경 대상을 정확히 제한해야 한다."

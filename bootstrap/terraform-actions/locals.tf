@@ -147,6 +147,20 @@ locals {
     ]
   }
 
+  managed_bucket_arns_by_target = {
+    shared = [
+      "arn:aws:s3:::${var.project_name}-content-${data.aws_caller_identity.current.account_id}"
+    ]
+    develop = [
+      "arn:aws:s3:::develop-${var.project_name}-app-${data.aws_caller_identity.current.account_id}"
+    ]
+    production = [
+      "arn:aws:s3:::prod-${var.project_name}-app-${data.aws_caller_identity.current.account_id}",
+      "arn:aws:s3:::prod-${var.project_name}-alb-access-${data.aws_caller_identity.current.account_id}",
+      "arn:aws:s3:::aws-waf-logs-prod-${var.project_name}-${data.aws_caller_identity.current.account_id}"
+    ]
+  }
+
   plan_bucket_arn = "arn:aws:s3:::${var.plan_bucket_name}"
 
   common_tags = {

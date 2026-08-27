@@ -14,6 +14,10 @@
 - production saved plan은 `1 added, 1 changed, 1 destroyed`다. API task definition을 교체하고 ECS API service가 새 revision을 가리키는 변경만 있으며, 새 task definition의 secrets에 `/landit/prod/LANDIT_MEMORY_WRITE_ENABLED`, `/landit/prod/LANDIT_MEMORY_USE_ENABLED`가 추가된다.
 - 두 saved plan은 `/tmp/lan347-dev.tfplan`, `/tmp/lan347-prod.tfplan`에만 저장했다. SSM parameter는 준비됐지만 사용자 apply 승인 전에는 적용하지 않는다.
 - `feat/LAN-347-6`은 사용자 승인 후 `Aragornnnnnn/landit-iac` 원격에 push했다. Terraform apply와 애플리케이션 재배포는 아직 실행하지 않았다.
+- PR #17 생성 뒤 최신 `origin/main`의 LAN-351 병합 때문에 충돌 상태임을 확인했다. 세 LAN-347 커밋을 최신 main 위로 rebase하고 LAN-351·LAN-347 문서 섹션을 모두 보존했으며, `range-diff`, 정적 계약, dev·prod validate와 saved plan을 fresh 재실행했다. PR은 현재 `MERGEABLE`, `CLEAN`이다.
+- rebase 후 develop plan은 `0 added, 2 changed, 0 destroyed`, production plan은 `1 added, 1 changed, 1 destroyed`로 동일하다. pre-rebase plan은 적용하지 않고 `/tmp/lan347-dev-rebased.tfplan`, `/tmp/lan347-prod-rebased.tfplan`을 새로 생성했다.
+- GitHub Actions develop run `33051017951`과 production run `33051019301`은 모두 `Check AWS role variable`에서 실패해 Terraform 단계는 실행되지 않았다. repository와 두 plan environment에 `AWS_ROLE_ARN`이 없고, AWS에도 landit-iac Terraform workflow용 OIDC role이 없다.
+- 기존 `landit-github-actions-develop-deploy`, `landit-github-actions-prod-deploy` 역할은 landit-be·landit-ai subject 전용이므로 Terraform workflow에 재사용하지 않는다. 별도 OIDC role·최소 권한과 GitHub environment variable 구성은 추가 승인과 아키텍처 결정이 필요하다.
 
 ## 2026-08-25 LAN-351 시나리오 고정 질문 TTS 게시
 

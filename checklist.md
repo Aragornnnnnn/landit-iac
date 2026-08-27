@@ -5,8 +5,8 @@
 - [x] `feat/LAN-347-6` 브랜치와 IaC 변경 범위, workflow의 apply 제한을 확인한다.
 - [x] 장기기억 플래그 IaC의 정적 계약, Terraform fmt와 dev·prod validate를 재검증한다.
 - [x] develop·prod SSM에 두 플래그를 `String=false`로 생성하고 값 노출 없이 확인한다.
-- [ ] feature 브랜치에서 develop·production `plan-only`를 실행하고 예상 변경만 포함하는지 검토한다.
-- [ ] IaC PR을 생성·검토·병합한다.
+- [ ] feature 브랜치에서 develop·production `plan-only`를 실행하고 예상 변경만 포함하는지 검토한다. 현재 `AWS_ROLE_ARN` 미설정으로 Terraform 실행 전에 실패한다.
+- [ ] IaC PR #17을 검토·병합한다.
 - [ ] 사용자 승인 후 main에서 develop `plan-and-apply`를 실행한다.
 - [ ] BE 개발 배포 후 두 플래그 비활성, 정상 기동과 기존 프리톡 회귀를 확인한다.
 - [ ] 사용자 승인 후 main에서 production `plan-and-apply`를 실행한다.

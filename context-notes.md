@@ -24,6 +24,7 @@
 - apply required reviewer는 현재 설정하지 않는다. `main` branch protection도 현재 없으므로 write 권한자의 즉시 apply 위험이 남으며, production 확인 문자열은 유지한다.
 - 새 `bootstrap/terraform-actions`는 기존 OIDC provider를 data source로 참조하고 역할·policy·plan bucket만 소유한다. 과거 `bootstrap/github-actions` state와 BE·AI 배포 role은 건드리지 않는다.
 - 설계 문서는 `docs/superpowers/specs/2026-08-27-lan-347-terraform-actions-oidc-design.md`에 기록했다. 실제 bootstrap apply와 GitHub environment 변경은 saved plan 검토 뒤 별도 승인 전까지 실행하지 않는다.
+- 구현 계획은 `docs/superpowers/plans/2026-08-27-lan-347-terraform-actions-oidc.md`에 기록했다. inbox GetObject, bootstrap 역할·plan bucket, private S3 workflow, 전체 plan 검증과 별도 승인 후 실제 생성의 다섯 작업으로 나눴다.
 
 ## 2026-08-25 LAN-351 시나리오 고정 질문 TTS 게시
 

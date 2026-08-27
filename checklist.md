@@ -7,7 +7,7 @@
 - [x] develop·prod SSM에 두 플래그를 `String=false`로 생성하고 값 노출 없이 확인한다.
 - [x] `landit-iac` 전용 Terraform OIDC, public 저장소의 private plan 전달과 inbox `GetObject` 설계를 승인한다.
 - [x] 승인된 OIDC·plan 전달·콘텐츠 조회 권한 설계를 문서로 기록한다.
-- [ ] 승인된 설계를 실행 가능한 구현 계획으로 나눈다.
+- [x] 승인된 설계를 실행 가능한 구현 계획으로 나눈다.
 - [ ] OIDC 역할·private plan bucket·workflow와 inbox `GetObject`를 구현하고 정적 검증한다.
 - [ ] bootstrap saved plan을 생성하고 예상 리소스만 포함하는지 검토한다.
 - [ ] 사용자 별도 승인 후 bootstrap apply와 GitHub environment 6개를 생성·검증한다.

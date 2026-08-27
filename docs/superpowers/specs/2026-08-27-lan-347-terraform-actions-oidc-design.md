@@ -56,7 +56,11 @@ owner, repository, environment wildcard는 사용하지 않는다. 세션 이름
 
 plan 역할은 해당 target state 조회, native lockfile 생성·조회·삭제, Terraform refresh와 plan에 필요한 조회 작업만 허용한다. state 본문 `PutObject`, 실제 리소스 변경과 `iam:PassRole`은 허용하지 않는다.
 
-apply 역할은 해당 target의 saved plan 적용에 필요한 권한만 허용한다. 여기에는 target state 조회·갱신, lockfile 작업, 현재 Terraform root가 관리하는 리소스 작업과 필요한 경우 정확한 runtime role에 대한 조건부 `iam:PassRole`이 포함된다. AWS 관리형 `AdministratorAccess`, `PowerUserAccess`, `ReadOnlyAccess`와 `iam:*`는 사용하지 않는다.
+apply 역할은 승인된 LAN-347 saved plan 적용에 필요한 비-IAM mutation만 허용한다. develop은 정확한 SSM document 갱신, production은 정확한 ECS API service 갱신과 `Project=landit`, `Environment=prod` request tag를 가진 task definition 등록만 허용한다. production `iam:PassRole`은 정확한 API task·execution role과 `ecs-tasks.amazonaws.com`으로 제한한다. shared apply 역할은 state·lock·plan 외 AWS resource mutation 권한이 없다.
+
+Actions에는 `iam:PutRolePolicy`를 주지 않는다. 이번 develop EC2·deploy role과 production API task role의 `GetObject` policy 변경은 로컬 관리자 profile의 별도 saved plan과 승인 경로로 먼저 적용한다. 이는 workflow가 runtime role에 임의 inline policy를 넣어 자체 권한을 상승시키는 경로를 차단한다.
+
+현재 saved plan에 없는 mutation은 fail-closed로 거부한다. 후속 IaC 변경은 bootstrap policy에 필요한 action과 정확한 resource 경계를 추가하고 별도 plan·리뷰를 거쳐야 한다. ECS task definition 교체에는 account-wide `ecs:DeregisterTaskDefinition`을 주지 않고 API task definition의 `skip_destroy=true`로 이전 revision을 보존한다. AWS 관리형 `AdministratorAccess`, `PowerUserAccess`, `ReadOnlyAccess`, `iam:*`, `iam:PutRolePolicy`와 범용 mutation `Resource="*"`는 사용하지 않는다. 단, resource-level 권한을 지원하지 않는 `ecs:RegisterTaskDefinition`은 위 두 request tag 조건을 모두 만족할 때만 `Resource="*"`를 사용한다.
 
 develop과 production은 shared remote state를 읽으므로 두 역할 모두 `shared/landit-iac/terraform.tfstate` 조회를 추가한다. 다른 target state에는 접근할 수 없다.
 
@@ -84,7 +88,9 @@ plans/{target}/{github_run_id}/{github_run_attempt}/terraform.tfplan
 
 각 environment에는 해당 역할 ARN을 일반 변수 `AWS_ROLE_ARN`으로 저장한다. ARN은 secret 값이 아니며 repository 공용 변수로 승격하지 않는다.
 
-plan environment는 `main`과 `feat/*` deployment branch를 허용한다. apply environment는 `main`만 허용한다. required reviewer와 wait timer는 설정하지 않는다. GitHub environment와 변수 생성은 IAM 역할이 실제 생성된 뒤 GitHub API로 수행하며, 생성 후 설정을 다시 조회해 검증한다.
+plan environment는 `main`과 `feat/*` deployment branch를 허용한다. apply environment는 `main`만 허용한다. required reviewer와 wait timer는 설정하지 않는다.
+
+OIDC role보다 GitHub environment 보호를 먼저 만든다. 여섯 environment, branch policy와 결정 가능한 role ARN 변수까지 생성·재조회한 뒤 bootstrap saved plan을 적용한다. 이렇게 해야 role 생성 직후 보호 설정이 없는 environment subject로 세션을 얻는 창을 만들지 않는다.
 
 ## Workflow 변경
 

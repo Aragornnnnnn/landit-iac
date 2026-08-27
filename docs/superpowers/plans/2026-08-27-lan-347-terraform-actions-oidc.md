@@ -174,7 +174,7 @@ rule {
 
 state S3 권한은 target key와 `${target_key}.tflock`에만 부여한다. develop·production에는 shared state `GetObject`를 추가한다. plan role은 state `GetObject`, lockfile `GetObject|PutObject|DeleteObject`만, apply role은 여기에 state `PutObject`를 추가한다.
 
-AWS 조회 action은 root가 사용하는 서비스의 `Describe*`, `Get*`, `List*` 중 Terraform refresh에 필요한 명시적 action만 둔다. SSM 값 조회는 public AL2023 AMI parameter ARN으로 제한한다. apply action은 현재 root의 AWS resource type에 대응하는 create·update·delete action을 명시하고 `iam:PassRole`은 `landit-*` runtime role ARN 및 `iam:PassedToService` 조건으로 제한한다.
+AWS 조회 action은 root가 사용하는 서비스의 `Describe*`, `Get*`, `List*` 중 Terraform refresh에 필요한 명시적 action만 둔다. SSM 값 조회는 public AL2023 AMI parameter ARN으로 제한한다. apply action은 LAN-347 current saved plan의 exact SSM document·production ECS API service와 prod request tag task definition 등록만 허용한다. Actions에는 `iam:PutRolePolicy`를 주지 않고 이번 runtime IAM 변경은 로컬 관리자 profile의 별도 saved plan으로 적용한다. `iam:PassRole`은 production API task·execution role과 `ecs-tasks.amazonaws.com`으로 제한한다. account-wide task definition 해제 권한은 주지 않고 API task definition의 `skip_destroy=true`로 이전 revision을 유지한다.
 
 plan 객체 권한은 `arn:aws:s3:::${bucket}/plans/${target}/*`에 plan `PutObject`, apply `GetObject`만 부여한다. bucket 조회는 자기 prefix에 대한 `s3:ListBucket` 조건으로 제한한다.
 
@@ -357,7 +357,23 @@ git commit -m "docs: Terraform OIDC plan 검증 결과를 기록한다"
 
 승인 전에는 아래 apply나 GitHub write를 실행하지 않는다.
 
-- [ ] **Step 2: 승인된 saved plan을 적용하고 post-apply를 확인한다.**
+- [ ] **Step 2: environment와 branch policy를 생성한다.**
+
+각 `terraform-{phase}-{target}`에 대해 GitHub REST API로 environment를 만들고 `deployment_branch_policy`를 custom mode로 설정한다. plan에는 `main`, `feat/*`, apply에는 `main` policy를 만든다. required reviewers와 wait timer는 보내지 않는다.
+
+- [ ] **Step 3: environment별 AWS_ROLE_ARN을 설정한다.**
+
+role 이름으로 결정되는 정확한 target·phase ARN을 다음 endpoint의 `value`로 설정한다.
+
+```text
+PUT /repos/Aragornnnnnn/landit-iac/environments/{environment_name}/variables/AWS_ROLE_ARN
+```
+
+- [ ] **Step 4: GitHub 보호 구성을 재조회한다.**
+
+GitHub API로 여섯 environment의 branch policy와 `AWS_ROLE_ARN` 변수 존재를 확인하되 ARN 이외 값은 출력하지 않는다. 이 검증 전에는 OIDC role을 생성하지 않는다.
+
+- [ ] **Step 5: 승인된 saved plan을 적용하고 post-apply를 확인한다.**
 
 Run:
 
@@ -368,29 +384,42 @@ AWS_PROFILE=landit terraform -chdir=bootstrap/terraform-actions plan -input=fals
 
 Expected: apply 완료 후 `No changes.`.
 
-- [ ] **Step 3: environment와 branch policy를 생성한다.**
+- [ ] **Step 6: AWS live 구성을 재조회한다.**
 
-각 `terraform-{phase}-{target}`에 대해 GitHub REST API로 environment를 만들고 `deployment_branch_policy`를 custom mode로 설정한다. plan에는 `main`, `feat/*`, apply에는 `main` policy를 만든다. required reviewers와 wait timer는 보내지 않는다.
+여섯 role의 trust subject와 inline policy, plan bucket public block·encryption·lifecycle을 AWS API로 확인한다.
 
-- [ ] **Step 4: environment별 AWS_ROLE_ARN을 설정한다.**
-
-bootstrap output의 정확한 target·phase role ARN을 다음 endpoint의 `value`로 설정한다.
-
-```text
-PUT /repos/Aragornnnnnn/landit-iac/environments/{environment_name}/variables/AWS_ROLE_ARN
-```
-
-- [ ] **Step 5: AWS와 GitHub live 구성을 재조회한다.**
-
-여섯 role의 trust subject와 inline policy, plan bucket public block·encryption·lifecycle을 AWS API로 확인한다. GitHub API로 여섯 environment의 branch policy와 `AWS_ROLE_ARN` 변수 존재를 확인하되 ARN 이외 값은 출력하지 않는다.
-
-- [ ] **Step 6: feature plan-only를 재실행한다.**
+- [ ] **Step 7: feature plan-only를 재실행한다.**
 
 develop과 production `plan-only`를 실행하고 Terraform plan 단계까지 성공하는지 확인한다. plan-only run에 saved plan S3 object와 GitHub artifact가 생기지 않는지 검증한다.
 
-- [ ] **Step 7: 결과를 기록하고 커밋한다.**
+- [ ] **Step 8: 결과를 기록하고 커밋한다.**
 
 ```bash
 git add checklist.md context-notes.md
 git commit -m "docs: Terraform Actions OIDC 구성을 검증한다"
 ```
+
+### Task 6: PR 병합 뒤 관리자 IAM pre-apply와 workflow apply gate
+
+**Interfaces:**
+- Consumes: 병합된 LAN-347 코드와 사용자 승인, `/tmp/lan347-dev-iam.tfplan`, `/tmp/lan347-prod-iam.tfplan`.
+- Produces: runtime IAM diff가 제거된 fresh dev·prod full plan과 OIDC로 적용 가능한 비-IAM 변경만 남은 상태.
+
+- [ ] **Step 1: 관리자 전용 saved plan 범위를 재확인하고 승인을 받는다.**
+
+develop plan은 EC2 app policy, develop deploy role policy와 이 정책이 의존하는 SSM deploy document의 `0 add, 3 change, 0 destroy`만 포함해야 한다. production plan은 API task role policy 한 건의 `0 add, 1 change, 0 destroy`만 포함해야 한다.
+
+- [ ] **Step 2: 승인된 관리자 saved plan을 적용한다.**
+
+```bash
+AWS_PROFILE=landit terraform -chdir=environments/dev apply -input=false /tmp/lan347-dev-iam.tfplan
+AWS_PROFILE=landit terraform -chdir=environments/prod apply -input=false /tmp/lan347-prod-iam.tfplan
+```
+
+- [ ] **Step 3: fresh full plan에서 IAM diff가 사라졌는지 확인한다.**
+
+develop은 `No changes`, production은 API task definition replacement와 ECS API service update만 남아야 한다. `aws_iam_role_policy`가 하나라도 남으면 workflow apply를 실행하지 않는다.
+
+- [ ] **Step 4: main workflow apply와 런타임 검증을 진행한다.**
+
+develop `plan-and-apply`는 no-op을 확인하고, production은 승인된 ECS 변경만 적용한다. 이후 BE 개발 배포·회귀와 production ECS 안정화를 기존 LAN-347 checklist 순서대로 검증한다.

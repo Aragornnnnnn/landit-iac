@@ -197,25 +197,52 @@ data "aws_iam_policy_document" "terraform" {
   }
 
   dynamic "statement" {
-    for_each = each.value.phase == "apply" ? [1] : []
+    for_each = each.value.phase == "apply" && length(local.apply_actions_by_target[each.value.target]) > 0 ? [1] : []
     content {
       sid       = "ManageTargetResources"
       actions   = local.apply_actions_by_target[each.value.target]
-      resources = ["*"]
+      resources = local.apply_resources_by_target[each.value.target]
     }
   }
 
   dynamic "statement" {
-    for_each = each.value.phase == "apply" && each.value.target != "shared" ? [1] : []
+    for_each = each.value.phase == "apply" && each.value.target == "production" ? [1] : []
     content {
-      sid       = "PassTargetRuntimeRoles"
-      actions   = ["iam:PassRole"]
-      resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${each.value.target == "develop" ? "develop" : "prod"}-${var.project_name}-*"]
+      sid = "RegisterProductionTaskDefinitions"
+      actions = [
+        "ecs:RegisterTaskDefinition",
+        "ecs:TagResource"
+      ]
+      resources = ["*"]
+
+      condition {
+        test     = "StringEquals"
+        variable = "aws:RequestTag/Project"
+        values   = [var.project_name]
+      }
+
+      condition {
+        test     = "StringEquals"
+        variable = "aws:RequestTag/Environment"
+        values   = ["prod"]
+      }
+    }
+  }
+
+  dynamic "statement" {
+    for_each = each.value.phase == "apply" && each.value.target == "production" ? [1] : []
+    content {
+      sid     = "PassTargetRuntimeRoles"
+      actions = ["iam:PassRole"]
+      resources = [
+        "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-api-task",
+        "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-ecs-execution"
+      ]
 
       condition {
         test     = "StringEquals"
         variable = "iam:PassedToService"
-        values   = local.pass_role_services
+        values   = ["ecs-tasks.amazonaws.com"]
       }
     }
   }

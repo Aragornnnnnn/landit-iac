@@ -1444,6 +1444,7 @@ resource "aws_ecs_task_definition" "api" {
   memory                   = var.api_memory
   execution_role_arn       = aws_iam_role.execution[0].arn
   task_role_arn            = aws_iam_role.api_task[0].arn
+  skip_destroy             = true
 
   container_definitions = jsonencode([
     {

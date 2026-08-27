@@ -95,8 +95,12 @@ locals {
     ]
     develop = concat(local.platform_read_actions, [
       "ec2:DescribeAddresses",
+      "ec2:DescribeIamInstanceProfileAssociations",
+      "ec2:DescribeInstanceAttribute",
       "ec2:DescribeInstances",
       "ec2:DescribeTags",
+      "ec2:DescribeVolumes",
+      "ec2:DescribeVolumesModifications",
       "ssm:DescribeDocument",
       "ssm:GetDocument",
       "ssm:ListTagsForResource"
@@ -110,191 +114,28 @@ locals {
     ])
   }
 
-  platform_apply_actions = [
-    "athena:CreateNamedQuery",
-    "athena:CreateWorkGroup",
-    "athena:DeleteNamedQuery",
-    "athena:DeleteWorkGroup",
-    "athena:TagResource",
-    "athena:UntagResource",
-    "athena:UpdateWorkGroup",
-    "ec2:AssociateRouteTable",
-    "ec2:AttachInternetGateway",
-    "ec2:AuthorizeSecurityGroupEgress",
-    "ec2:AuthorizeSecurityGroupIngress",
-    "ec2:CreateInternetGateway",
-    "ec2:CreateRoute",
-    "ec2:CreateRouteTable",
-    "ec2:CreateSecurityGroup",
-    "ec2:CreateSubnet",
-    "ec2:CreateTags",
-    "ec2:CreateVpc",
-    "ec2:DeleteInternetGateway",
-    "ec2:DeleteRoute",
-    "ec2:DeleteRouteTable",
-    "ec2:DeleteSecurityGroup",
-    "ec2:DeleteSubnet",
-    "ec2:DeleteTags",
-    "ec2:DeleteVpc",
-    "ec2:DetachInternetGateway",
-    "ec2:DisassociateRouteTable",
-    "ec2:ModifySubnetAttribute",
-    "ec2:ModifyVpcAttribute",
-    "ec2:RevokeSecurityGroupEgress",
-    "ec2:RevokeSecurityGroupIngress",
-    "ecr:CreateRepository",
-    "ecr:DeleteLifecyclePolicy",
-    "ecr:DeleteRepository",
-    "ecr:DeleteRepositoryPolicy",
-    "ecr:PutLifecyclePolicy",
-    "ecr:SetRepositoryPolicy",
-    "ecr:TagResource",
-    "ecr:UntagResource",
-    "ecs:CreateCluster",
-    "ecs:CreateService",
-    "ecs:DeleteCluster",
-    "ecs:DeleteService",
-    "ecs:DeregisterTaskDefinition",
-    "ecs:RegisterTaskDefinition",
-    "ecs:TagResource",
-    "ecs:UntagResource",
-    "ecs:UpdateClusterSettings",
-    "ecs:UpdateService",
-    "elasticloadbalancing:AddTags",
-    "elasticloadbalancing:CreateListener",
-    "elasticloadbalancing:CreateLoadBalancer",
-    "elasticloadbalancing:CreateRule",
-    "elasticloadbalancing:CreateTargetGroup",
-    "elasticloadbalancing:DeleteListener",
-    "elasticloadbalancing:DeleteLoadBalancer",
-    "elasticloadbalancing:DeleteRule",
-    "elasticloadbalancing:DeleteTargetGroup",
-    "elasticloadbalancing:ModifyListener",
-    "elasticloadbalancing:ModifyLoadBalancerAttributes",
-    "elasticloadbalancing:ModifyRule",
-    "elasticloadbalancing:ModifyTargetGroup",
-    "elasticloadbalancing:ModifyTargetGroupAttributes",
-    "elasticloadbalancing:RemoveTags",
-    "firehose:CreateDeliveryStream",
-    "firehose:DeleteDeliveryStream",
-    "firehose:StartDeliveryStreamEncryption",
-    "firehose:StopDeliveryStreamEncryption",
-    "firehose:TagDeliveryStream",
-    "firehose:UntagDeliveryStream",
-    "firehose:UpdateDestination",
-    "glue:CreateDatabase",
-    "glue:CreateTable",
-    "glue:DeleteDatabase",
-    "glue:DeleteTable",
-    "glue:TagResource",
-    "glue:UntagResource",
-    "glue:UpdateDatabase",
-    "glue:UpdateTable",
-    "iam:AddRoleToInstanceProfile",
-    "iam:AttachRolePolicy",
-    "iam:CreateInstanceProfile",
-    "iam:CreateRole",
-    "iam:DeleteInstanceProfile",
-    "iam:DeleteRole",
-    "iam:DeleteRolePolicy",
-    "iam:DetachRolePolicy",
-    "iam:PutRolePolicy",
-    "iam:RemoveRoleFromInstanceProfile",
-    "iam:TagRole",
-    "iam:UntagRole",
-    "iam:UpdateAssumeRolePolicy",
-    "logs:CreateLogGroup",
-    "logs:DeleteLogGroup",
-    "logs:DeleteSubscriptionFilter",
-    "logs:PutRetentionPolicy",
-    "logs:PutSubscriptionFilter",
-    "logs:TagResource",
-    "logs:UntagResource",
-    "s3:CreateBucket",
-    "s3:DeleteBucket",
-    "s3:DeleteBucketPolicy",
-    "s3:PutBucketPolicy",
-    "s3:PutBucketPublicAccessBlock",
-    "s3:PutBucketTagging",
-    "s3:PutBucketVersioning",
-    "s3:PutEncryptionConfiguration",
-    "s3:PutLifecycleConfiguration",
-    "sqs:CreateQueue",
-    "sqs:DeleteQueue",
-    "sqs:SetQueueAttributes",
-    "sqs:TagQueue",
-    "sqs:UntagQueue",
-    "wafv2:AssociateWebACL",
-    "wafv2:CreateWebACL",
-    "wafv2:DeleteLoggingConfiguration",
-    "wafv2:DeleteWebACL",
-    "wafv2:DisassociateWebACL",
-    "wafv2:PutLoggingConfiguration",
-    "wafv2:TagResource",
-    "wafv2:UntagResource",
-    "wafv2:UpdateWebACL"
-  ]
-
   apply_actions_by_target = {
-    shared = [
-      "cloudfront:CreateDistribution",
-      "cloudfront:CreateOriginAccessControl",
-      "cloudfront:DeleteDistribution",
-      "cloudfront:DeleteOriginAccessControl",
-      "cloudfront:TagResource",
-      "cloudfront:UntagResource",
-      "cloudfront:UpdateDistribution",
-      "cloudfront:UpdateOriginAccessControl",
-      "s3:CreateBucket",
-      "s3:DeleteBucket",
-      "s3:DeleteBucketPolicy",
-      "s3:PutBucketCORS",
-      "s3:PutBucketOwnershipControls",
-      "s3:PutBucketPolicy",
-      "s3:PutBucketPublicAccessBlock",
-      "s3:PutBucketTagging",
-      "s3:PutBucketVersioning",
-      "s3:PutEncryptionConfiguration"
-    ]
-    develop = concat(local.platform_apply_actions, [
-      "ec2:AllocateAddress",
-      "ec2:AssociateAddress",
-      "ec2:DisassociateAddress",
-      "ec2:ModifyInstanceAttribute",
-      "ec2:ReleaseAddress",
-      "ec2:RunInstances",
-      "ec2:TerminateInstances",
+    shared = []
+    develop = [
       "ssm:AddTagsToResource",
-      "ssm:CreateDocument",
-      "ssm:DeleteDocument",
       "ssm:RemoveTagsFromResource",
       "ssm:UpdateDocument",
       "ssm:UpdateDocumentDefaultVersion"
-    ])
-    production = concat(local.platform_apply_actions, [
-      "apigateway:DELETE",
-      "apigateway:PATCH",
-      "apigateway:POST",
-      "apigateway:PUT",
-      "lambda:AddPermission",
-      "lambda:CreateFunction",
-      "lambda:DeleteFunction",
-      "lambda:DeleteFunctionEventInvokeConfig",
-      "lambda:RemovePermission",
-      "lambda:TagResource",
-      "lambda:UntagResource",
-      "lambda:UpdateFunctionCode",
-      "lambda:UpdateFunctionConfiguration",
-      "lambda:PutFunctionEventInvokeConfig"
-    ])
+    ]
+    production = [
+      "ecs:UpdateService"
+    ]
   }
 
-  pass_role_services = [
-    "ec2.amazonaws.com",
-    "ecs-tasks.amazonaws.com",
-    "firehose.amazonaws.com",
-    "lambda.amazonaws.com"
-  ]
+  apply_resources_by_target = {
+    shared = []
+    develop = [
+      "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:document/develop-${var.project_name}-ec2-deploy"
+    ]
+    production = [
+      "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/prod-${var.project_name}-cluster/prod-${var.project_name}-api"
+    ]
+  }
 
   plan_bucket_arn = "arn:aws:s3:::${var.plan_bucket_name}"
 

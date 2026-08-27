@@ -13,6 +13,7 @@
 - [ ] 사용자 별도 승인 후 bootstrap apply와 GitHub environment 6개를 생성·검증한다.
 - [ ] feature 브랜치에서 develop·production `plan-only`를 실행하고 예상 변경만 포함하는지 검토한다. 현재 `AWS_ROLE_ARN` 미설정으로 Terraform 실행 전에 실패한다.
 - [ ] IaC PR #17을 검토·병합한다.
+- [ ] 병합 후 사용자 승인으로 관리자 전용 develop 3-change와 production IAM 1-change saved plan을 적용하고 fresh full plan에서 IAM diff가 0인지 확인한다.
 - [ ] 사용자 승인 후 main에서 develop `plan-and-apply`를 실행한다.
 - [ ] BE 개발 배포 후 두 플래그 비활성, 정상 기동과 기존 프리톡 회귀를 확인한다.
 - [ ] 사용자 승인 후 main에서 production `plan-and-apply`를 실행한다.

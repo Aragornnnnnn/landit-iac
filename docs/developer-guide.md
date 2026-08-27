@@ -133,13 +133,15 @@ production apply는 `operation=plan-and-apply`, `target=production`, `confirm_en
 
 OIDC IAM role과 plan bucket은 `bootstrap/terraform-actions`에서 관리합니다. 기존 GitHub OIDC provider를 data source로 참조하며 `bootstrap/github-actions`의 BE·AI 배포 역할 state는 변경하지 않습니다.
 
+apply role은 범용 Terraform 관리자 역할이 아닙니다. LAN-347 saved plan의 exact SSM document·production ECS API service와 prod request tag task definition 등록만 허용하며 shared에는 AWS resource mutation 권한이 없습니다. Actions에는 runtime role 권한 상승을 막기 위해 `iam:PutRolePolicy`를 주지 않습니다. develop EC2·deploy role과 production API task role의 IAM 변경은 로컬 관리자 profile의 별도 saved plan으로 먼저 적용해야 합니다. 후속 인프라 변경은 bootstrap policy를 먼저 확장해 별도 검토해야 합니다. production API task definition은 account-wide deregister 권한 대신 `skip_destroy=true`로 이전 revision을 유지합니다.
+
 ```bash
 AWS_PROFILE=landit terraform -chdir=bootstrap/terraform-actions init -reconfigure
 AWS_PROFILE=landit terraform -chdir=bootstrap/terraform-actions validate
 AWS_PROFILE=landit terraform -chdir=bootstrap/terraform-actions plan
 ```
 
-bootstrap apply와 GitHub environment·variable 생성은 위 plan의 역할 6개, inline policy 6개와 private plan bucket 보안 리소스를 검토하고 별도 승인받은 뒤에만 실행합니다. 각 role trust policy는 다음 subject 하나만 허용합니다.
+bootstrap apply와 GitHub environment·variable 생성은 위 plan의 역할 6개, inline policy 6개와 private plan bucket 보안 리소스를 검토하고 별도 승인받은 뒤에만 실행합니다. 승인 뒤에는 GitHub environment 6개, branch policy와 결정 가능한 `AWS_ROLE_ARN`을 먼저 생성·재조회하고, 그 다음 같은 bootstrap saved plan을 적용합니다. 각 role trust policy는 다음 subject 하나만 허용합니다.
 
 - `repo:Aragornnnnnn/landit-iac:environment:terraform-plan-develop`.
 - `repo:Aragornnnnnn/landit-iac:environment:terraform-plan-production`.

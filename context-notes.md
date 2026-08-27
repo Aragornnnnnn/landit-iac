@@ -18,6 +18,12 @@
 - rebase 후 develop plan은 `0 added, 2 changed, 0 destroyed`, production plan은 `1 added, 1 changed, 1 destroyed`로 동일하다. pre-rebase plan은 적용하지 않고 `/tmp/lan347-dev-rebased.tfplan`, `/tmp/lan347-prod-rebased.tfplan`을 새로 생성했다.
 - GitHub Actions develop run `33051017951`과 production run `33051019301`은 모두 `Check AWS role variable`에서 실패해 Terraform 단계는 실행되지 않았다. repository와 두 plan environment에 `AWS_ROLE_ARN`이 없고, AWS에도 landit-iac Terraform workflow용 OIDC role이 없다.
 - 기존 `landit-github-actions-develop-deploy`, `landit-github-actions-prod-deploy` 역할은 landit-be·landit-ai subject 전용이므로 Terraform workflow에 재사용하지 않는다. 별도 OIDC role·최소 권한과 GitHub environment variable 구성은 추가 승인과 아키텍처 결정이 필요하다.
+- 사용자는 `landit-iac` 전용 Terraform OIDC 역할과 GitHub environment 구성, develop EC2와 production ECS API의 shared `content/inbox/*` `s3:GetObject` 추가를 승인했다.
+- 저장소는 public으로 유지한다. saved Terraform plan에 민감 값이 평문으로 포함될 수 있으므로 GitHub artifact 전달을 제거하고 전용 private S3 bucket에서 실행별 key와 SHA-256으로 전달한다.
+- target과 phase별 6개 IAM role을 사용하고 각 role은 정확한 GitHub environment subject 하나만 신뢰한다. plan은 `main`, `feat/*`, apply는 `main`만 허용한다.
+- apply required reviewer는 현재 설정하지 않는다. `main` branch protection도 현재 없으므로 write 권한자의 즉시 apply 위험이 남으며, production 확인 문자열은 유지한다.
+- 새 `bootstrap/terraform-actions`는 기존 OIDC provider를 data source로 참조하고 역할·policy·plan bucket만 소유한다. 과거 `bootstrap/github-actions` state와 BE·AI 배포 role은 건드리지 않는다.
+- 설계 문서는 `docs/superpowers/specs/2026-08-27-lan-347-terraform-actions-oidc-design.md`에 기록했다. 실제 bootstrap apply와 GitHub environment 변경은 saved plan 검토 뒤 별도 승인 전까지 실행하지 않는다.
 
 ## 2026-08-25 LAN-351 시나리오 고정 질문 TTS 게시
 

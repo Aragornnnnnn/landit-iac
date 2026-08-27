@@ -1295,6 +1295,76 @@ def execute_s3_upload(
     return UploadResult(uploaded=uploaded, verified=verified, conflicts=0)
 
 
+def publish_reference(
+    reference_dir: Path,
+    tts_manifest_key: str,
+    bucket: str,
+    *,
+    execute: bool = False,
+    aws_runner: Callable = subprocess.run,
+) -> list[str]:
+    """기준 데이터 JSON 3개를 ttsManifestKey를 심어 S3에 게시하고 키 목록을 반환한다.
+
+    BE 어드민 임포트가 키 하나(기준 데이터)만 받으면 TTS 매니페스트까지 찾아갈 수
+    있도록 파일 안에 ttsManifestKey를 기록한다.
+    """
+    published = []
+    for reference_path in sorted(reference_dir.glob("reference_EN_*.json")):
+        if "review" in reference_path.name:
+            continue
+        expressions = json.loads(reference_path.read_text(encoding="utf-8"))
+        locale = expressions[0]["accentLocale"]
+        payload = {
+            "schemaVersion": 1,
+            "issue": "LAN-373",
+            "accentLocale": locale,
+            "ttsManifestKey": tts_manifest_key,
+            "expressions": expressions,
+        }
+        body = (
+            json.dumps(payload, ensure_ascii=False, sort_keys=True,
+                       separators=(",", ":")) + "\n"
+        ).encode("utf-8")
+        digest = hashlib.sha256(body).hexdigest()
+        key = f"{KEY_PREFIX}/reference/{locale}-{digest}.json"
+        upload_object = UploadObject(
+            key=key,
+            body_path=None,
+            body_bytes=body,
+            content_length=len(body),
+            content_type="application/json",
+            cache_control=CACHE_CONTROL,
+            metadata={"tts-manifest-key": tts_manifest_key},
+            manifest_object=True,
+        )
+        head = _head_object(bucket, upload_object, aws_runner)
+        if head is not None:
+            print(f"reused {key}")
+            published.append(key)
+            continue
+        if execute:
+            with tempfile.NamedTemporaryFile(
+                prefix="lan-373-reference-", suffix=".json", delete=False
+            ) as handle:
+                handle.write(body)
+                temporary = Path(handle.name)
+            try:
+                _put_object(
+                    UploadPlan(bucket=bucket, new_keys=(key,), reused_keys=(),
+                               conflict_keys=(), objects=(upload_object,)),
+                    upload_object,
+                    temporary,
+                    aws_runner,
+                )
+            finally:
+                temporary.unlink(missing_ok=True)
+            print(f"uploaded {key}")
+        else:
+            print(f"would upload {key} ({len(body)}B)")
+        published.append(key)
+    return published
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1318,6 +1388,11 @@ def main(argv: list[str] | None = None) -> int:
     build_parser.add_argument("--source", required=True, type=Path)
     build_parser.add_argument("--work-dir", required=True, type=Path)
     build_parser.add_argument("--output", required=True, type=Path)
+    reference_parser = subparsers.add_parser("upload-reference")
+    reference_parser.add_argument("--reference-dir", required=True, type=Path)
+    reference_parser.add_argument("--tts-manifest-key", required=True)
+    reference_parser.add_argument("--bucket", required=True)
+    reference_parser.add_argument("--execute", action="store_true")
     upload_parser = subparsers.add_parser("upload")
     upload_parser.add_argument("--manifest", required=True, type=Path)
     upload_parser.add_argument("--work-dir", required=True, type=Path)
@@ -1382,6 +1457,14 @@ def main(argv: list[str] | None = None) -> int:
             f"assets={len(manifest['assets'])}, "
             f"manifest_sha256={manifest_sha256(manifest)}, output={args.output}"
         )
+    elif args.command == "upload-reference":
+        published = publish_reference(
+            args.reference_dir,
+            args.tts_manifest_key,
+            args.bucket,
+            execute=args.execute,
+        )
+        print(f"reference_keys={len(published)}")
     elif args.command == "upload":
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
         verify_manifest(manifest, args.work_dir)

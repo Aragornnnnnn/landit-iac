@@ -1,5 +1,52 @@
 # Context Notes
 
+## 2026-08-27 LAN-347 장기기억 플래그 배포
+
+- 현재 브랜치는 `feat/LAN-347-6`, HEAD는 `73f6e74`이며 작업 시작 시 worktree는 깨끗하다.
+- IaC 변경은 개발 EC2 runtime env에 `LANDIT_MEMORY_WRITE_ENABLED`, `LANDIT_MEMORY_USE_ENABLED`를 필수 SSM 값으로 추가하고, 운영 ECS API task definition의 SSM secrets에도 두 값을 연결한다.
+- 두 parameter는 Terraform이 생성하지 않는다. `/landit/develop`, `/landit/prod`에 `String=false`로 선행 준비하되 값이나 secret은 로그와 문서에 남기지 않는다.
+- feature 브랜치에서는 develop·production `plan-only`만 실행한다. `plan-and-apply`는 workflow가 `refs/heads/main`만 허용하므로 PR 병합과 plan 검토 뒤 별도 사용자 승인을 받아 진행한다.
+- 최초 적용과 재배포에서는 두 플래그를 모두 `false`로 유지한다. 후속 활성화는 `WRITE=true, USE=false` 관찰 후 `USE=true` 순서이며 SSM 값 변경 뒤 BE 재배포가 필요하다.
+- 과거 IaC fmt/validate 통과 기록은 현재 검증을 대신하지 않는다. 이번 실행의 plan, apply, 재배포와 런타임 증거를 단계별로 새로 기록한다.
+- `terraform fmt -recursive -check`, `git diff --check`, `bash scripts/test-dev-ec2-contract.sh`, `bash scripts/test-dev-ec2-runtime.sh`가 통과했다. dev·prod `terraform validate`는 샌드박스 밖의 provider 실행 경로에서 모두 `Success! The configuration is valid.`로 통과했다.
+- 최초 값 원문을 출력하지 않는 SSM 조회에서 네 parameter가 모두 `InvalidParameters`로 확인됐다. 사용자 승인 후 develop·prod에 두 parameter를 `String=false`로 신규 생성했고, 네 항목 모두 version 1, 문자열 `false`이며 누락이 없음을 재검증했다.
+- 현재 state를 refresh한 develop saved plan은 `0 added, 2 changed, 0 destroyed`다. `aws_ssm_document.ec2_deploy`와 이를 참조하는 GitHub Actions IAM inline policy만 갱신하며, 아직 apply되지 않은 LAN-372 runtime-env 동기화와 LAN-347 두 플래그 추가가 같은 SSM 문서 변경에 포함된다.
+- production saved plan은 `1 added, 1 changed, 1 destroyed`다. API task definition을 교체하고 ECS API service가 새 revision을 가리키는 변경만 있으며, 새 task definition의 secrets에 `/landit/prod/LANDIT_MEMORY_WRITE_ENABLED`, `/landit/prod/LANDIT_MEMORY_USE_ENABLED`가 추가된다.
+- 두 saved plan은 `/tmp/lan347-dev.tfplan`, `/tmp/lan347-prod.tfplan`에만 저장했다. SSM parameter는 준비됐지만 사용자 apply 승인 전에는 적용하지 않는다.
+- `feat/LAN-347-6`은 사용자 승인 후 `Aragornnnnnn/landit-iac` 원격에 push했다. Terraform apply와 애플리케이션 재배포는 아직 실행하지 않았다.
+- PR #17 생성 뒤 최신 `origin/main`의 LAN-351 병합 때문에 충돌 상태임을 확인했다. 세 LAN-347 커밋을 최신 main 위로 rebase하고 LAN-351·LAN-347 문서 섹션을 모두 보존했으며, `range-diff`, 정적 계약, dev·prod validate와 saved plan을 fresh 재실행했다. PR은 현재 `MERGEABLE`, `CLEAN`이다.
+- rebase 후 develop plan은 `0 added, 2 changed, 0 destroyed`, production plan은 `1 added, 1 changed, 1 destroyed`로 동일하다. pre-rebase plan은 적용하지 않고 `/tmp/lan347-dev-rebased.tfplan`, `/tmp/lan347-prod-rebased.tfplan`을 새로 생성했다.
+- GitHub Actions develop run `33051017951`과 production run `33051019301`은 모두 `Check AWS role variable`에서 실패해 Terraform 단계는 실행되지 않았다. repository와 두 plan environment에 `AWS_ROLE_ARN`이 없고, AWS에도 landit-iac Terraform workflow용 OIDC role이 없다.
+- 기존 `landit-github-actions-develop-deploy`, `landit-github-actions-prod-deploy` 역할은 landit-be·landit-ai subject 전용이므로 Terraform workflow에 재사용하지 않는다. 별도 OIDC role·최소 권한과 GitHub environment variable 구성은 추가 승인과 아키텍처 결정이 필요하다.
+- 사용자는 `landit-iac` 전용 Terraform OIDC 역할과 GitHub environment 구성, develop EC2와 production ECS API의 shared `content/inbox/*` `s3:GetObject` 추가를 승인했다.
+- 저장소는 public으로 유지한다. saved Terraform plan에 민감 값이 평문으로 포함될 수 있으므로 GitHub artifact 전달을 제거하고 전용 private S3 bucket에서 실행별 key와 SHA-256으로 전달한다.
+- target과 phase별 6개 IAM role을 사용하고 각 role은 정확한 GitHub environment subject 하나만 신뢰한다. plan은 `main`, `feat/*`, apply는 `main`만 허용한다.
+- apply required reviewer는 현재 설정하지 않는다. `main` branch protection도 현재 없으므로 write 권한자의 즉시 apply 위험이 남으며, production 확인 문자열은 유지한다.
+- 새 `bootstrap/terraform-actions`는 기존 OIDC provider를 data source로 참조하고 역할·policy·plan bucket만 소유한다. 과거 `bootstrap/github-actions` state와 BE·AI 배포 role은 건드리지 않는다.
+- 설계 문서는 `docs/superpowers/specs/2026-08-27-lan-347-terraform-actions-oidc-design.md`에 기록했다. 실제 bootstrap apply와 GitHub environment 변경은 saved plan 검토 뒤 별도 승인 전까지 실행하지 않는다.
+- 구현 계획은 `docs/superpowers/plans/2026-08-27-lan-347-terraform-actions-oidc.md`에 기록했다. inbox GetObject, bootstrap 역할·plan bucket, private S3 workflow, 전체 plan 검증과 별도 승인 후 실제 생성의 다섯 작업으로 나눴다.
+- develop EC2와 production ECS API의 기존 shared `content/inbox/*` statement에 `s3:GetObject`를 추가했다. 새 경로나 다른 runtime 역할에는 권한을 넓히지 않았다.
+- `bootstrap/terraform-actions`는 plan·apply와 shared·develop·production 조합의 OIDC role 6개, inline policy 6개와 private saved-plan bucket 보안 리소스를 정의한다. trust subject는 각 GitHub environment와 정확히 일치하고 audience는 `sts.amazonaws.com`으로 고정한다.
+- workflow는 `plan-only`에서 speculative plan만 실행하고, `plan-and-apply`에서만 `/tmp` saved plan을 SHA-256과 함께 `plans/{target}/{run_id}/{run_attempt}` private S3 key로 전달한다. GitHub artifact 업로드는 제거했고 action은 검증한 commit SHA로 고정했다.
+- fresh bootstrap saved plan `/tmp/lan347-terraform-actions.tfplan`은 `17 add, 0 change, 0 destroy`다. role 6개, inline policy 6개, S3 bucket·lifecycle·HTTPS-only policy·public access block·AES256 encryption 5개만 생성한다.
+- fresh develop saved plan `/tmp/lan347-dev-getobject.tfplan`은 `0 add, 3 change, 0 destroy`다. EC2 app policy의 inbox GetObject, LAN-372·LAN-347 SSM document와 이를 참조하는 deploy policy만 갱신한다.
+- fresh production saved plan `/tmp/lan347-prod-getobject.tfplan`은 `1 add, 2 change, 1 destroy`다. API task role의 inbox GetObject, LAN-347 memory secrets를 포함한 task definition 교체와 ECS API service update만 포함한다.
+- 독립 보안 리뷰에서 develop plan의 EC2 refresh 조회 권한 누락, apply mutation `Resource="*"`의 target 격리 실패와 `iam:PutRolePolicy`를 통한 runtime role 권한 상승을 blocker로 확인했다. EC2 attribute·volume·instance profile association 조회를 보완하고, Actions apply에서는 `iam:PutRolePolicy`를 완전히 제거했다. apply는 exact SSM document·production ECS API service와 prod request tag task definition 등록만 허용한다.
+- `ecs:DeregisterTaskDefinition`은 resource-level·resource-tag 제한을 안전하게 적용할 수 없어 권한에서 제거했다. production API task definition은 `skip_destroy=true`로 이전 revision을 유지하며, 현재 revision 8에 `Project=landit`, `Environment=prod` 태그가 존재함을 읽기 전용으로 확인했다.
+- develop EC2·deploy role과 production API task role의 `GetObject` IAM 변경은 OIDC apply보다 먼저 로컬 관리자 profile의 별도 saved plan으로 적용한다. 이 변경을 반영한 fresh full plan에서 IAM diff가 사라진 뒤에만 workflow apply를 사용한다.
+- 관리자 전용 develop saved plan `/tmp/lan347-dev-iam.tfplan`은 의존하는 SSM document까지 포함해 `0 add, 3 change, 0 destroy`다. EC2 app policy, develop deploy role policy와 SSM deploy document만 갱신한다. production `/tmp/lan347-prod-iam.tfplan`은 API task role policy 한 건만 갱신하는 `0 add, 1 change, 0 destroy`다. 두 plan은 PR 병합과 사용자 별도 승인 전에는 적용하지 않는다.
+- AWS Access Analyzer는 최종 6개 identity policy와 plan bucket resource policy 모두 findings 0건을 반환했고, 여섯 정책 모두 `iam:PutRolePolicy`가 없다. 최대 inline policy JSON은 apply-production의 3,658자다. IAM simulator는 exact develop SSM·prod ECS 대상 허용, 교차 target 암시적 거부, prod request tag 등록 허용과 develop tag 등록 거부, exact ECS PassRole 허용과 다른 role 거부를 확인했다.
+- OIDC role을 먼저 만들면 보호 설정 전 environment subject가 사용될 수 있으므로 실제 rollout은 GitHub environment 6개·branch policy·결정 가능한 role ARN 변수를 먼저 생성·재조회한 뒤 bootstrap saved plan을 적용한다.
+- `bash scripts/test-admin-content-upload-contract.sh`, `bash scripts/test-dev-ec2-contract.sh`, `bash scripts/test-dev-ec2-runtime.sh`, `bash scripts/test-terraform-actions-oidc-contract.sh`, `bash scripts/test-terraform-workflow-contract.sh`, `terraform fmt -recursive -check`, `git diff --check`가 통과했다. bootstrap·shared·dev·prod `terraform validate`도 모두 성공했다.
+- 사용자 승인 후 GitHub environment 6개를 먼저 생성했다. required reviewer와 wait timer는 없고, plan은 `main`·`feat/*`, apply는 `main`만 허용하며 각 environment의 `AWS_ROLE_ARN`은 전용 role ARN과 일치한다.
+- bootstrap saved plan SHA-256 `45cabc6716ed52b87be07961f97042144ad3c0bc14da237b1e17b16667b83dac`을 적용해 role·inline policy 6개와 private plan bucket 보안 리소스 등 `17 added, 0 changed, 0 destroyed`를 생성했다. post-apply plan은 `No changes`였다.
+- AWS live 검증에서 6개 role의 OIDC audience는 `sts.amazonaws.com`, subject는 각 environment 하나로 고정됐다. plan bucket은 public access block 4종이 모두 true이고 AES256 암호화와 1일 lifecycle이 활성화됐다.
+- 최초 OIDC plan-only는 provider refresh에 필요한 읽기 권한 누락으로 실패했다. 실패 로그에 확인된 EC2·SSM·Lambda·ELB attribute 조회 action을 최소 추가하고 계약 테스트에 고정했다.
+- 관리 대상 S3 bucket의 `HeadBucket` 403이 삭제로 오인되는 문제는 target별 exact bucket ARN에 `s3:ListBucket`을 허용해 제거했다. AWS provider v6.62.0의 `resourceBucketRead` 구현을 확인해 website·accelerate·request payment·replication·object lock 조회 action도 같은 exact bucket ARN statement에 제한했다.
+- 최종 develop plan-only run `33058980660`은 `0 add, 3 change, 0 destroy`, production run `33058983038`은 `1 add, 2 change, 1 destroy`로 성공했다. 두 결과는 관리자 profile 기준 plan과 일치하고 외부 삭제 drift 표시는 없다.
+- 두 plan-only run 모두 apply job, saved plan 생성·업로드가 skip됐고 GitHub artifact 수와 run별 private S3 plan prefix 객체 수는 모두 0이다.
+- OIDC bootstrap 최종 상태는 post-apply `No changes`이며 branch와 원격 HEAD는 문서 갱신 전 `12d2c65`로 일치한다. PR 병합, 관리자 IAM pre-apply, main workflow apply와 런타임 검증은 아직 실행하지 않았다.
+
 ## 2026-08-25 LAN-351 시나리오 고정 질문 TTS 게시
 
 - 이번 저장소 범위는 production DB를 기준으로 고정 질문 MP3를 생성·검증하고 기존 shared private content S3 bucket에 게시하는 작업이다. BE·AI 코드, runtime IAM, DB 컬럼과 런타임 오디오 결합은 후속 이슈로 분리한다.

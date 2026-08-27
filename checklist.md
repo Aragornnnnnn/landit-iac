@@ -1,5 +1,25 @@
 # Checklist
 
+## 2026-08-27 LAN-347 장기기억 플래그 배포
+
+- [x] `feat/LAN-347-6` 브랜치와 IaC 변경 범위, workflow의 apply 제한을 확인한다.
+- [x] 장기기억 플래그 IaC의 정적 계약, Terraform fmt와 dev·prod validate를 재검증한다.
+- [x] develop·prod SSM에 두 플래그를 `String=false`로 생성하고 값 노출 없이 확인한다.
+- [x] `landit-iac` 전용 Terraform OIDC, public 저장소의 private plan 전달과 inbox `GetObject` 설계를 승인한다.
+- [x] 승인된 OIDC·plan 전달·콘텐츠 조회 권한 설계를 문서로 기록한다.
+- [x] 승인된 설계를 실행 가능한 구현 계획으로 나눈다.
+- [x] OIDC 역할·private plan bucket·workflow와 inbox `GetObject`를 구현하고 정적 검증한다.
+- [x] bootstrap saved plan을 생성하고 예상 리소스만 포함하는지 검토한다.
+- [x] 사용자 승인 후 bootstrap apply와 GitHub environment 6개를 생성·검증한다.
+- [x] feature 브랜치에서 develop·production `plan-only`를 실행하고 예상 변경만 포함하는지 검토한다.
+- [ ] IaC PR #17을 검토·병합한다.
+- [ ] 병합 후 사용자 승인으로 관리자 전용 develop 3-change와 production IAM 1-change saved plan을 적용하고 fresh full plan에서 IAM diff가 0인지 확인한다.
+- [ ] 사용자 승인 후 main에서 develop `plan-and-apply`를 실행한다.
+- [ ] BE 개발 배포 후 두 플래그 비활성, 정상 기동과 기존 프리톡 회귀를 확인한다.
+- [ ] 사용자 승인 후 main에서 production `plan-and-apply`를 실행한다.
+- [ ] production ECS 안정화와 두 플래그 비활성 상태를 확인한다.
+- [ ] 후속 기능 활성화는 `WRITE=true, USE=false` 관찰 뒤 `USE=true` 순서로 별도 승인받아 진행한다.
+
 ## 2026-08-25 LAN-351 시나리오 고정 질문 TTS 게시
 
 - [x] production DB의 활성 시나리오 40개와 영어 고정 질문 120개를 읽기 전용으로 확인한다.

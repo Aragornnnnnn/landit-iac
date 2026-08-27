@@ -105,7 +105,10 @@ data "aws_iam_policy_document" "ec2_app" {
   }
 
   statement {
-    actions = ["s3:PutObject"]
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject"
+    ]
     resources = [
       "arn:aws:s3:::${data.terraform_remote_state.shared.outputs.content_bucket_name}/content/inbox/*"
     ]

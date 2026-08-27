@@ -1377,7 +1377,10 @@ data "aws_iam_policy_document" "api_task" {
   }
 
   statement {
-    actions   = ["s3:PutObject"]
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject"
+    ]
     resources = ["arn:aws:s3:::${var.content_bucket_name}/content/inbox/*"]
   }
 }
@@ -1441,6 +1444,7 @@ resource "aws_ecs_task_definition" "api" {
   memory                   = var.api_memory
   execution_role_arn       = aws_iam_role.execution[0].arn
   task_role_arn            = aws_iam_role.api_task[0].arn
+  skip_destroy             = true
 
   container_definitions = jsonencode([
     {
@@ -1488,6 +1492,8 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_AUTH_OIDC_APPLE_AUDIENCES", valueFrom = "${local.ssm_path}/LANDIT_AUTH_OIDC_APPLE_AUDIENCES" },
         { name = "LANDIT_AI_CLIENT_MODE", valueFrom = "${local.ssm_path}/LANDIT_AI_CLIENT_MODE" },
         { name = "LANDIT_AI_BASE_URL", valueFrom = "${local.ssm_path}/LANDIT_AI_BASE_URL" },
+        { name = "LANDIT_MEMORY_WRITE_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_MEMORY_WRITE_ENABLED" },
+        { name = "LANDIT_MEMORY_USE_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_MEMORY_USE_ENABLED" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_BE_SENTRY_DSN" }
         ], var.grafana_otlp_enabled ? [
         { name = "OTEL_EXPORTER_OTLP_HEADERS", valueFrom = "${local.ssm_path}/LANDIT_GRAFANA_CLOUD_OTLP_HEADERS" }

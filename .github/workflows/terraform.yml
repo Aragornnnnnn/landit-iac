@@ -36,6 +36,7 @@ concurrency:
 
 env:
   AWS_REGION: ap-northeast-2
+  PLAN_BUCKET: landit-terraform-plan-artifacts-982529430654
   TF_IN_AUTOMATION: "true"
 
 jobs:
@@ -46,14 +47,16 @@ jobs:
     outputs:
       apply-environment: ${{ steps.target.outputs.apply-environment }}
       plan-file: ${{ steps.target.outputs.plan-file }}
+      plan-key: ${{ steps.plan-metadata.outputs.plan-key }}
+      plan-sha256: ${{ steps.plan-metadata.outputs.plan-sha256 }}
       root: ${{ steps.target.outputs.root }}
       state-key: ${{ steps.target.outputs.state-key }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
 
       - name: Resolve Terraform root
         id: target
@@ -120,9 +123,10 @@ jobs:
           fi
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
         with:
           aws-region: ${{ env.AWS_REGION }}
+          role-session-name: terraform-plan-${{ inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
 
       - name: Terraform fmt check
@@ -134,19 +138,39 @@ jobs:
       - name: Terraform validate
         run: terraform -chdir="${{ steps.target.outputs.root }}" validate
 
-      - name: Terraform plan
+      - name: Terraform speculative plan
+        if: ${{ inputs.operation == 'plan-only' }}
+        run: terraform -chdir="${{ steps.target.outputs.root }}" plan -input=false
+
+      - name: Terraform saved plan
+        if: ${{ inputs.operation == 'plan-and-apply' }}
         run: terraform -chdir="${{ steps.target.outputs.root }}" plan -input=false -out="$RUNNER_TEMP/${{ steps.target.outputs.plan-file }}"
 
-      - name: Show plan
+      - name: Show saved plan
+        if: ${{ inputs.operation == 'plan-and-apply' }}
         run: terraform -chdir="${{ steps.target.outputs.root }}" show -no-color "$RUNNER_TEMP/${{ steps.target.outputs.plan-file }}"
 
-      - name: Upload plan artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-plan-${{ inputs.target }}
-          path: ${{ runner.temp }}/${{ steps.target.outputs.plan-file }}
-          if-no-files-found: error
-          retention-days: 1
+      - name: Resolve saved plan metadata
+        id: plan-metadata
+        if: ${{ inputs.operation == 'plan-and-apply' }}
+        env:
+          PLAN_FILE: ${{ steps.target.outputs.plan-file }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          PLAN_PATH="${RUNNER_TEMP}/${PLAN_FILE}"
+          PLAN_KEY="plans/${TARGET}/${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}/${PLAN_FILE}"
+          PLAN_SHA256="$(sha256sum "${PLAN_PATH}" | awk '{print $1}')"
+          echo "plan-key=${PLAN_KEY}" >> "${GITHUB_OUTPUT}"
+          echo "plan-sha256=${PLAN_SHA256}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload saved plan to private S3
+        if: ${{ inputs.operation == 'plan-and-apply' }}
+        env:
+          PLAN_FILE: ${{ steps.target.outputs.plan-file }}
+          PLAN_KEY: ${{ steps.plan-metadata.outputs.plan-key }}
+        run: |
+          PLAN_PATH="${RUNNER_TEMP}/${PLAN_FILE}"
+          aws s3 cp "${PLAN_PATH}" "s3://${PLAN_BUCKET}/${PLAN_KEY}" --only-show-errors
 
   apply:
     name: Apply
@@ -156,10 +180,10 @@ jobs:
     environment: terraform-apply-${{ inputs.target }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
 
       - name: Check AWS role variable
         env:
@@ -171,19 +195,28 @@ jobs:
           fi
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
         with:
           aws-region: ${{ env.AWS_REGION }}
+          role-session-name: terraform-apply-${{ inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
 
-      - name: Download plan artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: terraform-plan-${{ inputs.target }}
-          path: ${{ runner.temp }}/terraform-plan
+      - name: Download and verify saved plan
+        env:
+          EXPECTED_PLAN_SHA256: ${{ needs.plan.outputs.plan-sha256 }}
+          PLAN_FILE: ${{ needs.plan.outputs.plan-file }}
+          PLAN_KEY: ${{ needs.plan.outputs.plan-key }}
+        run: |
+          PLAN_DIRECTORY="${RUNNER_TEMP}/terraform-plan"
+          PLAN_PATH="${PLAN_DIRECTORY}/${PLAN_FILE}"
+          mkdir -p "${PLAN_DIRECTORY}"
+          aws s3 cp "s3://${PLAN_BUCKET}/${PLAN_KEY}" "${PLAN_PATH}" --only-show-errors
+          echo "${EXPECTED_PLAN_SHA256}  ${PLAN_PATH}" | sha256sum --check --strict
 
       - name: Terraform init
         run: terraform -chdir="${{ needs.plan.outputs.root }}" init -input=false
 
       - name: Terraform apply
-        run: terraform -chdir="${{ needs.plan.outputs.root }}" apply -input=false "$RUNNER_TEMP/terraform-plan/${{ needs.plan.outputs.plan-file }}"
+        env:
+          PLAN_FILE: ${{ needs.plan.outputs.plan-file }}
+        run: terraform -chdir="${{ needs.plan.outputs.root }}" apply -input=false "$RUNNER_TEMP/terraform-plan/${PLAN_FILE}"

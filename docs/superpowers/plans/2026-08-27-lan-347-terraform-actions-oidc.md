@@ -35,7 +35,7 @@
 - Consumes: 기존 shared `content/inbox/*` PutObject statement와 `content_bucket_name` remote-state 계약.
 - Produces: develop EC2 role과 production ECS API task role의 inbox Get·Put 계약.
 
-- [ ] **Step 1: 계약 테스트를 GetObject 요구사항으로 변경한다.**
+- [x] **Step 1: 계약 테스트를 GetObject 요구사항으로 변경한다.**
 
 `scripts/test-admin-content-upload-contract.sh`에 dev EC2 policy block과 API policy block을 추출하고 다음 검사를 추가한다.
 
@@ -47,13 +47,13 @@ assert_contains "${api_policy}" '"s3:PutObject"' "API Task Role은 inbox 객체�
 assert_not_contains "${worker_policy}" 'content_bucket_name' "worker IAM에는 shared 콘텐츠 bucket 권한을 추가하면 안 된다."
 ```
 
-- [ ] **Step 2: RED 테스트를 확인한다.**
+- [x] **Step 2: RED 테스트를 확인한다.**
 
 Run: `bash scripts/test-admin-content-upload-contract.sh`.
 
 Expected: develop 또는 API의 `s3:GetObject` 누락으로 실패한다.
 
-- [ ] **Step 3: 두 기존 statement에 GetObject를 추가한다.**
+- [x] **Step 3: 두 기존 statement에 GetObject를 추가한다.**
 
 `environments/dev/ec2.tf`와 `modules/app-platform/main.tf`에서 shared inbox statement만 다음 형태로 바꾼다.
 
@@ -69,7 +69,7 @@ statement {
 
 각 파일의 기존 bucket-name expression은 그대로 사용한다. application bucket statement, worker policy와 shared bucket policy는 바꾸지 않는다.
 
-- [ ] **Step 4: 문서와 GREEN 테스트를 갱신한다.**
+- [x] **Step 4: 문서와 GREEN 테스트를 갱신한다.**
 
 `docs/content-storage.md`의 develop EC2 설명과 API 역할 설명을 `GetObject`, `PutObject`로 맞춘다.
 
@@ -77,7 +77,7 @@ Run: `bash scripts/test-admin-content-upload-contract.sh`.
 
 Expected: `관리자 콘텐츠 이미지 업로드 IaC 계약이 통과했다.`.
 
-- [ ] **Step 5: 첫 논리 변경을 커밋한다.**
+- [x] **Step 5: 첫 논리 변경을 커밋한다.**
 
 ```bash
 git add scripts/test-admin-content-upload-contract.sh environments/dev/ec2.tf modules/app-platform/main.tf docs/content-storage.md
@@ -101,7 +101,7 @@ git commit -m "chore: 콘텐츠 inbox 조회 권한을 추가한다"
 - Consumes: account `982529430654`, region `ap-northeast-2`, existing GitHub OIDC provider and state bucket.
 - Produces: six role ARN outputs and `plan_bucket_name` output for GitHub environment configuration.
 
-- [ ] **Step 1: bootstrap 정적 계약 테스트를 작성한다.**
+- [x] **Step 1: bootstrap 정적 계약 테스트를 작성한다.**
 
 새 Bash 테스트는 다음 정확한 계약을 `grep -F`와 block 추출로 검사한다.
 
@@ -122,13 +122,13 @@ plan/apply role plan-prefix DeleteObject = absent
 AdministratorAccess, PowerUserAccess, ReadOnlyAccess, iam:* = absent
 ```
 
-- [ ] **Step 2: RED 테스트를 확인한다.**
+- [x] **Step 2: RED 테스트를 확인한다.**
 
 Run: `bash scripts/test-terraform-actions-oidc-contract.sh`.
 
 Expected: `bootstrap/terraform-actions`가 없어 실패한다.
 
-- [ ] **Step 3: provider와 backend 뼈대를 만든다.**
+- [x] **Step 3: provider와 backend 뼈대를 만든다.**
 
 버전 제약은 기존 bootstrap과 같은 Terraform `>= 1.6.0`, AWS provider `>= 5.0, < 7.0`을 사용한다. backend는 다음 값으로 고정한다.
 
@@ -144,7 +144,7 @@ terraform {
 }
 ```
 
-- [ ] **Step 4: locals와 OIDC trust를 구현한다.**
+- [x] **Step 4: locals와 OIDC trust를 구현한다.**
 
 `targets = toset(["shared", "develop", "production"])`, `phases = toset(["plan", "apply"])`와 두 집합의 product로 여섯 역할을 만든다. provider ARN은 다음 URL의 data source로 찾는다.
 
@@ -156,7 +156,7 @@ data "aws_iam_openid_connect_provider" "github" {
 
 각 assume-role policy는 `aud`와 환경별 `sub` 두 `StringEquals` 조건만 둔다.
 
-- [ ] **Step 5: private plan bucket을 구현한다.**
+- [x] **Step 5: private plan bucket을 구현한다.**
 
 bucket 이름 기본값은 `landit-terraform-plan-artifacts-982529430654`이다. public access block 네 항목, AES256 encryption, HTTPS-only bucket policy와 다음 lifecycle을 추가한다.
 
@@ -170,7 +170,7 @@ rule {
 }
 ```
 
-- [ ] **Step 6: target·phase별 inline policy를 구현한다.**
+- [x] **Step 6: target·phase별 inline policy를 구현한다.**
 
 state S3 권한은 target key와 `${target_key}.tflock`에만 부여한다. develop·production에는 shared state `GetObject`를 추가한다. plan role은 state `GetObject`, lockfile `GetObject|PutObject|DeleteObject`만, apply role은 여기에 state `PutObject`를 추가한다.
 
@@ -178,7 +178,7 @@ AWS 조회 action은 root가 사용하는 서비스의 `Describe*`, `Get*`, `Lis
 
 plan 객체 권한은 `arn:aws:s3:::${bucket}/plans/${target}/*`에 plan `PutObject`, apply `GetObject`만 부여한다. bucket 조회는 자기 prefix에 대한 `s3:ListBucket` 조건으로 제한한다.
 
-- [ ] **Step 7: output과 GREEN 검증을 수행한다.**
+- [x] **Step 7: output과 GREEN 검증을 수행한다.**
 
 outputs는 `plan_role_arns`, `apply_role_arns`, `plan_bucket_name` map/string만 노출한다.
 
@@ -193,7 +193,7 @@ AWS_PROFILE=landit terraform -chdir=bootstrap/terraform-actions validate
 
 Expected: 계약 테스트 통과와 `Success! The configuration is valid.`.
 
-- [ ] **Step 8: bootstrap 구현을 커밋한다.**
+- [x] **Step 8: bootstrap 구현을 커밋한다.**
 
 ```bash
 git add bootstrap/terraform-actions scripts/test-terraform-actions-oidc-contract.sh
@@ -211,7 +211,7 @@ git commit -m "chore: Terraform Actions OIDC 역할을 정의한다"
 - Consumes: environment `AWS_ROLE_ARN`, bootstrap output `plan_bucket_name`, GitHub run ID와 attempt.
 - Produces: artifact 없이 speculative plan 또는 SHA-256 검증 saved-plan apply를 실행하는 workflow.
 
-- [ ] **Step 1: workflow RED 계약 테스트를 작성한다.**
+- [x] **Step 1: workflow RED 계약 테스트를 작성한다.**
 
 테스트는 다음을 검사한다.
 
@@ -230,13 +230,13 @@ setup-terraform SHA = b9cd54a3c349d3f38e8881555d616ced269862dd
 configure-aws-credentials SHA = ff717079ee2060e4bcee96c4779b553acc87447c
 ```
 
-- [ ] **Step 2: RED 테스트를 확인한다.**
+- [x] **Step 2: RED 테스트를 확인한다.**
 
 Run: `bash scripts/test-terraform-workflow-contract.sh`.
 
 Expected: GitHub artifact step과 mutable action tag 때문에 실패한다.
 
-- [ ] **Step 3: plan-only와 plan-and-apply를 분리한다.**
+- [x] **Step 3: plan-only와 plan-and-apply를 분리한다.**
 
 `plan-only` step은 `terraform plan -input=false`만 실행한다. `plan-and-apply` step은 `$RUNNER_TEMP/${plan-file}`로 saved plan을 만들고 표시한 뒤 다음 key를 job output으로 내보낸다.
 
@@ -246,7 +246,7 @@ plans/${target}/${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}/${plan-file}
 
 saved plan의 `sha256sum` 첫 필드를 `plan-sha256` output으로 기록하고 `aws s3 cp`로 전용 bucket의 정확한 key에 올린다.
 
-- [ ] **Step 4: apply 다운로드와 integrity gate를 구현한다.**
+- [x] **Step 4: apply 다운로드와 integrity gate를 구현한다.**
 
 apply job은 exact key를 `$RUNNER_TEMP/terraform-plan/${plan-file}`로 내려받고 다음 검증 뒤 같은 파일을 적용한다.
 
@@ -255,11 +255,11 @@ echo "${EXPECTED_PLAN_SHA256}  ${PLAN_PATH}" | sha256sum --check --strict
 terraform -chdir="${ROOT}" apply -input=false "${PLAN_PATH}"
 ```
 
-- [ ] **Step 5: action ref와 운영 문서를 갱신한다.**
+- [x] **Step 5: action ref와 운영 문서를 갱신한다.**
 
 세 action을 위 commit SHA로 고정하고 원래 major tag를 주석으로 남긴다. `docs/developer-guide.md`에는 6개 environment, reviewer 없음, branch policy, private plan bucket, 1일 lifecycle과 별도 bootstrap apply gate를 기록한다.
 
-- [ ] **Step 6: GREEN 테스트와 YAML 구조를 확인한다.**
+- [x] **Step 6: GREEN 테스트와 YAML 구조를 확인한다.**
 
 Run:
 
@@ -270,7 +270,7 @@ git diff --check
 
 Expected: 계약 테스트와 whitespace 검증 통과.
 
-- [ ] **Step 7: workflow 변경을 커밋한다.**
+- [x] **Step 7: workflow 변경을 커밋한다.**
 
 ```bash
 git add .github/workflows/terraform.yml scripts/test-terraform-workflow-contract.sh docs/developer-guide.md
@@ -287,7 +287,7 @@ git commit -m "chore: Terraform plan을 private S3로 전달한다"
 - Consumes: Task 1~3의 Terraform, workflow와 계약 테스트.
 - Produces: apply 승인 판단에 사용할 fresh bootstrap saved plan과 LAN-347 dev·prod plan 범위.
 
-- [ ] **Step 1: 전체 계약과 format을 실행한다.**
+- [x] **Step 1: 전체 계약과 format을 실행한다.**
 
 Run:
 
@@ -304,7 +304,7 @@ git diff --check
 
 Expected: 모두 exit 0.
 
-- [ ] **Step 2: 네 root를 validate한다.**
+- [x] **Step 2: 네 root를 validate한다.**
 
 Run:
 
@@ -321,7 +321,7 @@ AWS_PROFILE=landit terraform -chdir=environments/prod validate
 
 Expected: 네 root 모두 valid.
 
-- [ ] **Step 3: fresh saved plan을 만든다.**
+- [x] **Step 3: fresh saved plan을 만든다.**
 
 Run:
 
@@ -334,7 +334,7 @@ AWS_PROFILE=landit terraform -chdir=environments/prod plan -input=false -out=/tm
 
 Expected: bootstrap은 역할 6개·inline policy 6개·plan bucket 보안 리소스만 생성한다. dev는 기존 LAN-372·LAN-347 변경과 EC2 IAM GetObject만, prod는 LAN-347 task definition 교체·service update와 API IAM GetObject만 포함한다. destroy가 추가되면 중단한다.
 
-- [ ] **Step 4: 기록을 갱신하고 커밋한다.**
+- [x] **Step 4: 기록을 갱신하고 커밋한다.**
 
 실제 plan summary, 변경 주소와 미실행 apply gate를 `checklist.md`, `context-notes.md`에 기록한다.
 

@@ -8,8 +8,8 @@
 - [x] `landit-iac` 전용 Terraform OIDC, public 저장소의 private plan 전달과 inbox `GetObject` 설계를 승인한다.
 - [x] 승인된 OIDC·plan 전달·콘텐츠 조회 권한 설계를 문서로 기록한다.
 - [x] 승인된 설계를 실행 가능한 구현 계획으로 나눈다.
-- [ ] OIDC 역할·private plan bucket·workflow와 inbox `GetObject`를 구현하고 정적 검증한다.
-- [ ] bootstrap saved plan을 생성하고 예상 리소스만 포함하는지 검토한다.
+- [x] OIDC 역할·private plan bucket·workflow와 inbox `GetObject`를 구현하고 정적 검증한다.
+- [x] bootstrap saved plan을 생성하고 예상 리소스만 포함하는지 검토한다.
 - [ ] 사용자 별도 승인 후 bootstrap apply와 GitHub environment 6개를 생성·검증한다.
 - [ ] feature 브랜치에서 develop·production `plan-only`를 실행하고 예상 변경만 포함하는지 검토한다. 현재 `AWS_ROLE_ARN` 미설정으로 Terraform 실행 전에 실패한다.
 - [ ] IaC PR #17을 검토·병합한다.

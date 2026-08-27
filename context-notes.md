@@ -25,6 +25,15 @@
 - 새 `bootstrap/terraform-actions`는 기존 OIDC provider를 data source로 참조하고 역할·policy·plan bucket만 소유한다. 과거 `bootstrap/github-actions` state와 BE·AI 배포 role은 건드리지 않는다.
 - 설계 문서는 `docs/superpowers/specs/2026-08-27-lan-347-terraform-actions-oidc-design.md`에 기록했다. 실제 bootstrap apply와 GitHub environment 변경은 saved plan 검토 뒤 별도 승인 전까지 실행하지 않는다.
 - 구현 계획은 `docs/superpowers/plans/2026-08-27-lan-347-terraform-actions-oidc.md`에 기록했다. inbox GetObject, bootstrap 역할·plan bucket, private S3 workflow, 전체 plan 검증과 별도 승인 후 실제 생성의 다섯 작업으로 나눴다.
+- develop EC2와 production ECS API의 기존 shared `content/inbox/*` statement에 `s3:GetObject`를 추가했다. 새 경로나 다른 runtime 역할에는 권한을 넓히지 않았다.
+- `bootstrap/terraform-actions`는 plan·apply와 shared·develop·production 조합의 OIDC role 6개, inline policy 6개와 private saved-plan bucket 보안 리소스를 정의한다. trust subject는 각 GitHub environment와 정확히 일치하고 audience는 `sts.amazonaws.com`으로 고정한다.
+- workflow는 `plan-only`에서 speculative plan만 실행하고, `plan-and-apply`에서만 `/tmp` saved plan을 SHA-256과 함께 `plans/{target}/{run_id}/{run_attempt}` private S3 key로 전달한다. GitHub artifact 업로드는 제거했고 action은 검증한 commit SHA로 고정했다.
+- fresh bootstrap saved plan `/tmp/lan347-terraform-actions.tfplan`은 `17 add, 0 change, 0 destroy`다. role 6개, inline policy 6개, S3 bucket·lifecycle·HTTPS-only policy·public access block·AES256 encryption 5개만 생성한다.
+- fresh develop saved plan `/tmp/lan347-dev-getobject.tfplan`은 `0 add, 3 change, 0 destroy`다. EC2 app policy의 inbox GetObject, LAN-372·LAN-347 SSM document와 이를 참조하는 deploy policy만 갱신한다.
+- fresh production saved plan `/tmp/lan347-prod-getobject.tfplan`은 `1 add, 2 change, 1 destroy`다. API task role의 inbox GetObject, LAN-347 memory secrets를 포함한 task definition 교체와 ECS API service update만 포함한다.
+- AWS Access Analyzer는 6개 identity policy와 plan bucket resource policy 모두 findings 0건을 반환했다. inline policy JSON 최대 크기는 apply-develop의 7,045자다.
+- `bash scripts/test-admin-content-upload-contract.sh`, `bash scripts/test-dev-ec2-contract.sh`, `bash scripts/test-dev-ec2-runtime.sh`, `bash scripts/test-terraform-actions-oidc-contract.sh`, `bash scripts/test-terraform-workflow-contract.sh`, `terraform fmt -recursive -check`, `git diff --check`가 통과했다. bootstrap·shared·dev·prod `terraform validate`도 모두 성공했다.
+- 실제 bootstrap apply, GitHub environment·variable·branch policy 생성과 feature `plan-only` 재실행은 아직 하지 않았다. bootstrap saved plan에 대한 사용자 별도 승인 뒤 진행한다.
 
 ## 2026-08-25 LAN-351 시나리오 고정 질문 TTS 게시
 

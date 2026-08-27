@@ -23,6 +23,7 @@ locals {
     "ec2:DescribeRouteTables",
     "ec2:DescribeSecurityGroups",
     "ec2:DescribeSubnets",
+    "ec2:DescribeVpcAttribute",
     "ec2:DescribeVpcs",
     "ecr:DescribeRepositories",
     "ecr:GetLifecyclePolicy",
@@ -95,6 +96,7 @@ locals {
     ]
     develop = concat(local.platform_read_actions, [
       "ec2:DescribeAddresses",
+      "ec2:DescribeAddressesAttribute",
       "ec2:DescribeIamInstanceProfileAssociations",
       "ec2:DescribeInstanceAttribute",
       "ec2:DescribeInstances",
@@ -102,6 +104,7 @@ locals {
       "ec2:DescribeVolumes",
       "ec2:DescribeVolumesModifications",
       "ssm:DescribeDocument",
+      "ssm:DescribeDocumentPermission",
       "ssm:GetDocument",
       "ssm:ListTagsForResource"
     ])
@@ -110,6 +113,7 @@ locals {
       "lambda:GetFunction",
       "lambda:GetFunctionEventInvokeConfig",
       "lambda:GetPolicy",
+      "lambda:ListVersionsByFunction",
       "lambda:ListTags"
     ])
   }

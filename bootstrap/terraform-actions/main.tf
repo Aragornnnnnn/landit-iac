@@ -188,6 +188,15 @@ data "aws_iam_policy_document" "terraform" {
   }
 
   dynamic "statement" {
+    for_each = each.value.target == "develop" ? [1] : []
+    content {
+      sid       = "ReadAmazonLinuxAmiParameter"
+      actions   = ["ssm:GetParameter"]
+      resources = ["arn:aws:ssm:${var.aws_region}::parameter/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"]
+    }
+  }
+
+  dynamic "statement" {
     for_each = each.value.phase == "apply" ? [1] : []
     content {
       sid       = "ManageTargetResources"

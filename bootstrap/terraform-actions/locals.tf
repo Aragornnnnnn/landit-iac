@@ -98,7 +98,6 @@ locals {
       "ec2:DescribeTags",
       "ssm:DescribeDocument",
       "ssm:GetDocument",
-      "ssm:GetParameter",
       "ssm:ListTagsForResource"
     ])
     production = concat(local.platform_read_actions, [

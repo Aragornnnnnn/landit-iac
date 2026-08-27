@@ -17,13 +17,17 @@ from scripts.expression_pronunciation_audio import (
     SpeechHttpResult,
     asset_id,
     audio_path_for,
+    build_be_manifest,
     build_manifest,
+    canonical_manifest_bytes,
     check_accent_pronunciation,
     generate_assets,
     generation_fingerprint,
     load_source,
     manifest_sha256,
     plan_s3_upload,
+    publish_be_manifest,
+    publish_reference,
     s3_key,
     validate_source,
     verify_accent_pronunciations,
@@ -579,6 +583,357 @@ class ValidateSourceTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             validate_source(duplicated)
+
+
+def make_upload_stub():
+    """head/put-object를 이해하고 put된 객체를 기록하는 aws CLI 대역."""
+    stored: dict[str, tuple[bytes, dict, str, str]] = {}
+
+    def aws_runner(command, **kwargs):
+        result = Mock()
+        result.returncode = 0
+        key = command[command.index("--key") + 1]
+        if "head-object" in command:
+            if key not in stored:
+                result.returncode = 1
+                result.stderr = "404 Not Found"
+                return result
+            body, metadata, content_type, cache_control = stored[key]
+            result.stdout = json.dumps(
+                {
+                    "ContentLength": len(body),
+                    "ContentType": content_type,
+                    "CacheControl": cache_control,
+                    "Metadata": metadata,
+                }
+            )
+            return result
+        if "put-object" in command:
+            body = Path(command[command.index("--body") + 1]).read_bytes()
+            metadata = dict(
+                part.split("=", 1)
+                for part in command[command.index("--metadata") + 1].split(",")
+            )
+            stored[key] = (
+                body,
+                metadata,
+                command[command.index("--content-type") + 1],
+                command[command.index("--cache-control") + 1],
+            )
+            return result
+        raise AssertionError(f"unexpected aws command: {command}")
+
+    return aws_runner, stored
+
+
+def make_reference_entries() -> list[dict]:
+    return [
+        {
+            "expressionId": 164,
+            "accentLocale": "EN_US",
+            "sentenceText": "I'm super tired today.",
+            "words": [
+                {
+                    "order": 1,
+                    "word": "I'm",
+                    "syllables": ["I'm"],
+                    "stressIndex": -1,
+                    "pronunciationDisplay": "aim",
+                },
+                {
+                    "order": 2,
+                    "word": "super",
+                    "syllables": ["su", "per"],
+                    "stressIndex": 0,
+                    "pronunciationDisplay": "soo·per",
+                    "accentContrast": {
+                        "expected": "sounds like 「SOO-per」",
+                        "other": "sounds like 「SYOO-per」",
+                        "errorType": "vowel",
+                    },
+                },
+            ],
+        }
+    ]
+
+
+class ReferencePublishTests(unittest.TestCase):
+    def publish(self, entries, *, execute=True):
+        aws_runner, stored = make_upload_stub()
+        with tempfile.TemporaryDirectory() as tmp:
+            reference_path = Path(tmp) / "reference_EN_US.json"
+            reference_path.write_text(
+                json.dumps(entries, ensure_ascii=False), encoding="utf-8"
+            )
+            published = publish_reference(
+                Path(tmp),
+                "content/expression-pronunciation-audio/manifests/be-abc.json",
+                "bucket",
+                execute=execute,
+                aws_runner=aws_runner,
+            )
+        return published, stored
+
+    def test_published_body_is_the_top_level_array(self):
+        entries = make_reference_entries()
+        published, stored = self.publish(entries)
+
+        self.assertEqual(len(published), 1)
+        body, metadata, content_type, cache_control = stored[published[0]]
+        parsed = json.loads(body)
+        # BE parseReference()는 최상위 JSON 배열(List<Entry>)을 기대한다
+        self.assertIsInstance(parsed, list)
+        self.assertEqual(parsed[0]["expressionId"], 164)
+        self.assertEqual(parsed[0]["sentenceText"], "I'm super tired today.")
+        self.assertEqual(
+            [word["order"] for word in parsed[0]["words"]], [1, 2]
+        )
+        digest = hashlib.sha256(body).hexdigest()
+        self.assertEqual(
+            published[0],
+            "content/expression-pronunciation-audio/reference/"
+            f"EN_US-{digest}.json",
+        )
+        # ttsManifestKey는 바디가 아니라 metadata로만 전달한다
+        self.assertEqual(
+            metadata["tts-manifest-key"],
+            "content/expression-pronunciation-audio/manifests/be-abc.json",
+        )
+        self.assertEqual(content_type, "application/json")
+        self.assertIn("immutable", cache_control)
+
+    def test_dry_run_does_not_upload(self):
+        published, stored = self.publish(make_reference_entries(), execute=False)
+
+        self.assertEqual(len(published), 1)
+        self.assertEqual(stored, {})
+
+    def test_duplicate_word_order_blocks_publish(self):
+        entries = make_reference_entries()
+        entries[0]["words"][1]["order"] = 1
+
+        with self.assertRaises(ValueError):
+            self.publish(entries)
+
+    def test_whitespace_in_word_blocks_publish(self):
+        entries = make_reference_entries()
+        entries[0]["words"][0]["word"] = "I am"
+
+        with self.assertRaises(ValueError):
+            self.publish(entries)
+
+    def test_missing_sentence_text_blocks_publish(self):
+        entries = make_reference_entries()
+        del entries[0]["sentenceText"]
+
+        with self.assertRaises(ValueError):
+            self.publish(entries)
+
+
+def make_be_source_payload() -> dict:
+    payload = make_source_payload()
+    payload["expressions"].append(
+        {
+            "expressionId": 8,
+            # 패턴형 표현: expressionText가 없어 표현 음성을 생성하지 않는다
+            "sentenceText": "She is busy working today.",
+            "accentLocales": ["EN_US"],
+            "words": [
+                {"order": 1, "word": "She"},
+                {"order": 2, "word": "is"},
+                {"order": 3, "word": "busy"},
+            ],
+        }
+    )
+    return payload
+
+
+class BeManifestTests(unittest.TestCase):
+    def build_fixture(self):
+        snapshot = load_snapshot(make_be_source_payload())
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            client = Mock()
+            client.synthesize = Mock(
+                side_effect=lambda asset: Mock(
+                    body=f"mp3:{asset_id(asset)}".encode(), generation_id="gen-x"
+                )
+            )
+            generated = generate_assets(
+                snapshot,
+                work_dir,
+                client=client,
+                probe_runner=fake_probe_runner,
+                probe_name="ffprobe",
+            )
+            manifest = build_manifest(snapshot, generated)
+        return snapshot, manifest
+
+    def manifest_key_of(self, manifest, expression_id, locale, kind, word_order=None):
+        return next(
+            row["s3Key"]
+            for row in manifest["assets"]
+            if row["expressionId"] == expression_id
+            and row["accentLocale"] == locale
+            and row["kind"] == kind
+            and row["wordOrder"] == word_order
+        )
+
+    def test_rows_are_grouped_per_expression_and_locale(self):
+        snapshot, manifest = self.build_fixture()
+
+        be_manifest = build_be_manifest(
+            manifest, snapshot, cdn_base_url="https://cdn.example.com/"
+        )
+
+        # BE importTts 계약: 최상위는 assets 하나, 필드명은 철자까지 동일
+        self.assertEqual(set(be_manifest), {"assets"})
+        by_group = {
+            (asset["expressionId"], asset["accentLocale"]): asset
+            for asset in be_manifest["assets"]
+        }
+        self.assertEqual(
+            set(by_group), {(7, "EN_US"), (7, "EN_GB"), (8, "EN_US")}
+        )
+
+        full = by_group[(7, "EN_US")]
+        self.assertEqual(
+            set(full),
+            {
+                "expressionId",
+                "accentLocale",
+                "expressionAudioUrl",
+                "sentenceAudioUrl",
+                "words",
+            },
+        )
+        # URL = base(끝 / 제거) + "/" + s3Key
+        self.assertEqual(
+            full["expressionAudioUrl"],
+            "https://cdn.example.com/"
+            + self.manifest_key_of(manifest, 7, "EN_US", "expression"),
+        )
+        self.assertEqual(
+            full["sentenceAudioUrl"],
+            "https://cdn.example.com/"
+            + self.manifest_key_of(manifest, 7, "EN_US", "sentence"),
+        )
+        self.assertEqual([word["order"] for word in full["words"]], [1, 2, 3, 4])
+        for word in full["words"]:
+            self.assertEqual(set(word), {"order", "audioUrl"})
+        self.assertEqual(
+            full["words"][3]["audioUrl"],
+            "https://cdn.example.com/"
+            + self.manifest_key_of(manifest, 7, "EN_US", "word", 4),
+        )
+
+    def test_templated_expression_has_null_expression_url(self):
+        snapshot, manifest = self.build_fixture()
+
+        be_manifest = build_be_manifest(manifest, snapshot)
+
+        by_group = {
+            (asset["expressionId"], asset["accentLocale"]): asset
+            for asset in be_manifest["assets"]
+        }
+        self.assertIsNone(by_group[(8, "EN_US")]["expressionAudioUrl"])
+        self.assertEqual(
+            [word["order"] for word in by_group[(8, "EN_US")]["words"]], [1, 2, 3]
+        )
+
+    def test_missing_sentence_row_fails(self):
+        snapshot, manifest = self.build_fixture()
+        manifest["assets"] = [
+            row
+            for row in manifest["assets"]
+            if not (
+                row["expressionId"] == 8 and row["kind"] == "sentence"
+            )
+        ]
+
+        with self.assertRaises(ValueError):
+            build_be_manifest(manifest, snapshot)
+
+    def test_word_order_mismatch_with_source_fails(self):
+        snapshot, manifest = self.build_fixture()
+        manifest["assets"] = [
+            row
+            for row in manifest["assets"]
+            if not (
+                row["expressionId"] == 7
+                and row["accentLocale"] == "EN_GB"
+                and row["kind"] == "word"
+                and row["wordOrder"] == 3
+            )
+        ]
+
+        with self.assertRaises(ValueError):
+            build_be_manifest(manifest, snapshot)
+
+    def test_duplicate_word_row_fails(self):
+        snapshot, manifest = self.build_fixture()
+        duplicated = next(
+            row
+            for row in manifest["assets"]
+            if row["expressionId"] == 7
+            and row["accentLocale"] == "EN_US"
+            and row["kind"] == "word"
+            and row["wordOrder"] == 1
+        )
+        manifest["assets"].append(dict(duplicated))
+
+        with self.assertRaises(ValueError):
+            build_be_manifest(manifest, snapshot)
+
+    def test_manifest_from_different_source_fails(self):
+        snapshot, manifest = self.build_fixture()
+        other_snapshot = load_snapshot(make_source_payload())
+
+        with self.assertRaises(ValueError):
+            build_be_manifest(manifest, other_snapshot)
+
+    def test_publish_uses_content_hash_key(self):
+        snapshot, manifest = self.build_fixture()
+        be_manifest = build_be_manifest(manifest, snapshot)
+        aws_runner, stored = make_upload_stub()
+
+        key = publish_be_manifest(
+            be_manifest,
+            manifest["source"]["snapshotSha256"],
+            "bucket",
+            execute=True,
+            aws_runner=aws_runner,
+        )
+
+        body = canonical_manifest_bytes(be_manifest)
+        digest = hashlib.sha256(body).hexdigest()
+        self.assertEqual(
+            key,
+            f"content/expression-pronunciation-audio/manifests/be-{digest}.json",
+        )
+        self.assertEqual(stored[key][0], body)
+        self.assertEqual(
+            stored[key][1]["source-sha256"],
+            manifest["source"]["snapshotSha256"],
+        )
+
+    def test_publish_dry_run_does_not_upload(self):
+        snapshot, manifest = self.build_fixture()
+        be_manifest = build_be_manifest(manifest, snapshot)
+        aws_runner, stored = make_upload_stub()
+
+        key = publish_be_manifest(
+            be_manifest,
+            manifest["source"]["snapshotSha256"],
+            "bucket",
+            execute=False,
+            aws_runner=aws_runner,
+        )
+
+        self.assertTrue(
+            key.startswith("content/expression-pronunciation-audio/manifests/be-")
+        )
+        self.assertEqual(stored, {})
 
 
 if __name__ == "__main__":

@@ -49,6 +49,9 @@ KINDS = (KIND_EXPRESSION, KIND_SENTENCE, KIND_WORD)
 
 KEY_PREFIX = "content/expression-pronunciation-audio"
 CACHE_CONTROL = "public, max-age=31536000, immutable"
+# LAN-351 계약과 동일한 콘텐츠 CDN. URL = base(끝 / 제거) + "/" + s3Key
+# (docs/handoffs/lan-351-be-audio-urls.md)
+DEFAULT_CDN_BASE_URL = "https://d19azau1un4t7r.cloudfront.net"
 
 
 class PermanentTtsError(RuntimeError):
@@ -1295,6 +1298,51 @@ def execute_s3_upload(
     return UploadResult(uploaded=uploaded, verified=verified, conflicts=0)
 
 
+def validate_reference_entries(entries: object) -> str:
+    """기준 데이터가 BE parseReference() 계약대로 게시 가능한지 검증하고 locale을 반환한다.
+
+    BE는 아래 규칙을 어긴 표현을 임포트 실패 목록에 올리므로 게시 전에 같은 규칙으로
+    막는다. 단 sentenceText가 BE DB의 현재 대표 예문과 문자열까지 일치하는지는 여기서
+    확인할 수 없다 — 임포트 응답의 실패 목록으로 확인한다.
+    """
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("reference must be a non-empty top-level JSON array")
+    locales = set()
+    for entry in entries:
+        expression_id = entry.get("expressionId")
+        if not isinstance(expression_id, int) or isinstance(expression_id, bool):
+            raise ValueError("reference entry expressionId must be an integer")
+        label = f"reference entry {expression_id}"
+        locale = entry.get("accentLocale")
+        if locale not in SUPPORTED_LOCALES:
+            raise ValueError(f"{label} has an unsupported accentLocale")
+        locales.add(locale)
+        sentence = entry.get("sentenceText")
+        if not isinstance(sentence, str) or not sentence.strip():
+            raise ValueError(f"{label} is missing sentenceText")
+        words = entry.get("words")
+        if not isinstance(words, list) or not words:
+            raise ValueError(f"{label} must have at least one word")
+        orders = []
+        for word in words:
+            order = word.get("order")
+            if not isinstance(order, int) or isinstance(order, bool) or order < 1:
+                raise ValueError(f"{label} word order must be an integer >= 1")
+            orders.append(order)
+            word_text = word.get("word")
+            if (
+                not isinstance(word_text, str)
+                or not word_text
+                or re.search(r"\s", word_text)
+            ):
+                raise ValueError(f"{label} word must not contain whitespace")
+        if len(set(orders)) != len(orders):
+            raise ValueError(f"{label} has a duplicate word order")
+    if len(locales) != 1:
+        raise ValueError("reference file must contain a single accentLocale")
+    return locales.pop()
+
+
 def publish_reference(
     reference_dir: Path,
     tts_manifest_key: str,
@@ -1303,26 +1351,19 @@ def publish_reference(
     execute: bool = False,
     aws_runner: Callable = subprocess.run,
 ) -> list[str]:
-    """기준 데이터 JSON 3개를 ttsManifestKey를 심어 S3에 게시하고 키 목록을 반환한다.
+    """기준 데이터 JSON 3개를 최상위 배열 그대로 S3에 게시하고 키 목록을 반환한다.
 
-    BE 어드민 임포트가 키 하나(기준 데이터)만 받으면 TTS 매니페스트까지 찾아갈 수
-    있도록 파일 안에 ttsManifestKey를 기록한다.
+    BE parseReference()가 최상위 JSON 배열(List<Entry>)을 기대하므로 겉포장을 씌우지
+    않는다. TTS 매니페스트 키는 S3 객체 metadata(tts-manifest-key)로만 전달한다.
     """
     published = []
     for reference_path in sorted(reference_dir.glob("reference_EN_*.json")):
         if "review" in reference_path.name:
             continue
-        expressions = json.loads(reference_path.read_text(encoding="utf-8"))
-        locale = expressions[0]["accentLocale"]
-        payload = {
-            "schemaVersion": 1,
-            "issue": "LAN-373",
-            "accentLocale": locale,
-            "ttsManifestKey": tts_manifest_key,
-            "expressions": expressions,
-        }
+        entries = json.loads(reference_path.read_text(encoding="utf-8"))
+        locale = validate_reference_entries(entries)
         body = (
-            json.dumps(payload, ensure_ascii=False, sort_keys=True,
+            json.dumps(entries, ensure_ascii=False, sort_keys=True,
                        separators=(",", ":")) + "\n"
         ).encode("utf-8")
         digest = hashlib.sha256(body).hexdigest()
@@ -1365,6 +1406,142 @@ def publish_reference(
     return published
 
 
+def build_be_manifest(
+    manifest: dict,
+    snapshot: SourceSnapshot,
+    *,
+    cdn_base_url: str = DEFAULT_CDN_BASE_URL,
+) -> dict:
+    """작업 매니페스트를 BE importTts가 기대하는 모양으로 변환한다.
+
+    BE 계약(확정 DTO): 표현×억양당 1행, CDN URL. 필드명은 assets/expressionId/
+    accentLocale/expressionAudioUrl/sentenceAudioUrl/words/order/audioUrl 철자 그대로.
+    BE는 기준 데이터 words의 order로 조인하므로 소스와 order 집합이 어긋난 표현은
+    임포트 실패 처리된다 — 게시 전에 소스와 교차 검증해 중단한다.
+    """
+    if manifest["source"]["snapshotSha256"] != source_sha256(snapshot):
+        raise ValueError("manifest was not built from the given --source")
+    base_url = cdn_base_url.rstrip("/")
+
+    rows_by_group: dict[tuple[int, str], dict[str, list[dict]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    for row in manifest["assets"]:
+        rows_by_group[(row["expressionId"], row["accentLocale"])][
+            row["kind"]
+        ].append(row)
+
+    expected_by_group: dict[tuple[int, str], dict] = {}
+    for asset in snapshot.assets:
+        expected = expected_by_group.setdefault(
+            (asset.expression_id, asset.accent_locale),
+            {"has_expression": False, "word_orders": set()},
+        )
+        if asset.kind == KIND_EXPRESSION:
+            expected["has_expression"] = True
+        elif asset.kind == KIND_WORD:
+            expected["word_orders"].add(asset.word_order)
+
+    if set(rows_by_group) != set(expected_by_group):
+        raise ValueError("manifest expressions do not match the source")
+
+    be_assets = []
+    for expression_id, locale in sorted(expected_by_group):
+        rows = rows_by_group[(expression_id, locale)]
+        expected = expected_by_group[(expression_id, locale)]
+        label = f"expression {expression_id} ({locale})"
+        sentence_rows = rows.get(KIND_SENTENCE, [])
+        if len(sentence_rows) != 1:
+            raise ValueError(f"{label} must have exactly one sentence row")
+        expression_rows = rows.get(KIND_EXPRESSION, [])
+        if len(expression_rows) > 1:
+            raise ValueError(f"{label} must have at most one expression row")
+        # 패턴형 표현은 표현 행이 없는 게 정상이지만, 소스가 기대하는데 없거나
+        # 소스에 없는데 있으면 데이터 결손·혼입이다
+        if bool(expression_rows) != expected["has_expression"]:
+            raise ValueError(f"{label} expression row does not match the source")
+        word_rows = sorted(rows.get(KIND_WORD, []), key=lambda row: row["wordOrder"])
+        word_orders = [row["wordOrder"] for row in word_rows]
+        if len(set(word_orders)) != len(word_orders):
+            raise ValueError(f"{label} has a duplicate word order")
+        if set(word_orders) != expected["word_orders"]:
+            raise ValueError(f"{label} word orders do not match the source")
+        be_assets.append(
+            {
+                "expressionId": expression_id,
+                "accentLocale": locale,
+                # 패턴형 표현은 표현 음성이 없다 — BE 컬럼이 nullable이라 null이 정상
+                "expressionAudioUrl": (
+                    f"{base_url}/{expression_rows[0]['s3Key']}"
+                    if expression_rows
+                    else None
+                ),
+                "sentenceAudioUrl": f"{base_url}/{sentence_rows[0]['s3Key']}",
+                "words": [
+                    {"order": row["wordOrder"], "audioUrl": f"{base_url}/{row['s3Key']}"}
+                    for row in word_rows
+                ],
+            }
+        )
+    return {"assets": be_assets}
+
+
+def publish_be_manifest(
+    be_manifest: dict,
+    source_sha: str,
+    bucket: str,
+    *,
+    execute: bool = False,
+    aws_runner: Callable = subprocess.run,
+) -> str:
+    """BE 매니페스트를 콘텐츠 해시 키로 게시하고 키를 반환한다.
+
+    반환된 키를 사람이 BE Swagger의 manifestKey 파라미터에 그대로 복사해 넣는다.
+    """
+    body = canonical_manifest_bytes(be_manifest)
+    digest = hashlib.sha256(body).hexdigest()
+    key = f"{KEY_PREFIX}/manifests/be-{digest}.json"
+    upload_object = UploadObject(
+        key=key,
+        body_path=None,
+        body_bytes=body,
+        content_length=len(body),
+        content_type="application/json",
+        cache_control=CACHE_CONTROL,
+        metadata={"source-sha256": source_sha, "manifest-sha256": digest},
+        manifest_object=True,
+    )
+    head = _head_object(bucket, upload_object, aws_runner)
+    if head is not None:
+        if not _head_matches(upload_object, head):
+            raise ValueError(f"existing object conflict: {key}")
+        print(f"reused {key}")
+        return key
+    if not execute:
+        print(f"would upload {key} ({len(body)}B)")
+        return key
+    with tempfile.NamedTemporaryFile(
+        prefix="lan-373-be-manifest-", suffix=".json", delete=False
+    ) as handle:
+        handle.write(body)
+        temporary = Path(handle.name)
+    try:
+        _put_object(
+            UploadPlan(bucket=bucket, new_keys=(key,), reused_keys=(),
+                       conflict_keys=(), objects=(upload_object,)),
+            upload_object,
+            temporary,
+            aws_runner,
+        )
+    finally:
+        temporary.unlink(missing_ok=True)
+    verified = _head_object(bucket, upload_object, aws_runner)
+    if verified is None or not _head_matches(upload_object, verified):
+        raise ValueError(f"uploaded object verification conflict: {key}")
+    print(f"uploaded {key}")
+    return key
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1393,6 +1570,17 @@ def main(argv: list[str] | None = None) -> int:
     reference_parser.add_argument("--tts-manifest-key", required=True)
     reference_parser.add_argument("--bucket", required=True)
     reference_parser.add_argument("--execute", action="store_true")
+    be_parser = subparsers.add_parser("build-be-manifest")
+    be_parser.add_argument("--manifest", required=True, type=Path)
+    be_parser.add_argument(
+        "--source", required=True, type=Path, help="소스와 교차 검증한다"
+    )
+    be_parser.add_argument("--bucket", required=True)
+    be_parser.add_argument("--cdn-base-url", default=DEFAULT_CDN_BASE_URL)
+    be_parser.add_argument(
+        "--output", type=Path, help="변환 결과를 로컬 파일로도 남긴다"
+    )
+    be_parser.add_argument("--execute", action="store_true")
     upload_parser = subparsers.add_parser("upload")
     upload_parser.add_argument("--manifest", required=True, type=Path)
     upload_parser.add_argument("--work-dir", required=True, type=Path)
@@ -1465,6 +1653,29 @@ def main(argv: list[str] | None = None) -> int:
             execute=args.execute,
         )
         print(f"reference_keys={len(published)}")
+        # 사람이 BE Swagger의 manifestKey 파라미터에 복사해 넣는 키
+        for key in published:
+            print(f"reference_key={key}")
+    elif args.command == "build-be-manifest":
+        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+        snapshot = load_source(args.source)
+        be_manifest = build_be_manifest(
+            manifest, snapshot, cdn_base_url=args.cdn_base_url
+        )
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            temporary_path = Path(f"{args.output}.part")
+            temporary_path.write_bytes(canonical_manifest_bytes(be_manifest))
+            os.replace(temporary_path, args.output)
+        key = publish_be_manifest(
+            be_manifest,
+            manifest["source"]["snapshotSha256"],
+            args.bucket,
+            execute=args.execute,
+        )
+        print(f"expressions={len(be_manifest['assets'])}")
+        # 사람이 BE Swagger의 manifestKey 파라미터에 복사해 넣는 키
+        print(f"be_manifest_key={key}")
     elif args.command == "upload":
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
         verify_manifest(manifest, args.work_dir)

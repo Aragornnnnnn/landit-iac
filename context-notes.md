@@ -38,7 +38,14 @@
 - AWS Access Analyzer는 최종 6개 identity policy와 plan bucket resource policy 모두 findings 0건을 반환했고, 여섯 정책 모두 `iam:PutRolePolicy`가 없다. 최대 inline policy JSON은 apply-production의 3,658자다. IAM simulator는 exact develop SSM·prod ECS 대상 허용, 교차 target 암시적 거부, prod request tag 등록 허용과 develop tag 등록 거부, exact ECS PassRole 허용과 다른 role 거부를 확인했다.
 - OIDC role을 먼저 만들면 보호 설정 전 environment subject가 사용될 수 있으므로 실제 rollout은 GitHub environment 6개·branch policy·결정 가능한 role ARN 변수를 먼저 생성·재조회한 뒤 bootstrap saved plan을 적용한다.
 - `bash scripts/test-admin-content-upload-contract.sh`, `bash scripts/test-dev-ec2-contract.sh`, `bash scripts/test-dev-ec2-runtime.sh`, `bash scripts/test-terraform-actions-oidc-contract.sh`, `bash scripts/test-terraform-workflow-contract.sh`, `terraform fmt -recursive -check`, `git diff --check`가 통과했다. bootstrap·shared·dev·prod `terraform validate`도 모두 성공했다.
-- 실제 bootstrap apply, GitHub environment·variable·branch policy 생성과 feature `plan-only` 재실행은 아직 하지 않았다. bootstrap saved plan에 대한 사용자 별도 승인 뒤 진행한다.
+- 사용자 승인 후 GitHub environment 6개를 먼저 생성했다. required reviewer와 wait timer는 없고, plan은 `main`·`feat/*`, apply는 `main`만 허용하며 각 environment의 `AWS_ROLE_ARN`은 전용 role ARN과 일치한다.
+- bootstrap saved plan SHA-256 `45cabc6716ed52b87be07961f97042144ad3c0bc14da237b1e17b16667b83dac`을 적용해 role·inline policy 6개와 private plan bucket 보안 리소스 등 `17 added, 0 changed, 0 destroyed`를 생성했다. post-apply plan은 `No changes`였다.
+- AWS live 검증에서 6개 role의 OIDC audience는 `sts.amazonaws.com`, subject는 각 environment 하나로 고정됐다. plan bucket은 public access block 4종이 모두 true이고 AES256 암호화와 1일 lifecycle이 활성화됐다.
+- 최초 OIDC plan-only는 provider refresh에 필요한 읽기 권한 누락으로 실패했다. 실패 로그에 확인된 EC2·SSM·Lambda·ELB attribute 조회 action을 최소 추가하고 계약 테스트에 고정했다.
+- 관리 대상 S3 bucket의 `HeadBucket` 403이 삭제로 오인되는 문제는 target별 exact bucket ARN에 `s3:ListBucket`을 허용해 제거했다. AWS provider v6.62.0의 `resourceBucketRead` 구현을 확인해 website·accelerate·request payment·replication·object lock 조회 action도 같은 exact bucket ARN statement에 제한했다.
+- 최종 develop plan-only run `33058980660`은 `0 add, 3 change, 0 destroy`, production run `33058983038`은 `1 add, 2 change, 1 destroy`로 성공했다. 두 결과는 관리자 profile 기준 plan과 일치하고 외부 삭제 drift 표시는 없다.
+- 두 plan-only run 모두 apply job, saved plan 생성·업로드가 skip됐고 GitHub artifact 수와 run별 private S3 plan prefix 객체 수는 모두 0이다.
+- OIDC bootstrap 최종 상태는 post-apply `No changes`이며 branch와 원격 HEAD는 문서 갱신 전 `12d2c65`로 일치한다. PR 병합, 관리자 IAM pre-apply, main workflow apply와 런타임 검증은 아직 실행하지 않았다.
 
 ## 2026-08-25 LAN-351 시나리오 고정 질문 TTS 게시
 

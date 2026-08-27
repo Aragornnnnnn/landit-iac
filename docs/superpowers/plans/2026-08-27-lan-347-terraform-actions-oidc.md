@@ -353,15 +353,15 @@ git commit -m "docs: Terraform OIDC plan 검증 결과를 기록한다"
 - Consumes: 사용자가 승인한 `/tmp/lan347-terraform-actions.tfplan`과 실제 role ARN outputs.
 - Produces: AWS OIDC 역할·plan bucket, GitHub environment 6개와 검증된 `AWS_ROLE_ARN`.
 
-- [ ] **Step 1: 사용자에게 bootstrap saved plan 승인을 받는다.**
+- [x] **Step 1: 사용자에게 bootstrap saved plan 승인을 받는다.**
 
 승인 전에는 아래 apply나 GitHub write를 실행하지 않는다.
 
-- [ ] **Step 2: environment와 branch policy를 생성한다.**
+- [x] **Step 2: environment와 branch policy를 생성한다.**
 
 각 `terraform-{phase}-{target}`에 대해 GitHub REST API로 environment를 만들고 `deployment_branch_policy`를 custom mode로 설정한다. plan에는 `main`, `feat/*`, apply에는 `main` policy를 만든다. required reviewers와 wait timer는 보내지 않는다.
 
-- [ ] **Step 3: environment별 AWS_ROLE_ARN을 설정한다.**
+- [x] **Step 3: environment별 AWS_ROLE_ARN을 설정한다.**
 
 role 이름으로 결정되는 정확한 target·phase ARN을 다음 endpoint의 `value`로 설정한다.
 
@@ -369,11 +369,11 @@ role 이름으로 결정되는 정확한 target·phase ARN을 다음 endpoint의
 PUT /repos/Aragornnnnnn/landit-iac/environments/{environment_name}/variables/AWS_ROLE_ARN
 ```
 
-- [ ] **Step 4: GitHub 보호 구성을 재조회한다.**
+- [x] **Step 4: GitHub 보호 구성을 재조회한다.**
 
 GitHub API로 여섯 environment의 branch policy와 `AWS_ROLE_ARN` 변수 존재를 확인하되 ARN 이외 값은 출력하지 않는다. 이 검증 전에는 OIDC role을 생성하지 않는다.
 
-- [ ] **Step 5: 승인된 saved plan을 적용하고 post-apply를 확인한다.**
+- [x] **Step 5: 승인된 saved plan을 적용하고 post-apply를 확인한다.**
 
 Run:
 
@@ -384,11 +384,11 @@ AWS_PROFILE=landit terraform -chdir=bootstrap/terraform-actions plan -input=fals
 
 Expected: apply 완료 후 `No changes.`.
 
-- [ ] **Step 6: AWS live 구성을 재조회한다.**
+- [x] **Step 6: AWS live 구성을 재조회한다.**
 
 여섯 role의 trust subject와 inline policy, plan bucket public block·encryption·lifecycle을 AWS API로 확인한다.
 
-- [ ] **Step 7: feature plan-only를 재실행한다.**
+- [x] **Step 7: feature plan-only를 재실행한다.**
 
 develop과 production `plan-only`를 실행하고 Terraform plan 단계까지 성공하는지 확인한다. plan-only run에 saved plan S3 object와 GitHub artifact가 생기지 않는지 검증한다.
 

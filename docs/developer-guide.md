@@ -112,24 +112,34 @@ AWS_PROFILE=landit terraform -chdir=environments/shared plan
 
 필요한 GitHub 설정입니다.
 
-- Repository variable 또는 environment variable `AWS_ROLE_ARN`에 GitHub Actions OIDC assume role ARN을 설정합니다.
-- `terraform-plan-shared`, `terraform-plan-develop`, `terraform-plan-production` environment를 만듭니다.
-- `terraform-apply-shared`, `terraform-apply-develop`, `terraform-apply-production` environment를 만들고 required reviewer를 설정합니다.
-- `terraform-apply-production`에는 production 담당자의 required reviewer와 prevent self-review를 설정합니다.
-- apply는 `refs/heads/main`에서만 허용합니다.
+- `terraform-plan-shared`, `terraform-plan-develop`, `terraform-plan-production` environment를 만들고 `main`, `feat/*` branch를 허용합니다.
+- `terraform-apply-shared`, `terraform-apply-develop`, `terraform-apply-production` environment를 만들고 `main` branch만 허용합니다.
+- 각 environment variable `AWS_ROLE_ARN`에는 같은 phase와 target의 전용 OIDC role ARN을 설정합니다. repository 공용 변수는 사용하지 않습니다.
+- apply required reviewer와 wait timer는 현재 설정하지 않습니다. repository write 권한자가 `main`에서 apply를 실행할 수 있으므로 reviewer는 후속 보안 강화 항목입니다.
+- workflow도 apply를 `refs/heads/main`으로 제한하고 production에는 `confirm_environment=production`을 추가로 요구합니다.
 
 workflow 실행 순서입니다.
 
 1. 선택한 target의 Terraform root, state key, AWS account, AWS region, apply environment를 로그에 출력합니다.
 2. 선택한 root에서 `terraform fmt -recursive -check`, `terraform init`, `terraform validate`를 실행합니다.
-3. `terraform plan -out`으로 plan 파일을 만들고 plan 내용을 로그에 출력합니다.
-4. plan 파일을 1일 보관 artifact로 업로드합니다.
-5. `operation=plan-and-apply`일 때만 target별 apply environment 승인을 기다립니다.
-6. 승인 후 같은 plan artifact를 내려받아 `terraform apply`를 실행합니다.
+3. `plan-only`는 저장 파일 없는 speculative plan만 실행합니다.
+4. `plan-and-apply`는 saved plan과 SHA-256을 만들고 `plans/{target}/{run_id}/{run_attempt}` 아래 private S3 객체로 업로드합니다.
+5. apply job은 target별 apply environment에서 별도 OIDC role을 받은 뒤 같은 실행의 정확한 S3 key를 내려받습니다.
+6. SHA-256이 일치할 때만 saved plan을 `terraform apply`에 전달합니다.
 
-production apply는 `operation=plan-and-apply`, `target=production`, `confirm_environment=production`, `refs/heads/main`, `terraform-apply-production` 승인이 모두 충족되어야 실행됩니다.
+saved plan에는 민감 값이 평문으로 포함될 수 있으므로 public GitHub Actions artifact에는 올리지 않습니다. `landit-terraform-plan-artifacts-982529430654` bucket은 public access를 차단하고 AES256으로 암호화하며 `plans/` 객체를 1일 후 만료합니다. plan role은 자기 target prefix 업로드만, apply role은 조회만 허용합니다.
 
-OIDC IAM role은 아직 Terraform으로 만들지 않았습니다. role trust policy는 최소한 아래 subject를 허용해야 합니다.
+production apply는 `operation=plan-and-apply`, `target=production`, `confirm_environment=production`, `refs/heads/main`이 모두 충족되어야 실행됩니다. required reviewer는 현재 없으므로 apply environment 진입 자체가 사람 승인을 기다리지는 않습니다.
+
+OIDC IAM role과 plan bucket은 `bootstrap/terraform-actions`에서 관리합니다. 기존 GitHub OIDC provider를 data source로 참조하며 `bootstrap/github-actions`의 BE·AI 배포 역할 state는 변경하지 않습니다.
+
+```bash
+AWS_PROFILE=landit terraform -chdir=bootstrap/terraform-actions init -reconfigure
+AWS_PROFILE=landit terraform -chdir=bootstrap/terraform-actions validate
+AWS_PROFILE=landit terraform -chdir=bootstrap/terraform-actions plan
+```
+
+bootstrap apply와 GitHub environment·variable 생성은 위 plan의 역할 6개, inline policy 6개와 private plan bucket 보안 리소스를 검토하고 별도 승인받은 뒤에만 실행합니다. 각 role trust policy는 다음 subject 하나만 허용합니다.
 
 - `repo:Aragornnnnnn/landit-iac:environment:terraform-plan-develop`.
 - `repo:Aragornnnnnn/landit-iac:environment:terraform-plan-production`.

@@ -1377,7 +1377,10 @@ data "aws_iam_policy_document" "api_task" {
   }
 
   statement {
-    actions   = ["s3:PutObject"]
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject"
+    ]
     resources = ["arn:aws:s3:::${var.content_bucket_name}/content/inbox/*"]
   }
 }

@@ -45,6 +45,40 @@ api_policy="$(sed -n '/data "aws_iam_policy_document" "api_task" {/,/^}/p' "${MO
 worker_policy="$(sed -n '/data "aws_iam_policy_document" "worker_task" {/,/^}/p' "${MODULE_FILE}")"
 api_task="$(sed -n '/resource "aws_ecs_task_definition" "api" {/,/^}/p' "${MODULE_FILE}")"
 worker_task="$(sed -n '/resource "aws_ecs_task_definition" "worker" {/,/^}/p' "${MODULE_FILE}")"
+dev_content_policy="$(awk '
+  /^[[:space:]]*statement \{/ {
+    in_statement = 1
+    block = $0 ORS
+    next
+  }
+  in_statement {
+    block = block $0 ORS
+    if ($0 ~ /^[[:space:]]*}$/) {
+      if (index(block, "content/inbox/*") > 0) {
+        printf "%s", block
+      }
+      in_statement = 0
+      block = ""
+    }
+  }
+' "${DEV_EC2_FILE}")"
+api_content_policy="$(awk '
+  /^[[:space:]]*statement \{/ {
+    in_statement = 1
+    block = $0 ORS
+    next
+  }
+  in_statement {
+    block = block $0 ORS
+    if ($0 ~ /^[[:space:]]*}$/) {
+      if (index(block, "content/inbox/*") > 0) {
+        printf "%s", block
+      }
+      in_statement = 0
+      block = ""
+    }
+  }
+' "${MODULE_FILE}")"
 
 assert_contains "${shared_main}" 'resource "aws_s3_bucket_cors_configuration" "content" {' "shared 콘텐츠 버킷 CORS 리소스가 필요하다."
 assert_contains "${shared_main}" 'allowed_methods = ["PUT"]' "콘텐츠 업로드는 PUT만 허용해야 한다."
@@ -76,10 +110,13 @@ assert_contains "${prod_main}" 'content_cloudfront_url = data.terraform_remote_s
 assert_contains "${dev_ec2}" 'content_bucket_name    = data.terraform_remote_state.shared.outputs.content_bucket_name' "develop EC2가 shared bucket 이름을 소비해야 한다."
 assert_contains "${dev_ec2}" 'content_cloudfront_url = data.terraform_remote_state.shared.outputs.cloudfront_url' "develop EC2가 CloudFront URL을 소비해야 한다."
 assert_contains "${dev_ec2}" 'arn:aws:s3:::${data.terraform_remote_state.shared.outputs.content_bucket_name}/content/inbox/*' "develop EC2 업로드 권한은 inbox prefix로 제한해야 한다."
+assert_contains "${dev_content_policy}" '"s3:GetObject"' "develop EC2는 inbox 객체를 조회할 수 있어야 한다."
+assert_contains "${dev_content_policy}" '"s3:PutObject"' "develop EC2는 inbox 객체를 업로드할 수 있어야 한다."
 
 assert_contains "${module_variables}" 'variable "content_bucket_name" {' "콘텐츠 bucket module 변수가 필요하다."
 assert_contains "${module_variables}" 'variable "content_cloudfront_url" {' "CloudFront URL module 변수가 필요하다."
-assert_contains "${module}" 'actions   = ["s3:PutObject"]' "API Task Role은 PutObject 권한을 가져야 한다."
+assert_contains "${api_content_policy}" '"s3:GetObject"' "API Task Role은 inbox 객체를 조회할 수 있어야 한다."
+assert_contains "${api_content_policy}" '"s3:PutObject"' "API Task Role은 inbox 객체를 업로드할 수 있어야 한다."
 assert_contains "${module}" 'resources = ["arn:aws:s3:::${var.content_bucket_name}/content/inbox/*"]' "API 업로드 권한은 inbox prefix로 제한해야 한다."
 assert_contains "${api_task}" '{ name = "CONTENT_BUCKET_NAME", value = var.content_bucket_name }' "API에 콘텐츠 bucket 이름을 주입해야 한다."
 assert_contains "${api_task}" '{ name = "CONTENT_CLOUDFRONT_URL", value = var.content_cloudfront_url }' "API에 CloudFront URL을 주입해야 한다."

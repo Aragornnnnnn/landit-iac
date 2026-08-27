@@ -1,5 +1,18 @@
 # Checklist
 
+## 2026-08-27 LAN-347 장기기억 플래그 배포
+
+- [x] `feat/LAN-347-6` 브랜치와 IaC 변경 범위, workflow의 apply 제한을 확인한다.
+- [x] 장기기억 플래그 IaC의 정적 계약, Terraform fmt와 dev·prod validate를 재검증한다.
+- [ ] develop·prod SSM에 두 플래그가 `String=false`로 준비됐는지 값 노출 없이 확인한다. 현재 네 parameter 모두 존재하지 않는다.
+- [ ] feature 브랜치에서 develop·production `plan-only`를 실행하고 예상 변경만 포함하는지 검토한다.
+- [ ] IaC PR을 생성·검토·병합한다.
+- [ ] 사용자 승인 후 main에서 develop `plan-and-apply`를 실행한다.
+- [ ] BE 개발 배포 후 두 플래그 비활성, 정상 기동과 기존 프리톡 회귀를 확인한다.
+- [ ] 사용자 승인 후 main에서 production `plan-and-apply`를 실행한다.
+- [ ] production ECS 안정화와 두 플래그 비활성 상태를 확인한다.
+- [ ] 후속 기능 활성화는 `WRITE=true, USE=false` 관찰 뒤 `USE=true` 순서로 별도 승인받아 진행한다.
+
 ## 2026-08-25 LAN-351 시나리오 고정 질문 TTS 게시
 
 - [x] production DB의 활성 시나리오 40개와 영어 고정 질문 120개를 읽기 전용으로 확인한다.

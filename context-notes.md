@@ -1,5 +1,19 @@
 # Context Notes
 
+## 2026-08-27 LAN-347 장기기억 플래그 배포
+
+- 현재 브랜치는 `feat/LAN-347-6`, HEAD는 `73f6e74`이며 작업 시작 시 worktree는 깨끗하다.
+- IaC 변경은 개발 EC2 runtime env에 `LANDIT_MEMORY_WRITE_ENABLED`, `LANDIT_MEMORY_USE_ENABLED`를 필수 SSM 값으로 추가하고, 운영 ECS API task definition의 SSM secrets에도 두 값을 연결한다.
+- 두 parameter는 Terraform이 생성하지 않는다. `/landit/develop`, `/landit/prod`에 `String=false`로 선행 준비하되 값이나 secret은 로그와 문서에 남기지 않는다.
+- feature 브랜치에서는 develop·production `plan-only`만 실행한다. `plan-and-apply`는 workflow가 `refs/heads/main`만 허용하므로 PR 병합과 plan 검토 뒤 별도 사용자 승인을 받아 진행한다.
+- 최초 적용과 재배포에서는 두 플래그를 모두 `false`로 유지한다. 후속 활성화는 `WRITE=true, USE=false` 관찰 후 `USE=true` 순서이며 SSM 값 변경 뒤 BE 재배포가 필요하다.
+- 과거 IaC fmt/validate 통과 기록은 현재 검증을 대신하지 않는다. 이번 실행의 plan, apply, 재배포와 런타임 증거를 단계별로 새로 기록한다.
+- `terraform fmt -recursive -check`, `git diff --check`, `bash scripts/test-dev-ec2-contract.sh`, `bash scripts/test-dev-ec2-runtime.sh`가 통과했다. dev·prod `terraform validate`는 샌드박스 밖의 provider 실행 경로에서 모두 `Success! The configuration is valid.`로 통과했다.
+- 값 원문을 출력하지 않는 SSM 조회에서 네 parameter가 모두 `InvalidParameters`로 확인됐다. SSM 선행 생성과 확인 전에는 develop BE 재배포 및 production Terraform apply를 진행하지 않는다.
+- 현재 state를 refresh한 develop saved plan은 `0 added, 2 changed, 0 destroyed`다. `aws_ssm_document.ec2_deploy`와 이를 참조하는 GitHub Actions IAM inline policy만 갱신하며, 아직 apply되지 않은 LAN-372 runtime-env 동기화와 LAN-347 두 플래그 추가가 같은 SSM 문서 변경에 포함된다.
+- production saved plan은 `1 added, 1 changed, 1 destroyed`다. API task definition을 교체하고 ECS API service가 새 revision을 가리키는 변경만 있으며, 새 task definition의 secrets에 `/landit/prod/LANDIT_MEMORY_WRITE_ENABLED`, `/landit/prod/LANDIT_MEMORY_USE_ENABLED`가 추가된다.
+- 두 saved plan은 `/tmp/lan347-dev.tfplan`, `/tmp/lan347-prod.tfplan`에만 저장했다. SSM parameter 준비와 사용자 apply 승인 전에는 적용하지 않는다.
+
 ## 2026-08-25 LAN-351 시나리오 고정 질문 TTS 게시
 
 - 이번 저장소 범위는 production DB를 기준으로 고정 질문 MP3를 생성·검증하고 기존 shared private content S3 bucket에 게시하는 작업이다. BE·AI 코드, runtime IAM, DB 컬럼과 런타임 오디오 결합은 후속 이슈로 분리한다.

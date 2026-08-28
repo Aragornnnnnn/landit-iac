@@ -2,7 +2,7 @@
 
 ## 운영 범위
 
-Push 알림은 환경별 Push 전용 SQS Standard Queue를 기존 API ECS Service의 Consumer가 처리하는 구조다. 별도 Push Worker ECS Service, Task Definition, ECR repository, log group은 만들지 않는다. 기존 AI jobs Queue와 AI Worker도 이 흐름에 참여하지 않는다.
+Push 알림은 환경별 Push 전용 SQS Standard Queue를 기존 BE API 런타임의 Consumer가 처리하는 구조다. develop은 EC2 Compose API, production은 ECS API Service가 소비한다. 별도 Push Worker ECS Service, Task Definition, ECR repository, log group은 만들지 않는다. 기존 AI jobs Queue와 AI Worker도 이 흐름에 참여하지 않는다.
 
 | 환경 | 이름 접두사 | Scheduler 초기 상태 | 기본 일정 |
 | --- | --- | --- | --- |
@@ -11,7 +11,7 @@ Push 알림은 환경별 Push 전용 SQS Standard Queue를 기존 API ECS Servic
 
 각 환경에는 main queue `${prefix}-push-notifications`, DLQ `${prefix}-push-notifications-dlq`, `${prefix}-review-reminder` Scheduler, backlog와 DLQ CloudWatch Alarm이 있다. main queue visibility timeout은 300초, retention은 4일, redrive `maxReceiveCount`는 3이다. DLQ retention은 14일이다.
 
-API Task Role만 Push main queue에 `ReceiveMessage`, `DeleteMessage`, `ChangeMessageVisibility`, `GetQueueAttributes`, `SendMessage` 권한을 가진다. API container는 `SQS_PUSH_NOTIFICATIONS_QUEUE_URL`과 `LANDIT_NOTIFICATION_CONSUMER_ENABLED=true`를 받는다.
+production API Task Role과 develop EC2 instance role만 Push main queue에 `ReceiveMessage`, `DeleteMessage`, `ChangeMessageVisibility`, `GetQueueAttributes`, `SendMessage` 권한을 가진다. production ECS API container와 develop EC2의 `api.env`는 `SQS_PUSH_NOTIFICATIONS_QUEUE_URL`과 `LANDIT_NOTIFICATION_CONSUMER_ENABLED=true`를 받는다.
 
 ## Scheduler 메시지 계약
 
@@ -41,9 +41,9 @@ BE가 SQS에서 소비하는 메시지 유형은 `SCHEDULED_NOTIFICATION_BATCH`�
 
 ## Visibility Timeout과 런타임 설정
 
-main queue visibility timeout은 300초를 유지한다. 현재 Consumer는 `ON_SUCCESS`로 정상 반환한 뒤에만 메시지를 삭제하며 visibility 연장은 아직 구현되지 않았다. Scheduler 활성화 전에 BE는 배치 시작과 각 500명 페이지 전후에 `Visibility.changeTo(...)`로 현재 메시지의 visibility를 300초로 연장해야 한다.
+main queue visibility timeout은 300초를 유지한다. Consumer는 `ON_SUCCESS`로 정상 반환한 뒤에만 메시지를 삭제하고, 예약 배치 시작과 각 500명 페이지 전후에 `Visibility.changeTo(300)`으로 현재 메시지의 visibility를 연장한다.
 
-전체 배치 시간은 `ceil(대상 사용자 수 / 500) × (페이지 일괄 조회 + 후보 계산 + Expo 최대 100건 단위 발송 시간)`이다. 현재 활성 사용자 수, DB 실행계획, Expo 발송 지연의 실측값이 없으므로 IaC timeout을 임의로 늘리지 않는다. 한 페이지가 300초를 넘으면 중복 전달은 가능하지만 `push_delivery`가 실제 Expo 중복 발송을 막는다. BE visibility 연장 구현과 dev 부하 측정 결과가 나온 뒤에만 timeout 변경을 검토한다.
+전체 배치 시간은 `ceil(대상 사용자 수 / 500) × (페이지 일괄 조회 + 후보 계산 + Expo 최대 100건 단위 발송 시간)`이다. 현재 활성 사용자 수, DB 실행계획, Expo 발송 지연의 실측값이 없으므로 IaC timeout을 임의로 늘리지 않는다. 한 페이지가 300초를 넘으면 중복 전달은 가능하지만 `push_delivery`가 실제 Expo 중복 발송을 막는다. dev 부하 측정 결과가 나온 뒤에만 timeout 변경을 검토한다.
 
 | 환경 변수 | IaC 주입 | 기본값 또는 SSM |
 | --- | --- | --- |

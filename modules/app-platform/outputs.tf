@@ -59,6 +59,11 @@ output "jobs_queue_url" {
   value       = aws_sqs_queue.jobs.url
 }
 
+output "push_notifications_queue_arn" {
+  description = "Push notifications SQS queue ARN."
+  value       = aws_sqs_queue.push_notifications.arn
+}
+
 output "push_notifications_queue_url" {
   description = "Push notifications SQS queue URL."
   value       = aws_sqs_queue.push_notifications.url

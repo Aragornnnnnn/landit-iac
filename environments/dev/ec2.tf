@@ -18,6 +18,7 @@ locals {
     content_bucket_name    = data.terraform_remote_state.shared.outputs.content_bucket_name
     content_cloudfront_url = data.terraform_remote_state.shared.outputs.cloudfront_url
     jobs_queue_url         = module.app_platform.jobs_queue_url
+    push_queue_url         = module.app_platform.push_notifications_queue_url
     grafana_otlp_enabled   = tostring(var.grafana_otlp_enabled)
     grafana_otlp_endpoint  = var.grafana_otlp_endpoint
   })
@@ -133,6 +134,17 @@ data "aws_iam_policy_document" "ec2_app" {
       "sqs:SendMessage"
     ]
     resources = [module.app_platform.jobs_queue_arn]
+  }
+
+  statement {
+    actions = [
+      "sqs:ChangeMessageVisibility",
+      "sqs:DeleteMessage",
+      "sqs:GetQueueAttributes",
+      "sqs:ReceiveMessage",
+      "sqs:SendMessage"
+    ]
+    resources = [module.app_platform.push_notifications_queue_arn]
   }
 
   statement {

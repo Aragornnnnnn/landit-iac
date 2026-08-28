@@ -8,6 +8,7 @@ MAIN_FILE="${MODULE_DIR}/main.tf"
 VARIABLES_FILE="${MODULE_DIR}/variables.tf"
 OUTPUTS_FILE="${MODULE_DIR}/outputs.tf"
 DEV_MAIN_FILE="environments/dev/main.tf"
+DEV_EC2_FILE="environments/dev/ec2.tf"
 DEV_VARIABLES_FILE="environments/dev/variables.tf"
 DEV_OUTPUTS_FILE="environments/dev/outputs.tf"
 PROD_MAIN_FILE="environments/prod/main.tf"
@@ -122,6 +123,7 @@ require 'visibility_timeout_seconds[[:space:]]*=[[:space:]]*300' "$PUSH_FILE"
 require 'message_retention_seconds[[:space:]]*=[[:space:]]*345600' "$PUSH_FILE"
 require 'deadLetterTargetArn[[:space:]]*=[[:space:]]*aws_sqs_queue.push_notifications_dlq.arn' "$PUSH_FILE"
 require 'maxReceiveCount[[:space:]]*=[[:space:]]*3' "$PUSH_FILE"
+require 'output "push_notifications_queue_arn"' "$OUTPUTS_FILE"
 
 api_policy="$(block 'data "aws_iam_policy_document" "api_task"' "$MAIN_FILE")"
 api_push_statement="$(statement_with_resource "$api_policy" 'aws_sqs_queue\.push_notifications\.arn')"
@@ -146,6 +148,26 @@ api_push_actions="$(
   exit 1
 }
 forbid_text 'push_notifications_dlq' "$api_policy" "API task policy"
+
+ec2_policy="$(block 'data "aws_iam_policy_document" "ec2_app"' "$DEV_EC2_FILE")"
+ec2_push_statement="$(statement_with_resource "$ec2_policy" 'module\.app_platform\.push_notifications_queue_arn')"
+ec2_push_actions="$(
+  awk '
+    /^[[:space:]]*actions[[:space:]]*=[[:space:]]*\[/ { in_actions = 1 }
+    in_actions {
+      print
+      if ($0 ~ /\]/) exit
+    }
+  ' <<<"$ec2_push_statement" |
+    grep -Eo '"[^"]+"' |
+    tr -d '"' |
+    sort -u
+)"
+[[ "$ec2_push_actions" == $'sqs:ChangeMessageVisibility\nsqs:DeleteMessage\nsqs:GetQueueAttributes\nsqs:ReceiveMessage\nsqs:SendMessage' ]] || {
+  echo "unexpected develop EC2 Push queue actions: $ec2_push_actions" >&2
+  exit 1
+}
+forbid_text 'push_notifications_dlq' "$ec2_policy" "develop EC2 policy"
 
 api_task="$(block 'resource "aws_ecs_task_definition" "api"' "$MAIN_FILE")"
 push_queue_env_entries="$(grep -E '\{[[:space:]]*name[[:space:]]*=[[:space:]]*"SQS_PUSH_NOTIFICATIONS_QUEUE_URL"' <<<"$api_task")"

@@ -1,5 +1,16 @@
 # Checklist
 
+## 2026-08-28 LAN-184 develop EC2 Push 연결
+
+- [x] 최신 BE `feat/LAN-184`의 Queue, consumer, Receipt와 visibility 계약을 확인한다.
+- [x] production ECS 계약은 일치하고 develop EC2 runtime env와 IAM이 누락된 원인을 확인한다.
+- [x] EC2 runtime 렌더링과 Push Queue IAM 누락을 재현하는 계약 테스트를 RED로 확인한다.
+- [x] Push Queue ARN output, EC2 IAM과 API runtime env를 최소 범위로 연결한다.
+- [x] 현재 BE 구현에 맞춰 Push 운영 문서의 visibility 설명을 갱신한다.
+- [x] Terraform fmt, Push·EC2 계약 테스트, dev·prod validate와 diff를 검증한다.
+- [x] dev·prod saved plan에서 예상 리소스만 변경되고 Scheduler가 `DISABLED`인지 확인한다.
+- [x] 실제 AWS apply와 Scheduler 활성화 없이 논리 변경을 커밋한다.
+
 ## 2026-08-28 LAN-184 Push 알림 인프라 복구와 main 동기화
 
 - [x] `feat/LAN-184` 브랜치와 연결된 worktree의 상태를 확인한다.

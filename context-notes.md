@@ -1,5 +1,21 @@
 # Context Notes
 
+## 2026-08-28 LAN-184 develop EC2 Push 연결
+
+- BE `feat/LAN-184`의 최신 SHA는 `d615e8e3`다. `SCHEDULED_NOTIFICATION_BATCH`와 `PUSH_RECEIPT_CHECK`만 소비하고, 예약 배치는 500명 페이지마다 visibility를 300초로 연장하며 Receipt 확인은 같은 Queue에 900초 지연 발행한다.
+- production ECS API에는 Push Queue URL, consumer flag와 최소 Queue IAM이 이미 연결돼 있다.
+- develop은 ECS가 비활성화되고 EC2가 실제 배포 대상이지만 EC2 API runtime env에 Push Queue URL, consumer flag와 dev test API flag가 없고 EC2 role도 Push Queue ARN을 허용하지 않는다.
+- Push Queue·DLQ·Scheduler 구조, 300초 visibility, 900초 Receipt 지연 기본값과 production ECS 설정은 변경하지 않는다.
+- Expo access token은 BE에서 선택 값이므로 이번 범위에 SSM parameter를 추가하지 않는다.
+- 실제 AWS plan·apply와 Scheduler 활성화는 별도 승인 전까지 수행하지 않는다.
+- RED 검증에서 Push 계약 테스트는 `push_notifications_queue_arn` output 누락으로, EC2 runtime 테스트는 `SQS_PUSH_NOTIFICATIONS_QUEUE_URL` 누락으로 각각 exit 1을 반환했다.
+- module output에 Push Queue ARN을 추가하고 develop EC2 role에 main Queue 전용 최소 권한을 연결했다. DLQ와 AI worker 권한은 추가하지 않았다.
+- develop EC2 `api.env`에는 Terraform Queue URL, consumer 활성화와 dev test API 활성화를 일반 환경 변수로 기록한다. receipt delay, Expo URL과 timeout은 BE 기본값을 유지한다.
+- GREEN 검증에서 Push 계약과 EC2 runtime 렌더링이 통과했다. 전체 EC2 검증은 기존 rollback 시나리오가 한 차례 간헐 실패했지만 추적 실행과 동일 명령 연속 3회에서 모두 통과했고 관련 rollback 코드는 변경하지 않았다.
+- dev saved plan은 `7 added, 3 changed, 0 destroyed`다. Push Queue·DLQ, 비활성 Scheduler·역할, Alarm 2개를 생성하고 EC2 role policy, runtime env를 담는 SSM deploy document와 이를 참조하는 GitHub deploy policy를 갱신한다.
+- production saved plan은 `8 added, 2 changed, 1 destroyed`다. 같은 Push 리소스 7개를 생성하고 API Task Definition을 Push 환경 변수 때문에 교체하며 ECS Service와 API Task Role을 갱신한다.
+- 두 saved plan의 Scheduler payload 계약 검사가 통과했고 state는 `DISABLED`다. saved plan은 `/tmp/lan184-dev-ec2-push.tfplan`, `/tmp/lan184-prod-push.tfplan`에만 저장했으며 apply하지 않는다.
+
 ## 2026-08-28 LAN-184 Push 알림 인프라 복구와 main 동기화
 
 - `feat/LAN-184` 브랜치는 삭제되지 않았고 제거 커밋 `38bb59c`를 가리키고 있었다. 삭제 이력을 지우는 reset 대신 해당 커밋을 되돌려 복구 이력을 남겼다.

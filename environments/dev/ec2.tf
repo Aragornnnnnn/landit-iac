@@ -114,6 +114,15 @@ data "aws_iam_policy_document" "ec2_app" {
     ]
   }
 
+  # 발음 평가 자산 매니페스트를 dev BE도 S3에서 직접 읽어 임포트한다 (LAN-373).
+  # prod ECS 태스크 역할(modules/app-platform)과 동일한 읽기 전용 권한이다.
+  statement {
+    actions = ["s3:GetObject"]
+    resources = [
+      "arn:aws:s3:::${data.terraform_remote_state.shared.outputs.content_bucket_name}/content/expression-pronunciation-audio/*"
+    ]
+  }
+
   statement {
     actions = [
       "sqs:ChangeMessageVisibility",

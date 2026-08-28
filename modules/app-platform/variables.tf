@@ -134,6 +134,24 @@ variable "worker_desired_count" {
   default     = 1
 }
 
+variable "review_reminder_schedule_expression" {
+  description = "EventBridge Scheduler expression for review reminders."
+  type        = string
+  default     = "cron(0 20 * * ? *)"
+}
+
+variable "review_reminder_schedule_enabled" {
+  description = "Whether the review reminder scheduler is enabled."
+  type        = bool
+  default     = false
+}
+
+variable "notification_test_api_enabled" {
+  description = "Whether to expose the manual notification test API."
+  type        = bool
+  default     = false
+}
+
 variable "alb_certificate_arn" {
   description = "Optional ACM certificate ARN. When set, ALB enables HTTPS and redirects HTTP to HTTPS."
   type        = string

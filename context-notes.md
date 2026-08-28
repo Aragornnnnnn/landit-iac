@@ -1,5 +1,15 @@
 # Context Notes
 
+## 2026-08-28 LAN-184 Push 알림 인프라 복구와 main 동기화
+
+- `feat/LAN-184` 브랜치는 삭제되지 않았고 제거 커밋 `38bb59c`를 가리키고 있었다. 삭제 이력을 지우는 reset 대신 해당 커밋을 되돌려 복구 이력을 남겼다.
+- 복구 범위는 제거 커밋이 삭제한 Push Queue·DLQ, Scheduler, IAM, API 환경 변수, Alarm, 문서와 정적 계약 테스트다.
+- 최신 `origin/main`은 기존 브랜치보다 50개 커밋 앞서고 복구 커밋 하나만 미포함한 상태였다. `origin/main` 위로 해당 커밋 하나를 rebase한다.
+- Terraform 파일은 자동 병합됐고 충돌은 누적 기록 문서인 `checklist.md`, `context-notes.md`에서만 발생했다. 최신 main 기록을 유지하고 이 복구·동기화 기록만 앞에 추가한다.
+- BE 작업 뒤 전달될 최종 인프라 계약은 이번 동기화에서 임의로 정하지 않는다. 실제 AWS plan·apply와 Scheduler 활성화도 수행하지 않는다.
+- rebase 뒤 브랜치는 최신 `origin/main`보다 복구 커밋 하나만 앞서며 뒤처진 커밋은 없다.
+- `terraform fmt -recursive -check`, Push 알림 정적 계약, Scheduler plan 계약 스크립트 문법 검사, dev·prod `terraform validate`, main 대비 `git diff --check`가 모두 통과했다.
+
 ## 2026-08-27 LAN-347 장기기억 플래그 배포
 
 - 현재 브랜치는 `feat/LAN-347-6`, HEAD는 `73f6e74`이며 작업 시작 시 worktree는 깨끗하다.

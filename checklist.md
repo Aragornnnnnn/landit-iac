@@ -1,5 +1,14 @@
 # Checklist
 
+## 2026-08-28 LAN-184 Push 알림 인프라 복구와 main 동기화
+
+- [x] `feat/LAN-184` 브랜치와 연결된 worktree의 상태를 확인한다.
+- [x] 제거 커밋 `38bb59c`의 변경 범위를 확인하고 비파괴적으로 되돌린다.
+- [x] Push Queue·DLQ, Scheduler, IAM, API 환경 변수, Alarm과 전용 문서·테스트를 복구한다.
+- [x] 복구 전 Terraform fmt, 정적 계약 테스트와 dev·prod validate를 실행한다.
+- [x] 최신 `origin/main` 위로 복구 커밋을 rebase하고 누적 기록 문서 충돌을 해결한다.
+- [x] rebase 후 Terraform fmt, 정적 계약 테스트, dev·prod validate와 diff를 재검증한다.
+
 ## 2026-08-27 LAN-347 장기기억 플래그 배포
 
 - [x] `feat/LAN-347-6` 브랜치와 IaC 변경 범위, workflow의 apply 제한을 확인한다.

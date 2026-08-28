@@ -219,6 +219,15 @@ data "aws_iam_policy_document" "terraform" {
   }
 
   dynamic "statement" {
+    for_each = each.value.phase == "apply" && length(local.putrolepolicy_role_arns_by_target[each.value.target]) > 0 ? [1] : []
+    content {
+      sid       = "WriteRuntimeRoleInlinePolicies"
+      actions   = ["iam:PutRolePolicy"]
+      resources = local.putrolepolicy_role_arns_by_target[each.value.target]
+    }
+  }
+
+  dynamic "statement" {
     for_each = each.value.phase == "apply" && each.value.target == "production" ? [1] : []
     content {
       sid = "RegisterProductionTaskDefinitions"

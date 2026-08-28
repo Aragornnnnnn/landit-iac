@@ -62,6 +62,10 @@ assert_contains "${bootstrap}" '"s3:GetObject"' "state 또는 plan 조회 권한
 assert_contains "${bootstrap}" '"s3:DeleteObject"' "lockfile 삭제 권한이 필요하다."
 assert_contains "${bootstrap}" 'actions = ["iam:PassRole"]' "PassRole 권한을 별도 statement로 제한해야 한다."
 assert_contains "${bootstrap}" 'variable = "iam:PassedToService"' "PassRole 대상 AWS service를 제한해야 한다."
+assert_contains "${bootstrap}" 'sid       = "WriteRuntimeRoleInlinePolicies"' "PutRolePolicy를 별도 statement로 제한해야 한다."
+assert_contains "${bootstrap}" 'actions   = ["iam:PutRolePolicy"]' "인라인 정책 쓰기는 PutRolePolicy 하나만 허용해야 한다."
+assert_contains "${bootstrap}" 'role/develop-${var.project_name}-ec2-app' "develop apply의 인라인 정책 쓰기를 dev BE EC2 역할로 한정해야 한다."
+assert_contains "${bootstrap}" 'role/prod-${var.project_name}-api-task' "production apply의 인라인 정책 쓰기를 prod BE 태스크 역할로 한정해야 한다."
 assert_contains "${bootstrap}" 'arn:aws:ssm:${var.aws_region}::parameter/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64' "develop의 SSM 값 조회를 공용 AMI parameter로 제한해야 한다."
 assert_contains "${bootstrap}" '"s3:GetLifecycleConfiguration"' "S3 lifecycle 조회 IAM action이 정확해야 한다."
 assert_contains "${bootstrap}" '"s3:GetBucketOwnershipControls"' "shared bucket ownership 조회 권한이 필요하다."
@@ -103,7 +107,7 @@ assert_not_contains "${bootstrap}" 'AdministratorAccess' "AdministratorAccess를
 assert_not_contains "${bootstrap}" 'PowerUserAccess' "PowerUserAccess를 사용하면 안 된다."
 assert_not_contains "${bootstrap}" 'ReadOnlyAccess' "AWS 관리형 ReadOnlyAccess를 사용하면 안 된다."
 assert_not_contains "${bootstrap}" '"iam:*"' "iam wildcard action을 사용하면 안 된다."
-assert_not_contains "${bootstrap}" '"iam:PutRolePolicy"' "Actions apply role이 runtime role policy를 변경하면 안 된다."
+assert_not_contains "${bootstrap}" '"iam:DeleteRolePolicy"' "현재 saved plan에 필요하지 않은 인라인 정책 삭제를 허용하면 안 된다."
 assert_not_contains "${bootstrap}" '"ecs:DeregisterTaskDefinition"' "task definition 해제를 위한 account-wide mutation을 허용하면 안 된다."
 assert_not_contains "${bootstrap}" '"s3:DeleteBucket"' "현재 saved plan에 필요하지 않은 bucket 삭제를 허용하면 안 된다."
 assert_not_contains "${bootstrap}" '"iam:DeleteRole"' "현재 saved plan에 필요하지 않은 role 삭제를 허용하면 안 된다."
@@ -112,6 +116,12 @@ assert_not_contains "${bootstrap}" '"ec2:TerminateInstances"' "현재 saved plan
 ssm_get_parameter_count="$(grep -F '"ssm:GetParameter"' "${BOOTSTRAP_DIR}"/*.tf | wc -l | tr -d ' ')"
 if [ "${ssm_get_parameter_count}" != "1" ]; then
   echo "계약 위반. ssm:GetParameter는 공용 AMI 전용 statement에만 있어야 한다." >&2
+  exit 1
+fi
+
+put_role_policy_count="$(grep -F '"iam:PutRolePolicy"' "${BOOTSTRAP_DIR}"/*.tf | wc -l | tr -d ' ')"
+if [ "${put_role_policy_count}" != "1" ]; then
+  echo "계약 위반. iam:PutRolePolicy는 역할 ARN을 한정한 전용 statement에만 있어야 한다." >&2
   exit 1
 fi
 

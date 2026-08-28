@@ -1383,6 +1383,14 @@ data "aws_iam_policy_document" "api_task" {
     ]
     resources = ["arn:aws:s3:::${var.content_bucket_name}/content/inbox/*"]
   }
+
+  # 발음 평가 자산 매니페스트를 BE가 S3에서 직접 읽어 임포트한다 (LAN-373)
+  statement {
+    actions = ["s3:GetObject"]
+    resources = [
+      "arn:aws:s3:::${var.content_bucket_name}/content/expression-pronunciation-audio/*"
+    ]
+  }
 }
 
 resource "aws_iam_role_policy" "api_task" {

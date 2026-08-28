@@ -147,6 +147,17 @@ locals {
     ]
   }
 
+  # apply가 인라인 정책을 갱신할 수 있는 런타임 역할. 와일드카드 금지 — 역할 ARN 단위로만 허용.
+  putrolepolicy_role_arns_by_target = {
+    shared = []
+    develop = [
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/develop-${var.project_name}-ec2-app"
+    ]
+    production = [
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-api-task"
+    ]
+  }
+
   managed_bucket_arns_by_target = {
     shared = [
       "arn:aws:s3:::${var.project_name}-content-${data.aws_caller_identity.current.account_id}"

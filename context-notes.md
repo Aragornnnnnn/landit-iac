@@ -8,6 +8,7 @@
 - 같은 fixture에 수정된 테스트를 적용하면 `CloudFront content_cors 정책은 모든 origin을 허용해야 한다.`로 exit 1을 반환한다.
 - 다른 cache behavior에만 `content_cors`를 연결하고 default cache behavior에는 decoy를 연결한 fixture도 실패하도록 회귀 검증을 추가했다.
 - `bash -n scripts/test-admin-content-upload-contract.sh`, `bash scripts/test-admin-content-upload-contract.sh`, `terraform fmt -recursive -check`, `git diff --check`가 exit 0을 반환했고, `terraform -chdir=environments/shared validate`도 샌드박스 밖 provider 실행으로 `Success! The configuration is valid.`를 반환했다.
+- 수정 커밋 `7dde768`을 `feat/LAN-386`에 push하고 검증 근거를 답변했으며 CodeRabbit 인라인 스레드를 해결 처리했다.
 
 ## 2026-08-27 LAN-347 장기기억 플래그 배포
 

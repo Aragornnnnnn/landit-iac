@@ -1,5 +1,13 @@
 # Checklist
 
+## 2026-08-29 LAN-386 PR 리뷰 반영
+
+- [x] CodeRabbit 인라인 리뷰를 현재 계약 테스트와 HCL로 검증한다.
+- [x] 다른 정책의 wildcard origin이 잘못된 `content_cors`를 가리는 RED fixture를 확인한다.
+- [x] 정확한 `content_cors`와 `default_cache_behavior` 블록만 검증한다.
+- [x] 관련 계약 테스트와 Terraform 형식을 검증한다.
+- [x] PR 브랜치를 갱신하고 리뷰 스레드에 근거를 답변한다.
+
 ## 2026-08-29 LAN-184 PR 리뷰 반영
 
 - [x] CodeRabbit 인라인 리뷰 3건을 현재 코드와 실제 셸 동작으로 검증한다.
@@ -576,3 +584,12 @@
 - [ ] runtime 동기화 변경을 개발 환경에 apply한다.
 - [ ] IAC 변경 적용 후 BE 핫픽스를 배포해 실행 컨테이너의 환경 변수를 확인한다.
 - [ ] 관리자 presigned URL 흐름을 live에서 확인한다.
+
+## 2026-08-29 LAN-386 CloudFront 조회 CORS
+
+- [x] shared CloudFront와 develop·production 소비 경로를 확인한다.
+- [x] CloudFront Response Headers Policy 계약 테스트를 실패 상태로 확인한다.
+- [x] `Access-Control-Allow-Origin: *` 정책을 default cache behavior에 연결한다.
+- [x] `terraform fmt -recursive`, 계약 테스트, shared validate와 plan을 실행한다.
+- [x] 사용자 승인 후 shared saved plan을 적용한다.
+- [x] live CloudFront 응답 헤더와 post-apply plan을 확인한다.

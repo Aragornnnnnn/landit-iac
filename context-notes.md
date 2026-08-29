@@ -1,5 +1,15 @@
 # Context Notes
 
+## 2026-08-29 LAN-386 PR 리뷰 반영
+
+- PR #22 CodeRabbit 리뷰는 유효하다. 기존 계약 테스트가 첫 `access_control_allow_origins`부터 전역 검색하고 정책 연결도 전체 파일에서 검색해 다른 리소스가 오류를 가릴 수 있었다.
+- 임시 두 정책 fixture에서 decoy 정책은 wildcard origin, 실제 `content_cors`는 잘못된 origin을 사용해도 기존 테스트가 exit 0을 반환하는 RED를 재현했다.
+- 정확한 `content_cors` 정책, 그 안의 `access_control_allow_origins`, `content` 배포의 `default_cache_behavior` 블록을 brace depth로 추출해 계약 범위를 고정했다.
+- 같은 fixture에 수정된 테스트를 적용하면 `CloudFront content_cors 정책은 모든 origin을 허용해야 한다.`로 exit 1을 반환한다.
+- 다른 cache behavior에만 `content_cors`를 연결하고 default cache behavior에는 decoy를 연결한 fixture도 실패하도록 회귀 검증을 추가했다.
+- `bash -n scripts/test-admin-content-upload-contract.sh`, `bash scripts/test-admin-content-upload-contract.sh`, `terraform fmt -recursive -check`, `git diff --check`가 exit 0을 반환했고, `terraform -chdir=environments/shared validate`도 샌드박스 밖 provider 실행으로 `Success! The configuration is valid.`를 반환했다.
+- 수정 커밋 `7dde768`을 `feat/LAN-386`에 push하고 검증 근거를 답변했으며 CodeRabbit 인라인 스레드를 해결 처리했다.
+
 ## 2026-08-29 LAN-184 PR 리뷰 반영
 
 - PR #21 CodeRabbit 리뷰 3건은 미해결 상태다. Terraform plan 명령에는 이미 `AWS_PROFILE=landit`이 있으므로 해당 지적은 현재 코드와 불일치하고, `terraform output` 두 호출의 profile 누락만 유효하다.
@@ -821,3 +831,16 @@
 - 개발 EC2의 `user_data`는 lifecycle에서 변경을 무시하므로 기존 인스턴스의 `/opt/landit/bin/runtime-env`와 실행 컨테이너에는 콘텐츠 환경 변수가 반영되지 않았다.
 - runtime env를 별도 템플릿으로 분리하고, EC2 user-data와 SSM 배포 문서가 같은 렌더링 결과를 사용하도록 수정했다. SSM은 매 배포 전 임시 파일을 생성해 `runtime-env`를 원자적으로 교체한 뒤 기존 `deploy-service`를 실행한다.
 - IAC 변경을 적용해 SSM 문서를 갱신한 뒤 BE 핫픽스를 배포해야 실행 중인 개발 API 컨테이너에 새 환경 변수가 반영된다. 현재 API는 재기동하지 않았다.
+
+## 2026-08-29 LAN-386 CloudFront 조회 CORS
+
+- 립싱크가 CloudFront 음성 파일의 파형을 브라우저에서 읽을 수 있도록 조회 응답에 `Access-Control-Allow-Origin: *`가 필요하다.
+- 기존 S3 CORS는 브라우저 직접 업로드용 `PUT` 설정이며 CloudFront `GET`/`HEAD` 응답 CORS와 별개다.
+- develop과 production은 모두 shared Terraform state의 동일한 `cloudfront_url`을 사용한다. 따라서 환경별 distribution을 변경하지 않고 `environments/shared`의 단일 CloudFront distribution에 Response Headers Policy를 연결한다.
+- Terraform plan 없이 apply하지 않으며, saved plan의 변경 범위를 확인한 뒤 사용자 승인을 별도로 받는다.
+- 계약 테스트는 정책 리소스, allow origin `*`, origin override, default cache behavior 연결을 검증한다. `terraform fmt -recursive -check`, 계약 테스트, `git diff --check`, shared `terraform validate`가 통과했다.
+- saved plan `/tmp/lan386-shared.tfplan`은 `1 added, 2 changed, 0 destroyed`다. Response Headers Policy를 만들고 CloudFront distribution에 연결하며, distribution ARN을 참조하는 기존 S3 bucket policy는 apply 시 동일 내용을 재계산해 in-place 갱신으로 표시된다.
+- 사용자 승인 후 fresh saved plan `/tmp/lan386-shared-approved.tfplan`을 적용했다. 실제 결과는 Response Headers Policy 생성과 CloudFront distribution 갱신으로 `1 added, 1 changed, 0 destroyed`였고 기존 S3 bucket policy에는 실변경이 없었다.
+- live distribution은 `Deployed`이며 default cache behavior가 새 Response Headers Policy를 참조한다. 정책은 origin `*`, methods `GET`/`HEAD`, credentials `false`, origin override `true`다.
+- 실제 MP3에 `Origin: https://develop.landit.im`과 `Origin: https://landit.im`, `Range: bytes=0-15`를 각각 보낸 결과 모두 `HTTP 206`, `content-type: audio/mpeg`, `access-control-allow-origin: *`, 올바른 `content-range`를 반환했다.
+- post-apply shared `terraform plan -detailed-exitcode`는 exit code `0`과 `No changes`를 반환했다.

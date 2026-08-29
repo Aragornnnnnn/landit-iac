@@ -52,6 +52,28 @@ resource "aws_cloudfront_origin_access_control" "content" {
   signing_protocol                  = "sigv4"
 }
 
+resource "aws_cloudfront_response_headers_policy" "content_cors" {
+  name    = "${local.name_prefix}-content-cors"
+  comment = "Allow browsers to read shared Landit content responses."
+
+  cors_config {
+    access_control_allow_credentials = false
+    origin_override                  = true
+
+    access_control_allow_headers {
+      items = ["*"]
+    }
+
+    access_control_allow_methods {
+      items = ["GET", "HEAD"]
+    }
+
+    access_control_allow_origins {
+      items = ["*"]
+    }
+  }
+}
+
 resource "aws_cloudfront_distribution" "content" {
   enabled         = true
   is_ipv6_enabled = true
@@ -64,14 +86,15 @@ resource "aws_cloudfront_distribution" "content" {
   }
 
   default_cache_behavior {
-    allowed_methods        = ["GET", "HEAD"]
-    cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = local.content_origin_id
-    viewer_protocol_policy = "redirect-to-https"
-    compress               = true
-    min_ttl                = 0
-    default_ttl            = 31536000
-    max_ttl                = 31536000
+    allowed_methods            = ["GET", "HEAD"]
+    cached_methods             = ["GET", "HEAD"]
+    target_origin_id           = local.content_origin_id
+    viewer_protocol_policy     = "redirect-to-https"
+    compress                   = true
+    min_ttl                    = 0
+    default_ttl                = 31536000
+    max_ttl                    = 31536000
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.content_cors.id
 
     forwarded_values {
       query_string = false

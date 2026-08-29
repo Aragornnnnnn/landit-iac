@@ -785,3 +785,12 @@
 - 개발 EC2의 `user_data`는 lifecycle에서 변경을 무시하므로 기존 인스턴스의 `/opt/landit/bin/runtime-env`와 실행 컨테이너에는 콘텐츠 환경 변수가 반영되지 않았다.
 - runtime env를 별도 템플릿으로 분리하고, EC2 user-data와 SSM 배포 문서가 같은 렌더링 결과를 사용하도록 수정했다. SSM은 매 배포 전 임시 파일을 생성해 `runtime-env`를 원자적으로 교체한 뒤 기존 `deploy-service`를 실행한다.
 - IAC 변경을 적용해 SSM 문서를 갱신한 뒤 BE 핫픽스를 배포해야 실행 중인 개발 API 컨테이너에 새 환경 변수가 반영된다. 현재 API는 재기동하지 않았다.
+
+## 2026-08-29 LAN-386 CloudFront 조회 CORS
+
+- 립싱크가 CloudFront 음성 파일의 파형을 브라우저에서 읽을 수 있도록 조회 응답에 `Access-Control-Allow-Origin: *`가 필요하다.
+- 기존 S3 CORS는 브라우저 직접 업로드용 `PUT` 설정이며 CloudFront `GET`/`HEAD` 응답 CORS와 별개다.
+- develop과 production은 모두 shared Terraform state의 동일한 `cloudfront_url`을 사용한다. 따라서 환경별 distribution을 변경하지 않고 `environments/shared`의 단일 CloudFront distribution에 Response Headers Policy를 연결한다.
+- Terraform plan 없이 apply하지 않으며, saved plan의 변경 범위를 확인한 뒤 사용자 승인을 별도로 받는다.
+- 계약 테스트는 정책 리소스, allow origin `*`, origin override, default cache behavior 연결을 검증한다. `terraform fmt -recursive -check`, 계약 테스트, `git diff --check`, shared `terraform validate`가 통과했다.
+- saved plan `/tmp/lan386-shared.tfplan`은 `1 added, 2 changed, 0 destroyed`다. Response Headers Policy를 만들고 CloudFront distribution에 연결하며, distribution ARN을 참조하는 기존 S3 bucket policy는 apply 시 동일 내용을 재계산해 in-place 갱신으로 표시된다.

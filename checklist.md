@@ -547,3 +547,12 @@
 - [ ] runtime 동기화 변경을 개발 환경에 apply한다.
 - [ ] IAC 변경 적용 후 BE 핫픽스를 배포해 실행 컨테이너의 환경 변수를 확인한다.
 - [ ] 관리자 presigned URL 흐름을 live에서 확인한다.
+
+## 2026-08-29 LAN-386 CloudFront 조회 CORS
+
+- [x] shared CloudFront와 develop·production 소비 경로를 확인한다.
+- [x] CloudFront Response Headers Policy 계약 테스트를 실패 상태로 확인한다.
+- [x] `Access-Control-Allow-Origin: *` 정책을 default cache behavior에 연결한다.
+- [x] `terraform fmt -recursive`, 계약 테스트, shared validate와 plan을 실행한다.
+- [ ] 사용자 승인 후 shared saved plan을 적용한다.
+- [ ] live CloudFront 응답 헤더와 post-apply plan을 확인한다.

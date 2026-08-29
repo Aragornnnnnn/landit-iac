@@ -1,5 +1,14 @@
 # Checklist
 
+## 2026-08-29 LAN-184 PR 리뷰 반영
+
+- [x] CodeRabbit 인라인 리뷰 3건을 현재 코드와 실제 셸 동작으로 검증한다.
+- [x] 금지된 Worker Push 환경 변수를 기존 계약 테스트가 놓치는 RED fixture를 확인한다.
+- [x] Worker 격리 검사를 명시적 실패 조건으로 바꾸고 GREEN fixture를 확인한다.
+- [x] Push 운영 문서의 AWS profile과 develop EC2·production ECS 검증 절차를 분리한다.
+- [x] 관련 계약 테스트와 문서 명령을 검증한다.
+- [ ] PR 브랜치를 갱신하고 리뷰 스레드에 근거를 답변한다.
+
 ## 2026-08-28 LAN-184 develop EC2 Push 연결
 
 - [x] 최신 BE `feat/LAN-184`의 Queue, consumer, Receipt와 visibility 계약을 확인한다.

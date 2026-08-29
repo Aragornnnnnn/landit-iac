@@ -90,15 +90,11 @@ AWS_PROFILE=landit terraform -chdir=environments/prod plan \
 LAN184_ROOT=environments/dev
 LAN184_PREFIX=develop-landit
 AWS_PROFILE=landit AWS_REGION=ap-northeast-2 aws sqs get-queue-attributes \
-  --queue-url "$(terraform -chdir=$LAN184_ROOT output -raw push_notifications_queue_url)" \
+  --queue-url "$(AWS_PROFILE=landit AWS_REGION=ap-northeast-2 terraform -chdir="$LAN184_ROOT" output -raw push_notifications_queue_url)" \
   --attribute-names QueueArn VisibilityTimeout MessageRetentionPeriod RedrivePolicy ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible
 AWS_PROFILE=landit AWS_REGION=ap-northeast-2 aws sqs get-queue-attributes \
-  --queue-url "$(terraform -chdir=$LAN184_ROOT output -raw push_notifications_dlq_url)" \
+  --queue-url "$(AWS_PROFILE=landit AWS_REGION=ap-northeast-2 terraform -chdir="$LAN184_ROOT" output -raw push_notifications_dlq_url)" \
   --attribute-names QueueArn MessageRetentionPeriod ApproximateNumberOfMessages
-AWS_PROFILE=landit AWS_REGION=ap-northeast-2 aws ecs describe-task-definition \
-  --task-definition "$LAN184_PREFIX-api" \
-  --query 'taskDefinition.containerDefinitions[?name==`api`].environment[?name==`SQS_PUSH_NOTIFICATIONS_QUEUE_URL` || name==`LANDIT_NOTIFICATION_CONSUMER_ENABLED`]' \
-  --output json
 AWS_PROFILE=landit AWS_REGION=ap-northeast-2 aws scheduler get-schedule \
   --name "$LAN184_PREFIX-review-reminder" \
   --query '{State:State,ScheduleExpression:ScheduleExpression,Timezone:ScheduleExpressionTimezone,TargetArn:Target.Arn}' \
@@ -107,6 +103,34 @@ AWS_PROFILE=landit AWS_REGION=ap-northeast-2 aws cloudwatch describe-alarms \
   --alarm-names "$LAN184_PREFIX-push-notifications-backlog" "$LAN184_PREFIX-push-notifications-dlq" \
   --query 'MetricAlarms[].{Name:AlarmName,State:StateValue,Metric:MetricName,Threshold:Threshold,Period:Period,AlarmActions:AlarmActions,OKActions:OKActions,InsufficientDataActions:InsufficientDataActions}' \
   --output table
+```
+
+develop은 EC2 Compose runtime의 `/run/landit/api.env`를 값 출력 없이 검사한다.
+
+```bash
+LAN184_ROOT=environments/dev
+DEV_INSTANCE_ID="$(AWS_PROFILE=landit AWS_REGION=ap-northeast-2 terraform -chdir="$LAN184_ROOT" output -raw ec2_instance_id)"
+DEV_CHECK_COMMAND_ID="$(AWS_PROFILE=landit AWS_REGION=ap-northeast-2 aws ssm send-command \
+  --instance-ids "$DEV_INSTANCE_ID" \
+  --document-name AWS-RunShellScript \
+  --parameters 'commands=["sudo grep -Eq \"^SQS_PUSH_NOTIFICATIONS_QUEUE_URL=.+$\" /run/landit/api.env && sudo grep -qx \"LANDIT_NOTIFICATION_CONSUMER_ENABLED=true\" /run/landit/api.env && sudo grep -qx \"LANDIT_NOTIFICATION_TEST_API_ENABLED=true\" /run/landit/api.env"]' \
+  --query 'Command.CommandId' \
+  --output text)"
+AWS_PROFILE=landit AWS_REGION=ap-northeast-2 aws ssm get-command-invocation \
+  --command-id "$DEV_CHECK_COMMAND_ID" \
+  --instance-id "$DEV_INSTANCE_ID" \
+  --query '{Status:Status,ResponseCode:ResponseCode}' \
+  --output json
+```
+
+production은 ECS API Task Definition의 환경 변수를 검사한다.
+
+```bash
+LAN184_PREFIX=prod-landit
+AWS_PROFILE=landit AWS_REGION=ap-northeast-2 aws ecs describe-task-definition \
+  --task-definition "$LAN184_PREFIX-api" \
+  --query 'taskDefinition.containerDefinitions[?name==`api`].environment[?name==`SQS_PUSH_NOTIFICATIONS_QUEUE_URL` || name==`LANDIT_NOTIFICATION_CONSUMER_ENABLED`]' \
+  --output json
 ```
 
 수동 메시지 검증은 BE 운영 절차에 따라 수행한다. Queue attribute와 Alarm 상태만 조회하고, 운영 문서·터미널 기록·로그에 메시지 본문을 남기지 않는다.

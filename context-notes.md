@@ -1,5 +1,14 @@
 # Context Notes
 
+## 2026-08-29 LAN-184 PR 리뷰 반영
+
+- PR #21 CodeRabbit 리뷰 3건은 미해결 상태다. Terraform plan 명령에는 이미 `AWS_PROFILE=landit`이 있으므로 해당 지적은 현재 코드와 불일치하고, `terraform output` 두 호출의 profile 누락만 유효하다.
+- develop은 EC2 Compose인데 공통 live 검증 절차가 ECS Task Definition을 조회하는 문제와 Worker 격리 검사가 독립된 `! grep -q` 때문에 `set -e`를 우회하는 문제는 유효하다.
+- 임시 fixture의 Worker task에 `SQS_PUSH_NOTIFICATIONS_QUEUE_URL`을 추가해도 기존 Push 계약 스크립트가 exit 0을 반환해 격리 위반을 놓치는 RED를 재현했다.
+- Worker 격리 검사를 명시적 `if`와 `exit 1`로 바꾼 뒤 같은 fixture가 `worker task must not contain Push notification configuration`으로 exit 1을 반환했다.
+- `bash -n scripts/test-push-notification-infra-contract.sh`, `bash scripts/test-push-notification-infra-contract.sh`, `bash scripts/test-dev-ec2-runtime.sh`, `terraform fmt -recursive -check`, `git diff --check`가 모두 exit 0을 반환했다. dev EC2 runtime 테스트가 출력한 health check 실패 문구는 의도된 rollback 실패 fixture다.
+- CodeRabbit의 test API 공개 위험 요약은 merge blocker로 판단하지 않는다. BE Security 설정이 해당 endpoint를 인증 필수로 고정하고 Controller가 인증 사용자 본인만 대상으로 하며 IaC는 develop에서만 test API를 활성화한다.
+
 ## 2026-08-28 LAN-184 develop EC2 Push 연결
 
 - BE `feat/LAN-184`의 최신 SHA는 `d615e8e3`다. `SCHEDULED_NOTIFICATION_BATCH`와 `PUSH_RECEIPT_CHECK`만 소비하고, 예약 배치는 500명 페이지마다 visibility를 300초로 연장하며 Receipt 확인은 같은 Queue에 900초 지연 발행한다.

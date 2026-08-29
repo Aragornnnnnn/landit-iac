@@ -189,8 +189,14 @@ test_api_env_entries="$(grep -E '\{[[:space:]]*name[[:space:]]*=[[:space:]]*"LAN
 require_text 'value[[:space:]]*=[[:space:]]*"true"' "$test_api_env_entries" "notification test API environment entry"
 require_text 'var\.notification_test_api_enabled[[:space:]]*\?[[:space:]]*\[' "$api_task" "notification test API conditional environment"
 worker_task="$(block 'resource "aws_ecs_task_definition" "worker"' "$MAIN_FILE")"
-! grep -q 'PUSH_NOTIFICATIONS' <<<"$worker_task"
-! grep -q 'LANDIT_NOTIFICATION_TEST_API_ENABLED' <<<"$worker_task"
+if grep -q 'PUSH_NOTIFICATIONS' <<<"$worker_task"; then
+  echo "worker task must not contain Push notification configuration" >&2
+  exit 1
+fi
+if grep -q 'LANDIT_NOTIFICATION_TEST_API_ENABLED' <<<"$worker_task"; then
+  echo "worker task must not enable the notification test API" >&2
+  exit 1
+fi
 worker_policy="$(block 'data "aws_iam_policy_document" "worker_task"' "$MAIN_FILE")"
 forbid_text 'aws_sqs_queue\.push_notifications' "$worker_policy" "Worker IAM policy"
 for resource_type in aws_ecs_task_definition aws_ecs_service aws_ecr_repository aws_cloudwatch_log_group; do

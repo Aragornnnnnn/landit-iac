@@ -7,7 +7,7 @@
 - [x] Worker 격리 검사를 명시적 실패 조건으로 바꾸고 GREEN fixture를 확인한다.
 - [x] Push 운영 문서의 AWS profile과 develop EC2·production ECS 검증 절차를 분리한다.
 - [x] 관련 계약 테스트와 문서 명령을 검증한다.
-- [ ] PR 브랜치를 갱신하고 리뷰 스레드에 근거를 답변한다.
+- [x] PR 브랜치를 갱신하고 리뷰 스레드에 근거를 답변한다.
 
 ## 2026-08-28 LAN-184 develop EC2 Push 연결
 

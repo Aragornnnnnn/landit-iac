@@ -8,6 +8,7 @@
 - Worker 격리 검사를 명시적 `if`와 `exit 1`로 바꾼 뒤 같은 fixture가 `worker task must not contain Push notification configuration`으로 exit 1을 반환했다.
 - `bash -n scripts/test-push-notification-infra-contract.sh`, `bash scripts/test-push-notification-infra-contract.sh`, `bash scripts/test-dev-ec2-runtime.sh`, `terraform fmt -recursive -check`, `git diff --check`가 모두 exit 0을 반환했다. dev EC2 runtime 테스트가 출력한 health check 실패 문구는 의도된 rollback 실패 fixture다.
 - CodeRabbit의 test API 공개 위험 요약은 merge blocker로 판단하지 않는다. BE Security 설정이 해당 endpoint를 인증 필수로 고정하고 Controller가 인증 사용자 본인만 대상으로 하며 IaC는 develop에서만 test API를 활성화한다.
+- 수정 커밋 `0596932`를 `feat/LAN-184`에 push했다. CodeRabbit 인라인 3건은 모두 해결 상태이며 profile 지적에는 실제 누락 범위와 수정 근거를 답변했다.
 
 ## 2026-08-28 LAN-184 develop EC2 Push 연결
 

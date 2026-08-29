@@ -554,5 +554,5 @@
 - [x] CloudFront Response Headers Policy 계약 테스트를 실패 상태로 확인한다.
 - [x] `Access-Control-Allow-Origin: *` 정책을 default cache behavior에 연결한다.
 - [x] `terraform fmt -recursive`, 계약 테스트, shared validate와 plan을 실행한다.
-- [ ] 사용자 승인 후 shared saved plan을 적용한다.
-- [ ] live CloudFront 응답 헤더와 post-apply plan을 확인한다.
+- [x] 사용자 승인 후 shared saved plan을 적용한다.
+- [x] live CloudFront 응답 헤더와 post-apply plan을 확인한다.

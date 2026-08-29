@@ -794,3 +794,7 @@
 - Terraform plan 없이 apply하지 않으며, saved plan의 변경 범위를 확인한 뒤 사용자 승인을 별도로 받는다.
 - 계약 테스트는 정책 리소스, allow origin `*`, origin override, default cache behavior 연결을 검증한다. `terraform fmt -recursive -check`, 계약 테스트, `git diff --check`, shared `terraform validate`가 통과했다.
 - saved plan `/tmp/lan386-shared.tfplan`은 `1 added, 2 changed, 0 destroyed`다. Response Headers Policy를 만들고 CloudFront distribution에 연결하며, distribution ARN을 참조하는 기존 S3 bucket policy는 apply 시 동일 내용을 재계산해 in-place 갱신으로 표시된다.
+- 사용자 승인 후 fresh saved plan `/tmp/lan386-shared-approved.tfplan`을 적용했다. 실제 결과는 Response Headers Policy 생성과 CloudFront distribution 갱신으로 `1 added, 1 changed, 0 destroyed`였고 기존 S3 bucket policy에는 실변경이 없었다.
+- live distribution은 `Deployed`이며 default cache behavior가 새 Response Headers Policy를 참조한다. 정책은 origin `*`, methods `GET`/`HEAD`, credentials `false`, origin override `true`다.
+- 실제 MP3에 `Origin: https://develop.landit.im`과 `Origin: https://landit.im`, `Range: bytes=0-15`를 각각 보낸 결과 모두 `HTTP 206`, `content-type: audio/mpeg`, `access-control-allow-origin: *`, 올바른 `content-range`를 반환했다.
+- post-apply shared `terraform plan -detailed-exitcode`는 exit code `0`과 `No changes`를 반환했다.

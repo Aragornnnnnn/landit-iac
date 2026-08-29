@@ -2,8 +2,6 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task.
 
-> **Status:** 2026-07-28 앱 로컬 알림 전환 결정으로 이 계획은 폐기됐다. 제거 절차는 `docs/superpowers/plans/2026-07-28-lan-184-push-infrastructure-removal.md`를 따른다.
-
 ## 목표
 
 EventBridge Scheduler가 Push 전용 SQS Standard Queue에 복습 리마인더 메시지를 발행하고, 기존 API ECS Service 내부 Consumer가 처리할 수 있는 환경별 인프라를 구성한다.

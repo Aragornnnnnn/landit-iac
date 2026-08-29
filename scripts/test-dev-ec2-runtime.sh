@@ -22,6 +22,7 @@ locals {
     content_bucket_name    = "develop-landit-content-123456789012"
     content_cloudfront_url = "https://d1234567890.cloudfront.net"
     jobs_queue_url         = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/develop-landit-jobs"
+    push_queue_url         = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/develop-landit-push-notifications"
     grafana_otlp_enabled   = "true"
     grafana_otlp_endpoint  = "https://otlp.example.com/otlp"
   })
@@ -64,6 +65,16 @@ if ! rg -q 'CONTENT_CLOUDFRONT_URL="?https://d1234567890\.cloudfront\.net' "${TE
   echo 'rendered runtime must provide CONTENT_CLOUDFRONT_URL to the API.' >&2
   exit 1
 fi
+if ! rg -q 'SQS_PUSH_NOTIFICATIONS_QUEUE_URL="?https://sqs\.ap-northeast-2\.amazonaws\.com/123456789012/develop-landit-push-notifications' "${TEST_DIR}/user-data.sh"; then
+  echo 'rendered runtime must provide SQS_PUSH_NOTIFICATIONS_QUEUE_URL to the API.' >&2
+  exit 1
+fi
+for notification_flag in LANDIT_NOTIFICATION_CONSUMER_ENABLED LANDIT_NOTIFICATION_TEST_API_ENABLED; do
+  if ! rg -q "${notification_flag}=true" "${TEST_DIR}/user-data.sh"; then
+    echo "rendered runtime must enable ${notification_flag} for the develop API." >&2
+    exit 1
+  fi
+done
 awk '
   /<<.RUNTIME_ENV.$/ { capture = 1; next }
   /^RUNTIME_ENV$/ { exit }

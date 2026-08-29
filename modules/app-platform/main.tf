@@ -1364,6 +1364,17 @@ data "aws_iam_policy_document" "api_task" {
 
   statement {
     actions = [
+      "sqs:ReceiveMessage",
+      "sqs:DeleteMessage",
+      "sqs:ChangeMessageVisibility",
+      "sqs:GetQueueAttributes",
+      "sqs:SendMessage"
+    ]
+    resources = [aws_sqs_queue.push_notifications.arn]
+  }
+
+  statement {
+    actions = [
       "s3:DeleteObject",
       "s3:GetObject",
       "s3:PutObject"
@@ -1477,7 +1488,11 @@ resource "aws_ecs_task_definition" "api" {
         { name = "CONTENT_BUCKET_NAME", value = var.content_bucket_name },
         { name = "CONTENT_CLOUDFRONT_URL", value = var.content_cloudfront_url },
         { name = "SQS_JOBS_QUEUE_URL", value = aws_sqs_queue.jobs.url },
-        ], var.grafana_otlp_enabled ? [
+        { name = "SQS_PUSH_NOTIFICATIONS_QUEUE_URL", value = aws_sqs_queue.push_notifications.url },
+        { name = "LANDIT_NOTIFICATION_CONSUMER_ENABLED", value = "true" }
+        ], var.notification_test_api_enabled ? [
+        { name = "LANDIT_NOTIFICATION_TEST_API_ENABLED", value = "true" }
+        ] : [], var.grafana_otlp_enabled ? [
         { name = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", value = "${trimsuffix(var.grafana_otlp_endpoint, "/")}/v1/metrics" },
         { name = "OTEL_TRACES_EXPORTER", value = "none" },
         { name = "OTEL_LOGS_EXPORTER", value = "none" },

@@ -1,5 +1,41 @@
 # Context Notes
 
+## 2026-08-29 LAN-184 PR 리뷰 반영
+
+- PR #21 CodeRabbit 리뷰 3건은 미해결 상태다. Terraform plan 명령에는 이미 `AWS_PROFILE=landit`이 있으므로 해당 지적은 현재 코드와 불일치하고, `terraform output` 두 호출의 profile 누락만 유효하다.
+- develop은 EC2 Compose인데 공통 live 검증 절차가 ECS Task Definition을 조회하는 문제와 Worker 격리 검사가 독립된 `! grep -q` 때문에 `set -e`를 우회하는 문제는 유효하다.
+- 임시 fixture의 Worker task에 `SQS_PUSH_NOTIFICATIONS_QUEUE_URL`을 추가해도 기존 Push 계약 스크립트가 exit 0을 반환해 격리 위반을 놓치는 RED를 재현했다.
+- Worker 격리 검사를 명시적 `if`와 `exit 1`로 바꾼 뒤 같은 fixture가 `worker task must not contain Push notification configuration`으로 exit 1을 반환했다.
+- `bash -n scripts/test-push-notification-infra-contract.sh`, `bash scripts/test-push-notification-infra-contract.sh`, `bash scripts/test-dev-ec2-runtime.sh`, `terraform fmt -recursive -check`, `git diff --check`가 모두 exit 0을 반환했다. dev EC2 runtime 테스트가 출력한 health check 실패 문구는 의도된 rollback 실패 fixture다.
+- CodeRabbit의 test API 공개 위험 요약은 merge blocker로 판단하지 않는다. BE Security 설정이 해당 endpoint를 인증 필수로 고정하고 Controller가 인증 사용자 본인만 대상으로 하며 IaC는 develop에서만 test API를 활성화한다.
+- 수정 커밋 `0596932`를 `feat/LAN-184`에 push했다. CodeRabbit 인라인 3건은 모두 해결 상태이며 profile 지적에는 실제 누락 범위와 수정 근거를 답변했다.
+
+## 2026-08-28 LAN-184 develop EC2 Push 연결
+
+- BE `feat/LAN-184`의 최신 SHA는 `d615e8e3`다. `SCHEDULED_NOTIFICATION_BATCH`와 `PUSH_RECEIPT_CHECK`만 소비하고, 예약 배치는 500명 페이지마다 visibility를 300초로 연장하며 Receipt 확인은 같은 Queue에 900초 지연 발행한다.
+- production ECS API에는 Push Queue URL, consumer flag와 최소 Queue IAM이 이미 연결돼 있다.
+- develop은 ECS가 비활성화되고 EC2가 실제 배포 대상이지만 EC2 API runtime env에 Push Queue URL, consumer flag와 dev test API flag가 없고 EC2 role도 Push Queue ARN을 허용하지 않는다.
+- Push Queue·DLQ·Scheduler 구조, 300초 visibility, 900초 Receipt 지연 기본값과 production ECS 설정은 변경하지 않는다.
+- Expo access token은 BE에서 선택 값이므로 이번 범위에 SSM parameter를 추가하지 않는다.
+- 실제 AWS plan·apply와 Scheduler 활성화는 별도 승인 전까지 수행하지 않는다.
+- RED 검증에서 Push 계약 테스트는 `push_notifications_queue_arn` output 누락으로, EC2 runtime 테스트는 `SQS_PUSH_NOTIFICATIONS_QUEUE_URL` 누락으로 각각 exit 1을 반환했다.
+- module output에 Push Queue ARN을 추가하고 develop EC2 role에 main Queue 전용 최소 권한을 연결했다. DLQ와 AI worker 권한은 추가하지 않았다.
+- develop EC2 `api.env`에는 Terraform Queue URL, consumer 활성화와 dev test API 활성화를 일반 환경 변수로 기록한다. receipt delay, Expo URL과 timeout은 BE 기본값을 유지한다.
+- GREEN 검증에서 Push 계약과 EC2 runtime 렌더링이 통과했다. 전체 EC2 검증은 기존 rollback 시나리오가 한 차례 간헐 실패했지만 추적 실행과 동일 명령 연속 3회에서 모두 통과했고 관련 rollback 코드는 변경하지 않았다.
+- dev saved plan은 `7 added, 3 changed, 0 destroyed`다. Push Queue·DLQ, 비활성 Scheduler·역할, Alarm 2개를 생성하고 EC2 role policy, runtime env를 담는 SSM deploy document와 이를 참조하는 GitHub deploy policy를 갱신한다.
+- production saved plan은 `8 added, 2 changed, 1 destroyed`다. 같은 Push 리소스 7개를 생성하고 API Task Definition을 Push 환경 변수 때문에 교체하며 ECS Service와 API Task Role을 갱신한다.
+- 두 saved plan의 Scheduler payload 계약 검사가 통과했고 state는 `DISABLED`다. saved plan은 `/tmp/lan184-dev-ec2-push.tfplan`, `/tmp/lan184-prod-push.tfplan`에만 저장했으며 apply하지 않는다.
+
+## 2026-08-28 LAN-184 Push 알림 인프라 복구와 main 동기화
+
+- `feat/LAN-184` 브랜치는 삭제되지 않았고 제거 커밋 `38bb59c`를 가리키고 있었다. 삭제 이력을 지우는 reset 대신 해당 커밋을 되돌려 복구 이력을 남겼다.
+- 복구 범위는 제거 커밋이 삭제한 Push Queue·DLQ, Scheduler, IAM, API 환경 변수, Alarm, 문서와 정적 계약 테스트다.
+- 최신 `origin/main`은 기존 브랜치보다 50개 커밋 앞서고 복구 커밋 하나만 미포함한 상태였다. `origin/main` 위로 해당 커밋 하나를 rebase한다.
+- Terraform 파일은 자동 병합됐고 충돌은 누적 기록 문서인 `checklist.md`, `context-notes.md`에서만 발생했다. 최신 main 기록을 유지하고 이 복구·동기화 기록만 앞에 추가한다.
+- BE 작업 뒤 전달될 최종 인프라 계약은 이번 동기화에서 임의로 정하지 않는다. 실제 AWS plan·apply와 Scheduler 활성화도 수행하지 않는다.
+- rebase 뒤 브랜치는 최신 `origin/main`보다 복구 커밋 하나만 앞서며 뒤처진 커밋은 없다.
+- `terraform fmt -recursive -check`, Push 알림 정적 계약, Scheduler plan 계약 스크립트 문법 검사, dev·prod `terraform validate`, main 대비 `git diff --check`가 모두 통과했다.
+
 ## 2026-08-27 LAN-347 장기기억 플래그 배포
 
 - 현재 브랜치는 `feat/LAN-347-6`, HEAD는 `73f6e74`이며 작업 시작 시 worktree는 깨끗하다.

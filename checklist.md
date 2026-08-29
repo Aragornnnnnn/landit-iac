@@ -1,5 +1,34 @@
 # Checklist
 
+## 2026-08-29 LAN-184 PR 리뷰 반영
+
+- [x] CodeRabbit 인라인 리뷰 3건을 현재 코드와 실제 셸 동작으로 검증한다.
+- [x] 금지된 Worker Push 환경 변수를 기존 계약 테스트가 놓치는 RED fixture를 확인한다.
+- [x] Worker 격리 검사를 명시적 실패 조건으로 바꾸고 GREEN fixture를 확인한다.
+- [x] Push 운영 문서의 AWS profile과 develop EC2·production ECS 검증 절차를 분리한다.
+- [x] 관련 계약 테스트와 문서 명령을 검증한다.
+- [x] PR 브랜치를 갱신하고 리뷰 스레드에 근거를 답변한다.
+
+## 2026-08-28 LAN-184 develop EC2 Push 연결
+
+- [x] 최신 BE `feat/LAN-184`의 Queue, consumer, Receipt와 visibility 계약을 확인한다.
+- [x] production ECS 계약은 일치하고 develop EC2 runtime env와 IAM이 누락된 원인을 확인한다.
+- [x] EC2 runtime 렌더링과 Push Queue IAM 누락을 재현하는 계약 테스트를 RED로 확인한다.
+- [x] Push Queue ARN output, EC2 IAM과 API runtime env를 최소 범위로 연결한다.
+- [x] 현재 BE 구현에 맞춰 Push 운영 문서의 visibility 설명을 갱신한다.
+- [x] Terraform fmt, Push·EC2 계약 테스트, dev·prod validate와 diff를 검증한다.
+- [x] dev·prod saved plan에서 예상 리소스만 변경되고 Scheduler가 `DISABLED`인지 확인한다.
+- [x] 실제 AWS apply와 Scheduler 활성화 없이 논리 변경을 커밋한다.
+
+## 2026-08-28 LAN-184 Push 알림 인프라 복구와 main 동기화
+
+- [x] `feat/LAN-184` 브랜치와 연결된 worktree의 상태를 확인한다.
+- [x] 제거 커밋 `38bb59c`의 변경 범위를 확인하고 비파괴적으로 되돌린다.
+- [x] Push Queue·DLQ, Scheduler, IAM, API 환경 변수, Alarm과 전용 문서·테스트를 복구한다.
+- [x] 복구 전 Terraform fmt, 정적 계약 테스트와 dev·prod validate를 실행한다.
+- [x] 최신 `origin/main` 위로 복구 커밋을 rebase하고 누적 기록 문서 충돌을 해결한다.
+- [x] rebase 후 Terraform fmt, 정적 계약 테스트, dev·prod validate와 diff를 재검증한다.
+
 ## 2026-08-27 LAN-347 장기기억 플래그 배포
 
 - [x] `feat/LAN-347-6` 브랜치와 IaC 변경 범위, workflow의 apply 제한을 확인한다.

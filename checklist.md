@@ -1,5 +1,13 @@
 # Checklist
 
+## 2026-08-29 LAN-386 PR 리뷰 반영
+
+- [x] CodeRabbit 인라인 리뷰를 현재 계약 테스트와 HCL로 검증한다.
+- [x] 다른 정책의 wildcard origin이 잘못된 `content_cors`를 가리는 RED fixture를 확인한다.
+- [x] 정확한 `content_cors`와 `default_cache_behavior` 블록만 검증한다.
+- [x] 관련 계약 테스트와 Terraform 형식을 검증한다.
+- [ ] PR 브랜치를 갱신하고 리뷰 스레드에 근거를 답변한다.
+
 ## 2026-08-27 LAN-347 장기기억 플래그 배포
 
 - [x] `feat/LAN-347-6` 브랜치와 IaC 변경 범위, workflow의 apply 제한을 확인한다.

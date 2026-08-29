@@ -1,5 +1,14 @@
 # Context Notes
 
+## 2026-08-29 LAN-386 PR 리뷰 반영
+
+- PR #22 CodeRabbit 리뷰는 유효하다. 기존 계약 테스트가 첫 `access_control_allow_origins`부터 전역 검색하고 정책 연결도 전체 파일에서 검색해 다른 리소스가 오류를 가릴 수 있었다.
+- 임시 두 정책 fixture에서 decoy 정책은 wildcard origin, 실제 `content_cors`는 잘못된 origin을 사용해도 기존 테스트가 exit 0을 반환하는 RED를 재현했다.
+- 정확한 `content_cors` 정책, 그 안의 `access_control_allow_origins`, `content` 배포의 `default_cache_behavior` 블록을 brace depth로 추출해 계약 범위를 고정했다.
+- 같은 fixture에 수정된 테스트를 적용하면 `CloudFront content_cors 정책은 모든 origin을 허용해야 한다.`로 exit 1을 반환한다.
+- 다른 cache behavior에만 `content_cors`를 연결하고 default cache behavior에는 decoy를 연결한 fixture도 실패하도록 회귀 검증을 추가했다.
+- `bash -n scripts/test-admin-content-upload-contract.sh`, `bash scripts/test-admin-content-upload-contract.sh`, `terraform fmt -recursive -check`, `git diff --check`가 exit 0을 반환했고, `terraform -chdir=environments/shared validate`도 샌드박스 밖 provider 실행으로 `Success! The configuration is valid.`를 반환했다.
+
 ## 2026-08-27 LAN-347 장기기억 플래그 배포
 
 - 현재 브랜치는 `feat/LAN-347-6`, HEAD는 `73f6e74`이며 작업 시작 시 worktree는 깨끗하다.

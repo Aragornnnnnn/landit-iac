@@ -34,8 +34,43 @@ assert_not_contains() {
   fi
 }
 
+extract_block() {
+  local content="$1"
+  local header="$2"
+
+  awk -v header="${header}" '
+    index($0, header) {
+      found = 1
+    }
+    found {
+      print
+      depth += gsub(/\{/, "{")
+      depth -= gsub(/\}/, "}")
+      if (depth == 0) {
+        exit
+      }
+    }
+  ' <<<"${content}"
+}
+
+assert_cloudfront_cors_contract() {
+  local content="$1"
+  local cors_policy
+  local cors_origins
+  local distribution
+  local default_cache_behavior
+
+  cors_policy="$(extract_block "${content}" 'resource "aws_cloudfront_response_headers_policy" "content_cors" {')"
+  cors_origins="$(extract_block "${cors_policy}" 'access_control_allow_origins {')"
+  distribution="$(extract_block "${content}" 'resource "aws_cloudfront_distribution" "content" {')"
+  default_cache_behavior="$(extract_block "${distribution}" 'default_cache_behavior {')"
+
+  assert_contains "${cors_origins}" 'items = ["*"]' "CloudFront content_cors 정책은 모든 origin을 허용해야 한다."
+  assert_contains "${cors_policy}" 'origin_override                  = true' "CloudFront content_cors 정책이 origin의 CORS 응답 헤더를 덮어써야 한다."
+  assert_contains "${default_cache_behavior}" 'response_headers_policy_id = aws_cloudfront_response_headers_policy.content_cors.id' "CloudFront default cache behavior에 content_cors 정책을 연결해야 한다."
+}
+
 shared_main="$(<"${SHARED_MAIN_FILE}")"
-cloudfront_cors_origins="$(sed -n '/access_control_allow_origins {/,/^[[:space:]]*}/p' "${SHARED_MAIN_FILE}")"
 shared_variables="$(<"${SHARED_VARIABLES_FILE}")"
 dev_main="$(<"${DEV_MAIN_FILE}")"
 dev_ec2="$(<"${DEV_EC2_FILE}")"
@@ -87,10 +122,50 @@ assert_contains "${shared_main}" 'allowed_origins = var.content_upload_allowed_o
 assert_contains "${shared_main}" 'allowed_headers = ["Content-Type", "Cache-Control", "If-None-Match", "x-amz-*"]' "presigned PUT header 계약을 유지해야 한다."
 assert_contains "${shared_main}" 'expose_headers  = ["ETag"]' "업로드 응답에서 ETag를 노출해야 한다."
 assert_contains "${shared_main}" 'max_age_seconds = 3600' "preflight cache 시간을 3,600초로 유지해야 한다."
-assert_contains "${shared_main}" 'resource "aws_cloudfront_response_headers_policy" "content_cors" {' "CloudFront 조회 CORS 응답 헤더 정책이 필요하다."
-assert_contains "${cloudfront_cors_origins}" 'items = ["*"]' "CloudFront 조회 CORS는 모든 origin을 허용해야 한다."
-assert_contains "${shared_main}" 'origin_override                  = true' "CloudFront가 origin의 CORS 응답 헤더를 정책 값으로 덮어써야 한다."
-assert_contains "${shared_main}" 'response_headers_policy_id = aws_cloudfront_response_headers_policy.content_cors.id' "CloudFront default cache behavior에 조회 CORS 정책을 연결해야 한다."
+assert_cloudfront_cors_contract "${shared_main}"
+
+invalid_cloudfront_cors_fixture='
+resource "aws_cloudfront_response_headers_policy" "decoy_cors" {
+  cors_config {
+    origin_override = true
+    access_control_allow_origins { items = ["*"] }
+  }
+}
+resource "aws_cloudfront_response_headers_policy" "content_cors" {
+  cors_config {
+    origin_override = true
+    access_control_allow_origins { items = ["https://wrong.example"] }
+  }
+}
+resource "aws_cloudfront_distribution" "content" {
+  default_cache_behavior {
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.content_cors.id
+  }
+}'
+if (assert_cloudfront_cors_contract "${invalid_cloudfront_cors_fixture}") >/dev/null 2>&1; then
+  echo "계약 위반. 다른 정책의 wildcard origin으로 content_cors 오류를 가리면 안 된다." >&2
+  exit 1
+fi
+
+invalid_cloudfront_attachment_fixture='
+resource "aws_cloudfront_response_headers_policy" "content_cors" {
+  cors_config {
+    origin_override                  = true
+    access_control_allow_origins { items = ["*"] }
+  }
+}
+resource "aws_cloudfront_distribution" "content" {
+  default_cache_behavior {
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.decoy_cors.id
+  }
+  ordered_cache_behavior {
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.content_cors.id
+  }
+}'
+if (assert_cloudfront_cors_contract "${invalid_cloudfront_attachment_fixture}") >/dev/null 2>&1; then
+  echo "계약 위반. 다른 cache behavior의 연결로 default cache behavior 오류를 가리면 안 된다." >&2
+  exit 1
+fi
 
 for origin in \
   "https://landit.im" \

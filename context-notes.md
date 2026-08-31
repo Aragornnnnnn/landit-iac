@@ -867,3 +867,8 @@
 - 변경 전 테스트는 기존 `until=168h`와 `volume_size = 20` 때문에 각각 실패했고, 구현 뒤 cleanup·EC2 계약·runtime rollback 테스트와 `terraform fmt -recursive -check`, `git diff --check`, develop `terraform validate`가 통과했다.
 - develop 전체 saved plan은 `0 add, 4 change, 0 destroy`로 EBS·SSM 문서 외에 연쇄 IAM policy 재평가와 기존 Scheduler `ENABLED -> DISABLED` drift를 포함한다. 이를 적용하지 않고 `aws_instance.app`과 `aws_ssm_document.ec2_deploy`만 분리한 saved plan `/tmp/lan418-develop-ebs30-retention1d-targeted.tfplan`을 생성했다.
 - targeted plan은 `0 add, 2 change, 0 destroy`이며 EC2 root volume `20 -> 30GiB`와 cleanup filter `168h -> 24h`만 in-place 변경한다. 현재 root는 `/dev/nvme0n1p1` XFS이므로 apply 후 EBS modification 완료를 기다려 partition과 XFS를 확장하고, 24시간 cleanup script를 기존 EC2에 동기화한 뒤 실상태를 확인해야 한다.
+- 사용자 승인 후 fresh targeted saved plan `/tmp/lan418-develop-ebs30-retention1d-approved.tfplan`을 `0 added, 2 changed, 0 destroyed`로 적용했다. EC2 인스턴스 교체 없이 encrypted gp3 root EBS와 SSM 문서만 in-place 변경됐다.
+- root EBS는 30GiB `in-use`이고 volume modification은 백그라운드 `optimizing` 상태다. `/dev/nvme0n1p1` partition과 XFS를 온라인 확장해 파일시스템도 30GiB 전체를 사용하며, 서비스 중단은 없었다.
+- 기존 EC2 cleanup script를 `until=24h`로 동기화하고 즉시 실행해 8.12GB를 추가 회수했다. 루트 사용량은 8.1GiB, 여유 22GiB, 사용률 27%이며 cleanup timer는 enabled·active다.
+- AI 컨테이너는 1GiB 제한, 약 86.77MiB 사용, OOM 없음, 재시작 0회이고 로컬 `/health`는 `{"status":"ok"}`를 반환했다. SSM 문서는 latest/default version 5 `Active`, targeted post-apply plan은 `No changes`다.
+- develop 전체 post-apply plan에는 기존 review reminder Scheduler의 `ENABLED -> DISABLED` drift 한 건만 남아 있으며 이번 승인 범위에서 적용하지 않았다.

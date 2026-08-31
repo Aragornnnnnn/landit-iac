@@ -54,7 +54,7 @@ jq -r '.resource_changes[] | select(.change.actions != ["no-op"]) | [.address, (
 
 BE·AI workflow는 ECR push 뒤 SSM으로 EC2 컨테이너를 배포하며, BE는 먼저 Flyway migration을 실행한다. SSM 문서는 배포 전에 최신 runtime env와 Compose 설정을 원자적으로 동기화하므로 기존 EC2에도 AI `mem_limit: 1024m`이 적용된다.
 
-EC2는 주간 `landit-docker-cleanup.timer`로 7일 이상 사용하지 않은 Docker image와 14일 이상 system journal을 정리한다. 정리 작업은 배포·rollback과 같은 lock을 사용하고 실행 중 image와 Docker volume은 삭제하지 않는다. SSM 배포 성공 뒤에도 정리를 한 번 실행한다.
+EC2는 주간 `landit-docker-cleanup.timer`로 생성 후 24시간이 지난 미사용 Docker image와 14일 이상 system journal을 정리한다. 정리 작업은 배포·rollback과 같은 lock을 사용하고 실행 중 image와 Docker volume은 삭제하지 않는다. SSM 배포 성공 뒤에도 정리를 한 번 실행한다.
 
 제거 절차는 다음과 같다.
 

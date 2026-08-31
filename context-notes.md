@@ -872,3 +872,7 @@
 - 기존 EC2 cleanup script를 `until=24h`로 동기화하고 즉시 실행해 8.12GB를 추가 회수했다. 루트 사용량은 8.1GiB, 여유 22GiB, 사용률 27%이며 cleanup timer는 enabled·active다.
 - AI 컨테이너는 1GiB 제한, 약 86.77MiB 사용, OOM 없음, 재시작 0회이고 로컬 `/health`는 `{"status":"ok"}`를 반환했다. SSM 문서는 latest/default version 5 `Active`, targeted post-apply plan은 `No changes`다.
 - develop 전체 post-apply plan에는 기존 review reminder Scheduler의 `ENABLED -> DISABLED` drift 한 건만 남아 있으며 이번 승인 범위에서 적용하지 않았다.
+- 병합 전 독립 리뷰에서 SSM의 runtime·Compose·cleanup 동기화가 deploy-service lock 획득 전에 실행되어 동시 BE·AI 배포가 파일을 교차 갱신할 수 있고, 개발자 문서의 7일 설명이 실제 24시간 정책과 다르다는 문제가 확인됐다.
+- SSM은 모든 artifact를 같은 디렉터리의 임시 파일에 준비한 뒤 deploy lock을 잡고 원자적으로 설치하며, 같은 fd 9를 deploy-service에 상속해 전체 동기화·배포를 직렬화한다. 배포 성공 뒤 lock을 해제한 다음 cleanup을 시작해 nested-lock deadlock을 피한다.
+- 실제 develop EC2의 Linux `flock`에서 부모가 보유한 fd 9를 자식 프로세스가 `flock -n -x 9`로 재사용할 수 있음을 격리된 임시 lock과 SSM response code 0으로 확인했다. 계약·runtime·cleanup 테스트, 포맷, diff check와 develop validate가 통과했다.
+- 개발자 문서는 Docker `until=24h`의 의미에 맞게 생성 후 24시간이 지난 미사용 image를 정리한다고 수정했다. 이 병합 전 리뷰 수정은 아직 live SSM 문서 version 5에 apply하지 않았다.

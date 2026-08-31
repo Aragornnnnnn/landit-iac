@@ -66,10 +66,27 @@ rg -Fq 'base64encode(local.ec2_docker_compose)' "${DEV_EC2}"
 runtime_install_line="$(rg -n 'mv .*runtime-env' "${DEV_EC2}" | cut -d: -f1)"
 compose_install_line="$(rg -n 'mv .*compose.yml' "${DEV_EC2}" | cut -d: -f1)"
 deploy_service_line="$(rg -n '/opt/landit/bin/deploy-service' "${DEV_EC2}" | cut -d: -f1)"
-if [[ -z "${runtime_install_line}" || -z "${compose_install_line}" || -z "${deploy_service_line}" || "${runtime_install_line}" -ge "${deploy_service_line}" || "${compose_install_line}" -ge "${deploy_service_line}" ]]; then
-  echo '계약 위반. SSM 배포는 runtime-env와 compose.yml을 먼저 갱신한 뒤 deploy-service를 실행해야 한다.' >&2
+deploy_lock_line="$(rg -n 'flock -x 9' "${DEV_EC2}" | cut -d: -f1 || true)"
+deploy_unlock_line="$(rg -n 'flock -u 9' "${DEV_EC2}" | cut -d: -f1 || true)"
+cleanup_start_line="$(rg -n 'systemctl start landit-docker-cleanup.service' "${DEV_EC2}" | cut -d: -f1)"
+if [[ -z "${deploy_lock_line}" || -z "${runtime_install_line}" || -z "${compose_install_line}" || -z "${deploy_service_line}" || -z "${deploy_unlock_line}" || -z "${cleanup_start_line}" || \
+  "${deploy_lock_line}" -ge "${runtime_install_line}" || "${runtime_install_line}" -ge "${deploy_service_line}" || \
+  "${compose_install_line}" -ge "${deploy_service_line}" || "${deploy_service_line}" -ge "${deploy_unlock_line}" || \
+  "${deploy_unlock_line}" -ge "${cleanup_start_line}" ]]; then
+  echo '계약 위반. SSM 설정 동기화와 배포는 하나의 lock 안에서 실행하고 cleanup 전에 lock을 해제해야 한다.' >&2
   exit 1
 fi
+for atomic_install in \
+  'mktemp /opt/landit/bin/docker-cleanup.XXXXXX' \
+  'mktemp /etc/systemd/system/landit-docker-cleanup.service.XXXXXX' \
+  'mktemp /etc/systemd/system/landit-docker-cleanup.timer.XXXXXX' \
+  'mv .*docker-cleanup' \
+  'mv .*landit-docker-cleanup.service' \
+  'mv .*landit-docker-cleanup.timer'; do
+  rg -q "${atomic_install}" "${DEV_EC2}"
+done
+rg -q 'LANDIT_DEPLOY_LOCK_FD=9' "${DEV_EC2}"
+rg -q 'LANDIT_DEPLOY_LOCK_FD' "${USER_DATA}"
 rg -q 'LANDIT_AI_BASE_URL=http://ai:8000' "${RUNTIME_ENV}"
 rg -q 'chmod 0600' "${RUNTIME_ENV}"
 rg -q 'flock' "${USER_DATA}"

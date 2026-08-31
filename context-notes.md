@@ -857,3 +857,7 @@
 - 자동 정리와 EC2 계약 테스트는 구현 전 각각 모델 파일 부재와 `1024m` 계약 부재로 실패했고 구현 후 통과했다. `terraform fmt -recursive -check`, `git diff --check`, EC2 runtime rollback 테스트와 develop `terraform validate`도 통과했다.
 - develop 전체 saved plan `/tmp/lan418-develop.tfplan`은 `0 add, 3 change, 0 destroy`지만 LAN-418의 SSM 문서·연쇄 IAM policy 재평가 외에 live `ENABLED` Scheduler를 코드 기본값 `DISABLED`로 되돌리는 무관 변경이 포함되어 apply 대상에서 제외한다.
 - LAN-418 SSM 문서만 분리한 saved plan `/tmp/lan418-develop-ssm.tfplan`은 `0 add, 1 change, 0 destroy`다. target plan은 전체 구성 변경을 대표하지 않으므로 사용자 승인 없이 apply하지 않는다.
+- 사용자 승인 후 fresh targeted saved plan `/tmp/lan418-develop-approved.tfplan`을 적용했다. 결과는 develop SSM 문서 한 건의 in-place 변경으로 `0 added, 1 changed, 0 destroyed`다.
+- AWS의 `develop-landit-ec2-deploy` 문서는 latest/default version `4`, `Active` 상태다. 게시 내용에 AI `mem_limit: 1024m`, 주간 persistent cleanup timer, 7일 이전 미사용 Docker image 정리, 14일 이전 journal 정리가 포함된 것을 확인했다.
+- SSM 문서 targeted post-apply plan은 `No changes`다. develop 전체 post-apply plan에는 기존 review reminder Scheduler를 `ENABLED`에서 코드 기본값 `DISABLED`로 되돌리는 무관한 drift 한 건만 남아 있어 적용하지 않았다.
+- 현재 실행 중 AI 컨테이너는 재배포하지 않았다. 따라서 1024MiB 제한과 cleanup timer의 EC2 실반영은 다음 AI 배포 후 확인한다.

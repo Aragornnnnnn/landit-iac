@@ -600,4 +600,5 @@
 - [x] 기존 develop EC2에도 반영되는 Docker 이미지 자동 정리를 추가한다.
 - [x] develop AI 컨테이너 메모리 제한을 1024MiB로 올린다.
 - [x] Terraform 포맷, 계약 테스트, validate와 develop plan을 검증한다.
-- [ ] 사용자 승인 후 develop apply와 live 상태를 확인한다.
+- [x] 사용자 승인 후 develop SSM 문서를 apply하고 AWS 게시 상태를 확인한다.
+- [ ] 다음 AI 배포 후 실행 컨테이너의 1024MiB 제한과 자동 정리 timer를 확인한다.

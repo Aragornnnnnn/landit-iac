@@ -844,3 +844,16 @@
 - live distribution은 `Deployed`이며 default cache behavior가 새 Response Headers Policy를 참조한다. 정책은 origin `*`, methods `GET`/`HEAD`, credentials `false`, origin override `true`다.
 - 실제 MP3에 `Origin: https://develop.landit.im`과 `Origin: https://landit.im`, `Range: bytes=0-15`를 각각 보낸 결과 모두 `HTTP 206`, `content-type: audio/mpeg`, `access-control-allow-origin: *`, 올바른 `content-range`를 반환했다.
 - post-apply shared `terraform plan -detailed-exitcode`는 exit code `0`과 `No changes`를 반환했다.
+
+## 2026-08-31 LAN-418 develop AI 메모리와 EBS 정리
+
+- landit-ai PR #79는 ONNX int8 모델의 단일 추론 peak를 약 430MB로 측정하고, 배포 전에 develop AI `mem_limit`을 512MiB에서 1024MiB로 올릴 것을 요구한다.
+- 2026-08-31 22:43 KST live 확인에서 develop EC2는 `t3.small` 2GiB, available memory 831MiB, swap 70MiB, 루트 EBS 20GiB 중 89% 사용 상태였다.
+- Docker image 13.27GB 중 12.58GB가 reclaimable이다. 실행 중인 image와 volume은 보존하고, 배포·rollback과 같은 lock을 사용해 오래된 미사용 image만 자동 정리한다.
+- 기존 EC2는 Terraform에서 `user_data` 변경을 무시하므로 새 인스턴스 초기화만 수정해서는 현재 서버에 반영되지 않는다. SSM 배포 문서가 정리 스크립트를 동기화하는 경로를 사용한다.
+- 이번 범위는 develop EC2 로컬 Docker image 자동 정리와 AI `mem_limit: 1024m`이다. EBS 용량 변경, ECR lifecycle, EC2 instance type 변경과 실제 apply는 포함하지 않는다.
+- 정리 스크립트는 배포와 같은 `/var/lock/landit-deploy.lock`을 잡고 7일 이상 사용하지 않은 image와 14일 이상 system journal만 정리한다. 실행 중 image와 Docker volume은 삭제하지 않는다.
+- 주간 persistent systemd timer는 새 EC2의 user-data와 기존 EC2의 SSM 배포 문서 양쪽에서 설치한다. SSM은 runtime env와 `mem_limit: 1024m` compose도 배포 전에 원자적으로 동기화하고, 배포 성공 뒤 정리를 한 번 실행한다.
+- 자동 정리와 EC2 계약 테스트는 구현 전 각각 모델 파일 부재와 `1024m` 계약 부재로 실패했고 구현 후 통과했다. `terraform fmt -recursive -check`, `git diff --check`, EC2 runtime rollback 테스트와 develop `terraform validate`도 통과했다.
+- develop 전체 saved plan `/tmp/lan418-develop.tfplan`은 `0 add, 3 change, 0 destroy`지만 LAN-418의 SSM 문서·연쇄 IAM policy 재평가 외에 live `ENABLED` Scheduler를 코드 기본값 `DISABLED`로 되돌리는 무관 변경이 포함되어 apply 대상에서 제외한다.
+- LAN-418 SSM 문서만 분리한 saved plan `/tmp/lan418-develop-ssm.tfplan`은 `0 add, 1 change, 0 destroy`다. target plan은 전체 구성 변경을 대표하지 않으므로 사용자 승인 없이 apply하지 않는다.

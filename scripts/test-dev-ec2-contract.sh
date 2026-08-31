@@ -57,12 +57,17 @@ test -f "${RUNTIME_ENV}"
 test -f "${COMPOSE}"
 test -f "${CADDY}"
 rg -q 'ec2_runtime_env[[:space:]]*=[[:space:]]*templatefile' "${DEV_EC2}"
+rg -q 'ec2_docker_cleanup[[:space:]]*=[[:space:]]*templatefile' "${DEV_EC2}"
+rg -q 'ec2_docker_compose[[:space:]]*=[[:space:]]*templatefile' "${DEV_EC2}"
 rg -q 'runtime_env[[:space:]]*=[[:space:]]*local.ec2_runtime_env' "${DEV_EC2}"
 rg -Fq 'base64encode(local.ec2_runtime_env)' "${DEV_EC2}"
+rg -Fq 'base64encode(local.ec2_docker_cleanup)' "${DEV_EC2}"
+rg -Fq 'base64encode(local.ec2_docker_compose)' "${DEV_EC2}"
 runtime_install_line="$(rg -n 'mv .*runtime-env' "${DEV_EC2}" | cut -d: -f1)"
+compose_install_line="$(rg -n 'mv .*compose.yml' "${DEV_EC2}" | cut -d: -f1)"
 deploy_service_line="$(rg -n '/opt/landit/bin/deploy-service' "${DEV_EC2}" | cut -d: -f1)"
-if [[ -z "${runtime_install_line}" || -z "${deploy_service_line}" || "${runtime_install_line}" -ge "${deploy_service_line}" ]]; then
-  echo '계약 위반. SSM 배포는 runtime-env를 먼저 갱신한 뒤 deploy-service를 실행해야 한다.' >&2
+if [[ -z "${runtime_install_line}" || -z "${compose_install_line}" || -z "${deploy_service_line}" || "${runtime_install_line}" -ge "${deploy_service_line}" || "${compose_install_line}" -ge "${deploy_service_line}" ]]; then
+  echo '계약 위반. SSM 배포는 runtime-env와 compose.yml을 먼저 갱신한 뒤 deploy-service를 실행해야 한다.' >&2
   exit 1
 fi
 rg -q 'LANDIT_AI_BASE_URL=http://ai:8000' "${RUNTIME_ENV}"
@@ -84,17 +89,19 @@ for otel_key in OTEL_EXPORTER_OTLP_METRICS_ENDPOINT MANAGEMENT_OTLP_METRICS_EXPO
   rg -q "${otel_key}" "${RUNTIME_ENV}"
 done
 rg -q 'LANDIT_LOCK_FILE' "${USER_DATA}"
+rg -q 'landit-docker-cleanup.timer' "${USER_DATA}"
 rg -Fq 'if [[ ! -s "$${LANDIT_DIR}/api.tag" ]]' "${USER_DATA}"
 rg -Fq "grep -q '^/swapfile swap swap defaults 0 0$' /etc/fstab" "${USER_DATA}"
 rg -q 'previous_tag' "${USER_DATA}"
 rg -q 'rollback' "${USER_DATA}"
 rg -q 'mem_limit: 768m' "${COMPOSE}"
-rg -q 'mem_limit: 512m' "${COMPOSE}"
+rg -q 'mem_limit: 1024m' "${COMPOSE}"
 rg -q '127.0.0.1:8080:8080' "${COMPOSE}"
 rg -q '127.0.0.1:8000:8000' "${COMPOSE}"
 rg -q 'awslogs-group' "${COMPOSE}"
 rg -q 'reverse_proxy api:8080' "${CADDY}"
 rg -q 'reverse_proxy ai:8000' "${CADDY}"
+bash "${ROOT_DIR}/scripts/test-dev-ec2-cleanup.sh"
 
 rg -q 'variable "ecs_platform_enabled"' "${MODULE_VARIABLES}"
 rg -q 'ecs_platform_enabled[[:space:]]*=[[:space:]]*false' "${ROOT_DIR}/environments/dev/main.tf"

@@ -10,6 +10,35 @@ data "aws_iam_role" "github_actions_deploy" {
 }
 
 locals {
+  ec2_docker_cleanup         = templatefile("${path.module}/templates/ec2-docker-cleanup.sh.tftpl", {})
+  ec2_docker_cleanup_service = <<-UNIT
+    [Unit]
+    Description=Prune old Landit Docker images and system journal
+    Requires=docker.service
+    After=docker.service
+
+    [Service]
+    Type=oneshot
+    ExecStart=/opt/landit/bin/docker-cleanup
+  UNIT
+  ec2_docker_cleanup_timer   = <<-UNIT
+    [Unit]
+    Description=Run Landit Docker cleanup weekly
+
+    [Timer]
+    OnCalendar=weekly
+    Persistent=true
+    RandomizedDelaySec=30m
+    Unit=landit-docker-cleanup.service
+
+    [Install]
+    WantedBy=timers.target
+  UNIT
+  ec2_docker_compose = templatefile("${path.module}/templates/docker-compose.yml.tftpl", {
+    api_log_group_name = module.app_platform.api_log_group_name
+    ai_log_group_name  = module.app_platform.worker_log_group_name
+    aws_region         = var.aws_region
+  })
   ec2_runtime_env = templatefile("${path.module}/templates/ec2-runtime-env.sh.tftpl", {
     aws_region             = var.aws_region
     parameter_store_path   = var.parameter_store_path
@@ -219,19 +248,18 @@ resource "aws_instance" "app" {
   iam_instance_profile        = aws_iam_instance_profile.ec2_app.name
   associate_public_ip_address = true
   user_data = templatefile("${path.module}/templates/ec2-user-data.sh.tftpl", {
-    api_image            = module.app_platform.api_ecr_repository_url
-    ai_image             = module.app_platform.worker_ecr_repository_url
-    api_log_group_name   = module.app_platform.api_log_group_name
-    ai_log_group_name    = module.app_platform.worker_log_group_name
-    aws_region           = var.aws_region
-    parameter_store_path = var.parameter_store_path
-    ecr_registry         = split("/", module.app_platform.api_ecr_repository_url)[0]
-    runtime_env          = local.ec2_runtime_env
-    docker_compose = templatefile("${path.module}/templates/docker-compose.yml.tftpl", {
-      api_log_group_name = module.app_platform.api_log_group_name
-      ai_log_group_name  = module.app_platform.worker_log_group_name
-      aws_region         = var.aws_region
-    })
+    api_image              = module.app_platform.api_ecr_repository_url
+    ai_image               = module.app_platform.worker_ecr_repository_url
+    api_log_group_name     = module.app_platform.api_log_group_name
+    ai_log_group_name      = module.app_platform.worker_log_group_name
+    aws_region             = var.aws_region
+    parameter_store_path   = var.parameter_store_path
+    ecr_registry           = split("/", module.app_platform.api_ecr_repository_url)[0]
+    docker_cleanup         = local.ec2_docker_cleanup
+    docker_cleanup_service = local.ec2_docker_cleanup_service
+    docker_cleanup_timer   = local.ec2_docker_cleanup_timer
+    runtime_env            = local.ec2_runtime_env
+    docker_compose         = local.ec2_docker_compose
     caddyfile = templatefile("${path.module}/templates/Caddyfile.tftpl", {
       api_domain_names = "${var.api_ec2_domain_name}, ${var.api_domain_name}"
       ai_domain_names  = "${var.ai_ec2_domain_name}, ${var.ai_domain_name}"
@@ -298,12 +326,24 @@ resource "aws_ssm_document" "ec2_deploy" {
       }
       inputs = {
         runCommand = [
+          "set -euo pipefail",
           "runtime_env_file=\"$(mktemp /opt/landit/bin/runtime-env.XXXXXX)\"",
-          "trap 'rm -f \"$runtime_env_file\"' EXIT",
+          "compose_file=\"$(mktemp /opt/landit/compose.yml.XXXXXX)\"",
+          "trap 'rm -f \"$runtime_env_file\" \"$compose_file\"' EXIT",
           "printf '%s' '${base64encode(local.ec2_runtime_env)}' | base64 --decode > \"$runtime_env_file\"",
           "chmod 0750 \"$runtime_env_file\"",
           "mv \"$runtime_env_file\" /opt/landit/bin/runtime-env",
-          "/opt/landit/bin/deploy-service \"$SSM_service\" \"$SSM_imageSha\""
+          "printf '%s' '${base64encode(local.ec2_docker_compose)}' | base64 --decode > \"$compose_file\"",
+          "chmod 0644 \"$compose_file\"",
+          "mv \"$compose_file\" /opt/landit/compose.yml",
+          "printf '%s' '${base64encode(local.ec2_docker_cleanup)}' | base64 --decode > /opt/landit/bin/docker-cleanup",
+          "chmod 0750 /opt/landit/bin/docker-cleanup",
+          "printf '%s' '${base64encode(local.ec2_docker_cleanup_service)}' | base64 --decode > /etc/systemd/system/landit-docker-cleanup.service",
+          "printf '%s' '${base64encode(local.ec2_docker_cleanup_timer)}' | base64 --decode > /etc/systemd/system/landit-docker-cleanup.timer",
+          "systemctl daemon-reload",
+          "systemctl enable --now landit-docker-cleanup.timer",
+          "/opt/landit/bin/deploy-service \"$SSM_service\" \"$SSM_imageSha\"",
+          "systemctl start landit-docker-cleanup.service"
         ]
       }
     }]

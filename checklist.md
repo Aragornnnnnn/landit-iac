@@ -593,3 +593,11 @@
 - [x] `terraform fmt -recursive`, 계약 테스트, shared validate와 plan을 실행한다.
 - [x] 사용자 승인 후 shared saved plan을 적용한다.
 - [x] live CloudFront 응답 헤더와 post-apply plan을 확인한다.
+
+## 2026-08-31 LAN-418 develop AI 메모리와 EBS 정리
+
+- [x] 자동 정리와 AI 메모리 계약 테스트를 실패 상태로 확인한다.
+- [x] 기존 develop EC2에도 반영되는 Docker 이미지 자동 정리를 추가한다.
+- [x] develop AI 컨테이너 메모리 제한을 1024MiB로 올린다.
+- [x] Terraform 포맷, 계약 테스트, validate와 develop plan을 검증한다.
+- [ ] 사용자 승인 후 develop apply와 live 상태를 확인한다.

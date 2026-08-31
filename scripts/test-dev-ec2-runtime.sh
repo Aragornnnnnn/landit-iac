@@ -90,6 +90,11 @@ awk '
   capture { print }
 ' "${TEST_DIR}/user-data.sh" > "${TEST_DIR}/deploy-service"
 chmod 0755 "${TEST_DIR}/deploy-service"
+if ! rg -q '^LOCK_FD="\$\{LANDIT_DEPLOY_LOCK_FD:-\}"$' "${TEST_DIR}/deploy-service" || \
+  ! rg -q 'flock -n -x "\$\{LOCK_FD\}"' "${TEST_DIR}/deploy-service"; then
+  echo 'deploy-service must reuse and validate an inherited deploy lock fd.' >&2
+  exit 1
+fi
 
 assert_file_value() {
   local file="$1"

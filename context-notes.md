@@ -876,3 +876,5 @@
 - SSM은 모든 artifact를 같은 디렉터리의 임시 파일에 준비한 뒤 deploy lock을 잡고 원자적으로 설치하며, 같은 fd 9를 deploy-service에 상속해 전체 동기화·배포를 직렬화한다. 배포 성공 뒤 lock을 해제한 다음 cleanup을 시작해 nested-lock deadlock을 피한다.
 - 실제 develop EC2의 Linux `flock`에서 부모가 보유한 fd 9를 자식 프로세스가 `flock -n -x 9`로 재사용할 수 있음을 격리된 임시 lock과 SSM response code 0으로 확인했다. 계약·runtime·cleanup 테스트, 포맷, diff check와 develop validate가 통과했다.
 - 개발자 문서는 Docker `until=24h`의 의미에 맞게 생성 후 24시간이 지난 미사용 image를 정리한다고 수정했다. 이 병합 전 리뷰 수정은 아직 live SSM 문서 version 5에 apply하지 않았다.
+- 첫 리뷰 수정 재검토에서 inherited-fd 로직이 생성되는 deploy-service heredoc이 아니라 바깥 user-data 초기화 구간에 들어가 SSM 부모가 fd 9를 보유한 채 자식 deploy-service가 같은 lock을 다시 열어 대기하는 deadlock이 확인됐다.
+- 렌더링된 deploy-service 자체에 `LANDIT_DEPLOY_LOCK_FD` 검증·재사용이 없으면 실패하는 runtime 테스트를 먼저 추가해 RED를 확인하고, 로직을 heredoc 내부로 이동해 GREEN을 확인했다. 직접 실행은 기존처럼 자체 lock을 잡고 SSM 실행만 상속 fd를 재사용한다.

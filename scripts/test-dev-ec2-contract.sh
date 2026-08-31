@@ -86,7 +86,6 @@ for atomic_install in \
   rg -q "${atomic_install}" "${DEV_EC2}"
 done
 rg -q 'LANDIT_DEPLOY_LOCK_FD=9' "${DEV_EC2}"
-rg -q 'LANDIT_DEPLOY_LOCK_FD' "${USER_DATA}"
 rg -q 'LANDIT_AI_BASE_URL=http://ai:8000' "${RUNTIME_ENV}"
 rg -q 'chmod 0600' "${RUNTIME_ENV}"
 rg -q 'flock' "${USER_DATA}"

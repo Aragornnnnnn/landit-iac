@@ -12,17 +12,9 @@ ECR_REGISTRY="${ecr_registry}"
 API_IMAGE="${api_image}"
 AI_IMAGE="${ai_image}"
 LOCK_FILE="$${LANDIT_LOCK_FILE:-/var/lock/landit-deploy.lock}"
-LOCK_FD="$${LANDIT_DEPLOY_LOCK_FD:-}"
 
-if [[ -n "$${LOCK_FD}" ]]; then
-  if [[ ! "$${LOCK_FD}" =~ ^[0-9]+$ ]] || ! flock -n -x "$${LOCK_FD}"; then
-    echo 'inherited deploy lock is unavailable' >&2
-    exit 70
-  fi
-else
-  exec 9>"$${LOCK_FILE}"
-  flock -x 9
-fi
+exec 9>"$${LOCK_FILE}"
+flock -x 9
 
 dnf install -y docker jq amazon-cloudwatch-agent
 install -d -m 0755 "$${LANDIT_DIR}" "$${BIN_DIR}"
@@ -104,9 +96,17 @@ LANDIT_DIR="$${LANDIT_DIR:-/opt/landit}"
 AWS_REGION="${aws_region}"
 ECR_REGISTRY="${ecr_registry}"
 LOCK_FILE="$${LANDIT_LOCK_FILE:-/var/lock/landit-deploy.lock}"
+LOCK_FD="$${LANDIT_DEPLOY_LOCK_FD:-}"
 
-exec 9>"$${LOCK_FILE}"
-flock -x 9
+if [[ -n "$${LOCK_FD}" ]]; then
+  if [[ ! "$${LOCK_FD}" =~ ^[0-9]+$ ]] || ! flock -n -x "$${LOCK_FD}"; then
+    echo 'inherited deploy lock is unavailable' >&2
+    exit 70
+  fi
+else
+  exec 9>"$${LOCK_FILE}"
+  flock -x 9
+fi
 
 write_images_env() {
   local destination="$1"

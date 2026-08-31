@@ -18,7 +18,7 @@ rg -q 'http_tokens[[:space:]]*=[[:space:]]*"required"' "${DEV_EC2}"
 rg -q 'http_put_response_hop_limit[[:space:]]*=[[:space:]]*2' "${DEV_EC2}"
 rg -q 'cpu_credits[[:space:]]*=[[:space:]]*"standard"' "${DEV_EC2}"
 rg -q 'encrypted[[:space:]]*=[[:space:]]*true' "${DEV_EC2}"
-rg -q 'volume_size[[:space:]]*=[[:space:]]*20' "${DEV_EC2}"
+rg -q 'volume_size[[:space:]]*=[[:space:]]*30' "${DEV_EC2}"
 rg -q 'associate_public_ip_address[[:space:]]*=[[:space:]]*true' "${DEV_EC2}"
 instance_block="$(sed -n '/resource "aws_instance" "app" {/,/^}/p' "${DEV_EC2}")"
 for iam_dependency in aws_iam_role_policy_attachment.ec2_ssm_managed_instance aws_iam_role_policy.ec2_app; do

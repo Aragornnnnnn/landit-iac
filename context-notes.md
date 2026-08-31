@@ -861,3 +861,9 @@
 - AWS의 `develop-landit-ec2-deploy` 문서는 latest/default version `4`, `Active` 상태다. 게시 내용에 AI `mem_limit: 1024m`, 주간 persistent cleanup timer, 7일 이전 미사용 Docker image 정리, 14일 이전 journal 정리가 포함된 것을 확인했다.
 - SSM 문서 targeted post-apply plan은 `No changes`다. develop 전체 post-apply plan에는 기존 review reminder Scheduler를 `ENABLED`에서 코드 기본값 `DISABLED`로 되돌리는 무관한 drift 한 건만 남아 있어 적용하지 않았다.
 - 현재 실행 중 AI 컨테이너는 재배포하지 않았다. 따라서 1024MiB 제한과 cleanup timer의 EC2 실반영은 다음 AI 배포 후 확인한다.
+- AI 재배포 후 cleanup service가 성공해 Docker 기준 2.041GB를 회수했고 루트 EBS 사용률은 89%에서 81%로 낮아졌다. AI 컨테이너는 1GiB 제한, OOM 없음, 재시작 0회이며 cleanup timer는 enabled·active 상태다.
+- 사용자는 develop의 최근 미사용 image 누적도 더 빠르게 회수하도록 보존 기간을 7일에서 1일로 줄이고 루트 EBS를 20GiB에서 30GiB로 확장하기로 결정했다. 실제 apply 전 fresh plan을 검토한다.
+- production AI는 EC2가 아닌 Fargate task다. live task definition revision 4는 0.25 vCPU, 512MiB, 기본 ephemeral storage를 사용하며 desired/running 1/1, rollout completed, failed task 0이다. 최근 조회 구간의 메모리 최대는 약 25.6%, CPU 최대는 약 8.0%였다.
+- 변경 전 테스트는 기존 `until=168h`와 `volume_size = 20` 때문에 각각 실패했고, 구현 뒤 cleanup·EC2 계약·runtime rollback 테스트와 `terraform fmt -recursive -check`, `git diff --check`, develop `terraform validate`가 통과했다.
+- develop 전체 saved plan은 `0 add, 4 change, 0 destroy`로 EBS·SSM 문서 외에 연쇄 IAM policy 재평가와 기존 Scheduler `ENABLED -> DISABLED` drift를 포함한다. 이를 적용하지 않고 `aws_instance.app`과 `aws_ssm_document.ec2_deploy`만 분리한 saved plan `/tmp/lan418-develop-ebs30-retention1d-targeted.tfplan`을 생성했다.
+- targeted plan은 `0 add, 2 change, 0 destroy`이며 EC2 root volume `20 -> 30GiB`와 cleanup filter `168h -> 24h`만 in-place 변경한다. 현재 root는 `/dev/nvme0n1p1` XFS이므로 apply 후 EBS modification 완료를 기다려 partition과 XFS를 확장하고, 24시간 cleanup script를 기존 EC2에 동기화한 뒤 실상태를 확인해야 한다.

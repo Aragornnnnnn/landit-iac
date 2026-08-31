@@ -37,8 +37,8 @@ PATH="${TEST_DIR}/bin:${PATH}" \
   TEST_LOG="${TEST_DIR}/commands.log" \
   "${TEST_DIR}/docker-cleanup"
 
-if ! rg -Fxq 'docker image prune --all --force --filter until=168h' "${TEST_DIR}/commands.log"; then
-  echo '자동 정리는 7일 이상 사용하지 않은 Docker image만 제거해야 한다.' >&2
+if ! rg -Fxq 'docker image prune --all --force --filter until=24h' "${TEST_DIR}/commands.log"; then
+  echo '자동 정리는 1일 이상 사용하지 않은 Docker image만 제거해야 한다.' >&2
   exit 1
 fi
 if ! rg -Fxq 'journalctl --vacuum-time=14d' "${TEST_DIR}/commands.log"; then

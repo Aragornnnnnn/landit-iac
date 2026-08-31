@@ -601,4 +601,7 @@
 - [x] develop AI 컨테이너 메모리 제한을 1024MiB로 올린다.
 - [x] Terraform 포맷, 계약 테스트, validate와 develop plan을 검증한다.
 - [x] 사용자 승인 후 develop SSM 문서를 apply하고 AWS 게시 상태를 확인한다.
-- [ ] 다음 AI 배포 후 실행 컨테이너의 1024MiB 제한과 자동 정리 timer를 확인한다.
+- [x] 다음 AI 배포 후 실행 컨테이너의 1024MiB 제한과 자동 정리 timer를 확인한다.
+- [x] Docker image 보존 기간을 1일로 줄이고 develop EBS를 30GiB로 확장한다.
+- [x] Terraform 검증과 develop plan으로 변경 범위를 확인한다.
+- [ ] 사용자 승인 후 EBS 확장 apply와 파일시스템 확장을 확인한다.

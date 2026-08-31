@@ -34,6 +34,9 @@ locals {
     aws_region           = "ap-northeast-2"
     parameter_store_path = "/landit/develop"
     ecr_registry         = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com"
+    docker_cleanup       = templatefile("${ROOT_DIR}/environments/dev/templates/ec2-docker-cleanup.sh.tftpl", {})
+    docker_cleanup_service = "[Unit]\nDescription=Test cleanup\n[Service]\nType=oneshot\nExecStart=/opt/landit/bin/docker-cleanup"
+    docker_cleanup_timer   = "[Unit]\nDescription=Test cleanup timer\n[Timer]\nOnCalendar=weekly\n[Install]\nWantedBy=timers.target"
     runtime_env          = local.runtime_env
     docker_compose = templatefile("${ROOT_DIR}/environments/dev/templates/docker-compose.yml.tftpl", {
       api_log_group_name = "/landit/develop/api"
@@ -87,6 +90,11 @@ awk '
   capture { print }
 ' "${TEST_DIR}/user-data.sh" > "${TEST_DIR}/deploy-service"
 chmod 0755 "${TEST_DIR}/deploy-service"
+if ! rg -q '^LOCK_FD="\$\{LANDIT_DEPLOY_LOCK_FD:-\}"$' "${TEST_DIR}/deploy-service" || \
+  ! rg -q 'flock -n -x "\$\{LOCK_FD\}"' "${TEST_DIR}/deploy-service"; then
+  echo 'deploy-service must reuse and validate an inherited deploy lock fd.' >&2
+  exit 1
+fi
 
 assert_file_value() {
   local file="$1"

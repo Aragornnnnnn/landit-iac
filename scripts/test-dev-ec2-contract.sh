@@ -18,7 +18,7 @@ rg -q 'http_tokens[[:space:]]*=[[:space:]]*"required"' "${DEV_EC2}"
 rg -q 'http_put_response_hop_limit[[:space:]]*=[[:space:]]*2' "${DEV_EC2}"
 rg -q 'cpu_credits[[:space:]]*=[[:space:]]*"standard"' "${DEV_EC2}"
 rg -q 'encrypted[[:space:]]*=[[:space:]]*true' "${DEV_EC2}"
-rg -q 'volume_size[[:space:]]*=[[:space:]]*20' "${DEV_EC2}"
+rg -q 'volume_size[[:space:]]*=[[:space:]]*30' "${DEV_EC2}"
 rg -q 'associate_public_ip_address[[:space:]]*=[[:space:]]*true' "${DEV_EC2}"
 instance_block="$(sed -n '/resource "aws_instance" "app" {/,/^}/p' "${DEV_EC2}")"
 for iam_dependency in aws_iam_role_policy_attachment.ec2_ssm_managed_instance aws_iam_role_policy.ec2_app; do
@@ -57,14 +57,35 @@ test -f "${RUNTIME_ENV}"
 test -f "${COMPOSE}"
 test -f "${CADDY}"
 rg -q 'ec2_runtime_env[[:space:]]*=[[:space:]]*templatefile' "${DEV_EC2}"
+rg -q 'ec2_docker_cleanup[[:space:]]*=[[:space:]]*templatefile' "${DEV_EC2}"
+rg -q 'ec2_docker_compose[[:space:]]*=[[:space:]]*templatefile' "${DEV_EC2}"
 rg -q 'runtime_env[[:space:]]*=[[:space:]]*local.ec2_runtime_env' "${DEV_EC2}"
 rg -Fq 'base64encode(local.ec2_runtime_env)' "${DEV_EC2}"
+rg -Fq 'base64encode(local.ec2_docker_cleanup)' "${DEV_EC2}"
+rg -Fq 'base64encode(local.ec2_docker_compose)' "${DEV_EC2}"
 runtime_install_line="$(rg -n 'mv .*runtime-env' "${DEV_EC2}" | cut -d: -f1)"
+compose_install_line="$(rg -n 'mv .*compose.yml' "${DEV_EC2}" | cut -d: -f1)"
 deploy_service_line="$(rg -n '/opt/landit/bin/deploy-service' "${DEV_EC2}" | cut -d: -f1)"
-if [[ -z "${runtime_install_line}" || -z "${deploy_service_line}" || "${runtime_install_line}" -ge "${deploy_service_line}" ]]; then
-  echo '계약 위반. SSM 배포는 runtime-env를 먼저 갱신한 뒤 deploy-service를 실행해야 한다.' >&2
+deploy_lock_line="$(rg -n 'flock -x 9' "${DEV_EC2}" | cut -d: -f1 || true)"
+deploy_unlock_line="$(rg -n 'flock -u 9' "${DEV_EC2}" | cut -d: -f1 || true)"
+cleanup_start_line="$(rg -n 'systemctl start landit-docker-cleanup.service' "${DEV_EC2}" | cut -d: -f1)"
+if [[ -z "${deploy_lock_line}" || -z "${runtime_install_line}" || -z "${compose_install_line}" || -z "${deploy_service_line}" || -z "${deploy_unlock_line}" || -z "${cleanup_start_line}" || \
+  "${deploy_lock_line}" -ge "${runtime_install_line}" || "${runtime_install_line}" -ge "${deploy_service_line}" || \
+  "${compose_install_line}" -ge "${deploy_service_line}" || "${deploy_service_line}" -ge "${deploy_unlock_line}" || \
+  "${deploy_unlock_line}" -ge "${cleanup_start_line}" ]]; then
+  echo '계약 위반. SSM 설정 동기화와 배포는 하나의 lock 안에서 실행하고 cleanup 전에 lock을 해제해야 한다.' >&2
   exit 1
 fi
+for atomic_install in \
+  'mktemp /opt/landit/bin/docker-cleanup.XXXXXX' \
+  'mktemp /etc/systemd/system/landit-docker-cleanup.service.XXXXXX' \
+  'mktemp /etc/systemd/system/landit-docker-cleanup.timer.XXXXXX' \
+  'mv .*docker-cleanup' \
+  'mv .*landit-docker-cleanup.service' \
+  'mv .*landit-docker-cleanup.timer'; do
+  rg -q "${atomic_install}" "${DEV_EC2}"
+done
+rg -q 'LANDIT_DEPLOY_LOCK_FD=9' "${DEV_EC2}"
 rg -q 'LANDIT_AI_BASE_URL=http://ai:8000' "${RUNTIME_ENV}"
 rg -q 'chmod 0600' "${RUNTIME_ENV}"
 rg -q 'flock' "${USER_DATA}"
@@ -84,17 +105,19 @@ for otel_key in OTEL_EXPORTER_OTLP_METRICS_ENDPOINT MANAGEMENT_OTLP_METRICS_EXPO
   rg -q "${otel_key}" "${RUNTIME_ENV}"
 done
 rg -q 'LANDIT_LOCK_FILE' "${USER_DATA}"
+rg -q 'landit-docker-cleanup.timer' "${USER_DATA}"
 rg -Fq 'if [[ ! -s "$${LANDIT_DIR}/api.tag" ]]' "${USER_DATA}"
 rg -Fq "grep -q '^/swapfile swap swap defaults 0 0$' /etc/fstab" "${USER_DATA}"
 rg -q 'previous_tag' "${USER_DATA}"
 rg -q 'rollback' "${USER_DATA}"
 rg -q 'mem_limit: 768m' "${COMPOSE}"
-rg -q 'mem_limit: 512m' "${COMPOSE}"
+rg -q 'mem_limit: 1024m' "${COMPOSE}"
 rg -q '127.0.0.1:8080:8080' "${COMPOSE}"
 rg -q '127.0.0.1:8000:8000' "${COMPOSE}"
 rg -q 'awslogs-group' "${COMPOSE}"
 rg -q 'reverse_proxy api:8080' "${CADDY}"
 rg -q 'reverse_proxy ai:8000' "${CADDY}"
+bash "${ROOT_DIR}/scripts/test-dev-ec2-cleanup.sh"
 
 rg -q 'variable "ecs_platform_enabled"' "${MODULE_VARIABLES}"
 rg -q 'ecs_platform_enabled[[:space:]]*=[[:space:]]*false' "${ROOT_DIR}/environments/dev/main.tf"

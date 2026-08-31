@@ -28,6 +28,21 @@ printf '%s  %s\n' \
 chmod 0755 /usr/local/lib/docker/cli-plugins/docker-compose
 systemctl enable --now docker
 
+cat > "$${BIN_DIR}/docker-cleanup" <<'DOCKER_CLEANUP'
+${docker_cleanup}
+DOCKER_CLEANUP
+chmod 0750 "$${BIN_DIR}/docker-cleanup"
+
+cat > /etc/systemd/system/landit-docker-cleanup.service <<'CLEANUP_SERVICE'
+${docker_cleanup_service}
+CLEANUP_SERVICE
+
+cat > /etc/systemd/system/landit-docker-cleanup.timer <<'CLEANUP_TIMER'
+${docker_cleanup_timer}
+CLEANUP_TIMER
+systemctl daemon-reload
+systemctl enable --now landit-docker-cleanup.timer
+
 if ! swapon --show=NAME | grep -q '^/swapfile$'; then
   fallocate -l 2G /swapfile
   chmod 0600 /swapfile
@@ -81,9 +96,17 @@ LANDIT_DIR="$${LANDIT_DIR:-/opt/landit}"
 AWS_REGION="${aws_region}"
 ECR_REGISTRY="${ecr_registry}"
 LOCK_FILE="$${LANDIT_LOCK_FILE:-/var/lock/landit-deploy.lock}"
+LOCK_FD="$${LANDIT_DEPLOY_LOCK_FD:-}"
 
-exec 9>"$${LOCK_FILE}"
-flock -x 9
+if [[ -n "$${LOCK_FD}" ]]; then
+  if [[ ! "$${LOCK_FD}" =~ ^[0-9]+$ ]] || ! flock -n -x "$${LOCK_FD}"; then
+    echo 'inherited deploy lock is unavailable' >&2
+    exit 70
+  fi
+else
+  exec 9>"$${LOCK_FILE}"
+  flock -x 9
+fi
 
 write_images_env() {
   local destination="$1"

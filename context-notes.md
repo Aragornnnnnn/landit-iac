@@ -844,3 +844,37 @@
 - live distribution은 `Deployed`이며 default cache behavior가 새 Response Headers Policy를 참조한다. 정책은 origin `*`, methods `GET`/`HEAD`, credentials `false`, origin override `true`다.
 - 실제 MP3에 `Origin: https://develop.landit.im`과 `Origin: https://landit.im`, `Range: bytes=0-15`를 각각 보낸 결과 모두 `HTTP 206`, `content-type: audio/mpeg`, `access-control-allow-origin: *`, 올바른 `content-range`를 반환했다.
 - post-apply shared `terraform plan -detailed-exitcode`는 exit code `0`과 `No changes`를 반환했다.
+
+## 2026-08-31 LAN-418 develop AI 메모리와 EBS 정리
+
+- landit-ai PR #79는 ONNX int8 모델의 단일 추론 peak를 약 430MB로 측정하고, 배포 전에 develop AI `mem_limit`을 512MiB에서 1024MiB로 올릴 것을 요구한다.
+- 2026-08-31 22:43 KST live 확인에서 develop EC2는 `t3.small` 2GiB, available memory 831MiB, swap 70MiB, 루트 EBS 20GiB 중 89% 사용 상태였다.
+- Docker image 13.27GB 중 12.58GB가 reclaimable이다. 실행 중인 image와 volume은 보존하고, 배포·rollback과 같은 lock을 사용해 오래된 미사용 image만 자동 정리한다.
+- 기존 EC2는 Terraform에서 `user_data` 변경을 무시하므로 새 인스턴스 초기화만 수정해서는 현재 서버에 반영되지 않는다. SSM 배포 문서가 정리 스크립트를 동기화하는 경로를 사용한다.
+- 이번 범위는 develop EC2 로컬 Docker image 자동 정리와 AI `mem_limit: 1024m`이다. EBS 용량 변경, ECR lifecycle, EC2 instance type 변경과 실제 apply는 포함하지 않는다.
+- 정리 스크립트는 배포와 같은 `/var/lock/landit-deploy.lock`을 잡고 7일 이상 사용하지 않은 image와 14일 이상 system journal만 정리한다. 실행 중 image와 Docker volume은 삭제하지 않는다.
+- 주간 persistent systemd timer는 새 EC2의 user-data와 기존 EC2의 SSM 배포 문서 양쪽에서 설치한다. SSM은 runtime env와 `mem_limit: 1024m` compose도 배포 전에 원자적으로 동기화하고, 배포 성공 뒤 정리를 한 번 실행한다.
+- 자동 정리와 EC2 계약 테스트는 구현 전 각각 모델 파일 부재와 `1024m` 계약 부재로 실패했고 구현 후 통과했다. `terraform fmt -recursive -check`, `git diff --check`, EC2 runtime rollback 테스트와 develop `terraform validate`도 통과했다.
+- develop 전체 saved plan `/tmp/lan418-develop.tfplan`은 `0 add, 3 change, 0 destroy`지만 LAN-418의 SSM 문서·연쇄 IAM policy 재평가 외에 live `ENABLED` Scheduler를 코드 기본값 `DISABLED`로 되돌리는 무관 변경이 포함되어 apply 대상에서 제외한다.
+- LAN-418 SSM 문서만 분리한 saved plan `/tmp/lan418-develop-ssm.tfplan`은 `0 add, 1 change, 0 destroy`다. target plan은 전체 구성 변경을 대표하지 않으므로 사용자 승인 없이 apply하지 않는다.
+- 사용자 승인 후 fresh targeted saved plan `/tmp/lan418-develop-approved.tfplan`을 적용했다. 결과는 develop SSM 문서 한 건의 in-place 변경으로 `0 added, 1 changed, 0 destroyed`다.
+- AWS의 `develop-landit-ec2-deploy` 문서는 latest/default version `4`, `Active` 상태다. 게시 내용에 AI `mem_limit: 1024m`, 주간 persistent cleanup timer, 7일 이전 미사용 Docker image 정리, 14일 이전 journal 정리가 포함된 것을 확인했다.
+- SSM 문서 targeted post-apply plan은 `No changes`다. develop 전체 post-apply plan에는 기존 review reminder Scheduler를 `ENABLED`에서 코드 기본값 `DISABLED`로 되돌리는 무관한 drift 한 건만 남아 있어 적용하지 않았다.
+- 현재 실행 중 AI 컨테이너는 재배포하지 않았다. 따라서 1024MiB 제한과 cleanup timer의 EC2 실반영은 다음 AI 배포 후 확인한다.
+- AI 재배포 후 cleanup service가 성공해 Docker 기준 2.041GB를 회수했고 루트 EBS 사용률은 89%에서 81%로 낮아졌다. AI 컨테이너는 1GiB 제한, OOM 없음, 재시작 0회이며 cleanup timer는 enabled·active 상태다.
+- 사용자는 develop의 최근 미사용 image 누적도 더 빠르게 회수하도록 보존 기간을 7일에서 1일로 줄이고 루트 EBS를 20GiB에서 30GiB로 확장하기로 결정했다. 실제 apply 전 fresh plan을 검토한다.
+- production AI는 EC2가 아닌 Fargate task다. live task definition revision 4는 0.25 vCPU, 512MiB, 기본 ephemeral storage를 사용하며 desired/running 1/1, rollout completed, failed task 0이다. 최근 조회 구간의 메모리 최대는 약 25.6%, CPU 최대는 약 8.0%였다.
+- 변경 전 테스트는 기존 `until=168h`와 `volume_size = 20` 때문에 각각 실패했고, 구현 뒤 cleanup·EC2 계약·runtime rollback 테스트와 `terraform fmt -recursive -check`, `git diff --check`, develop `terraform validate`가 통과했다.
+- develop 전체 saved plan은 `0 add, 4 change, 0 destroy`로 EBS·SSM 문서 외에 연쇄 IAM policy 재평가와 기존 Scheduler `ENABLED -> DISABLED` drift를 포함한다. 이를 적용하지 않고 `aws_instance.app`과 `aws_ssm_document.ec2_deploy`만 분리한 saved plan `/tmp/lan418-develop-ebs30-retention1d-targeted.tfplan`을 생성했다.
+- targeted plan은 `0 add, 2 change, 0 destroy`이며 EC2 root volume `20 -> 30GiB`와 cleanup filter `168h -> 24h`만 in-place 변경한다. 현재 root는 `/dev/nvme0n1p1` XFS이므로 apply 후 EBS modification 완료를 기다려 partition과 XFS를 확장하고, 24시간 cleanup script를 기존 EC2에 동기화한 뒤 실상태를 확인해야 한다.
+- 사용자 승인 후 fresh targeted saved plan `/tmp/lan418-develop-ebs30-retention1d-approved.tfplan`을 `0 added, 2 changed, 0 destroyed`로 적용했다. EC2 인스턴스 교체 없이 encrypted gp3 root EBS와 SSM 문서만 in-place 변경됐다.
+- root EBS는 30GiB `in-use`이고 volume modification은 백그라운드 `optimizing` 상태다. `/dev/nvme0n1p1` partition과 XFS를 온라인 확장해 파일시스템도 30GiB 전체를 사용하며, 서비스 중단은 없었다.
+- 기존 EC2 cleanup script를 `until=24h`로 동기화하고 즉시 실행해 8.12GB를 추가 회수했다. 루트 사용량은 8.1GiB, 여유 22GiB, 사용률 27%이며 cleanup timer는 enabled·active다.
+- AI 컨테이너는 1GiB 제한, 약 86.77MiB 사용, OOM 없음, 재시작 0회이고 로컬 `/health`는 `{"status":"ok"}`를 반환했다. SSM 문서는 latest/default version 5 `Active`, targeted post-apply plan은 `No changes`다.
+- develop 전체 post-apply plan에는 기존 review reminder Scheduler의 `ENABLED -> DISABLED` drift 한 건만 남아 있으며 이번 승인 범위에서 적용하지 않았다.
+- 병합 전 독립 리뷰에서 SSM의 runtime·Compose·cleanup 동기화가 deploy-service lock 획득 전에 실행되어 동시 BE·AI 배포가 파일을 교차 갱신할 수 있고, 개발자 문서의 7일 설명이 실제 24시간 정책과 다르다는 문제가 확인됐다.
+- SSM은 모든 artifact를 같은 디렉터리의 임시 파일에 준비한 뒤 deploy lock을 잡고 원자적으로 설치하며, 같은 fd 9를 deploy-service에 상속해 전체 동기화·배포를 직렬화한다. 배포 성공 뒤 lock을 해제한 다음 cleanup을 시작해 nested-lock deadlock을 피한다.
+- 실제 develop EC2의 Linux `flock`에서 부모가 보유한 fd 9를 자식 프로세스가 `flock -n -x 9`로 재사용할 수 있음을 격리된 임시 lock과 SSM response code 0으로 확인했다. 계약·runtime·cleanup 테스트, 포맷, diff check와 develop validate가 통과했다.
+- 개발자 문서는 Docker `until=24h`의 의미에 맞게 생성 후 24시간이 지난 미사용 image를 정리한다고 수정했다. 이 병합 전 리뷰 수정은 아직 live SSM 문서 version 5에 apply하지 않았다.
+- 첫 리뷰 수정 재검토에서 inherited-fd 로직이 생성되는 deploy-service heredoc이 아니라 바깥 user-data 초기화 구간에 들어가 SSM 부모가 fd 9를 보유한 채 자식 deploy-service가 같은 lock을 다시 열어 대기하는 deadlock이 확인됐다.
+- 렌더링된 deploy-service 자체에 `LANDIT_DEPLOY_LOCK_FD` 검증·재사용이 없으면 실패하는 runtime 테스트를 먼저 추가해 RED를 확인하고, 로직을 heredoc 내부로 이동해 GREEN을 확인했다. 직접 실행은 기존처럼 자체 lock을 잡고 SSM 실행만 상속 fd를 재사용한다.

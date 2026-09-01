@@ -78,6 +78,14 @@ for notification_flag in LANDIT_NOTIFICATION_CONSUMER_ENABLED LANDIT_NOTIFICATIO
     exit 1
   fi
 done
+if ! rg -q 'LANDIT_MEMORY_WRITE_ENABLED LANDIT_MEMORY_USE_ENABLED LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS' "${TEST_DIR}/user-data.sh"; then
+  echo 'develop API must load the free-talk speaking limit from SSM.' >&2
+  exit 1
+fi
+if rg -q 'LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS=9999999' "${TEST_DIR}/user-data.sh"; then
+  echo 'develop API must not hardcode the free-talk speaking limit.' >&2
+  exit 1
+fi
 awk '
   /<<.RUNTIME_ENV.$/ { capture = 1; next }
   /^RUNTIME_ENV$/ { exit }

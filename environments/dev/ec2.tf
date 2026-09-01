@@ -39,6 +39,12 @@ locals {
     ai_log_group_name  = module.app_platform.worker_log_group_name
     aws_region         = var.aws_region
   })
+  ec2_deploy_service = templatefile("${path.module}/templates/ec2-deploy-service.sh.tftpl", {
+    api_image    = module.app_platform.api_ecr_repository_url
+    ai_image     = module.app_platform.worker_ecr_repository_url
+    aws_region   = var.aws_region
+    ecr_registry = split("/", module.app_platform.api_ecr_repository_url)[0]
+  })
   ec2_runtime_env = templatefile("${path.module}/templates/ec2-runtime-env.sh.tftpl", {
     aws_region             = var.aws_region
     parameter_store_path   = var.parameter_store_path
@@ -258,6 +264,7 @@ resource "aws_instance" "app" {
     docker_cleanup         = local.ec2_docker_cleanup
     docker_cleanup_service = local.ec2_docker_cleanup_service
     docker_cleanup_timer   = local.ec2_docker_cleanup_timer
+    deploy_service_base64  = base64encode(local.ec2_deploy_service)
     runtime_env            = local.ec2_runtime_env
     docker_compose         = local.ec2_docker_compose
     caddyfile = templatefile("${path.module}/templates/Caddyfile.tftpl", {
@@ -328,13 +335,16 @@ resource "aws_ssm_document" "ec2_deploy" {
         runCommand = [
           "set -euo pipefail",
           "runtime_env_file=\"$(mktemp /opt/landit/bin/runtime-env.XXXXXX)\"",
+          "deploy_service_file=\"$(mktemp /opt/landit/bin/deploy-service.XXXXXX)\"",
           "compose_file=\"$(mktemp /opt/landit/compose.yml.XXXXXX)\"",
           "cleanup_file=\"$(mktemp /opt/landit/bin/docker-cleanup.XXXXXX)\"",
           "cleanup_service_file=\"$(mktemp /etc/systemd/system/landit-docker-cleanup.service.XXXXXX)\"",
           "cleanup_timer_file=\"$(mktemp /etc/systemd/system/landit-docker-cleanup.timer.XXXXXX)\"",
-          "trap 'rm -f \"$runtime_env_file\" \"$compose_file\" \"$cleanup_file\" \"$cleanup_service_file\" \"$cleanup_timer_file\"' EXIT",
+          "trap 'rm -f \"$runtime_env_file\" \"$deploy_service_file\" \"$compose_file\" \"$cleanup_file\" \"$cleanup_service_file\" \"$cleanup_timer_file\"' EXIT",
           "printf '%s' '${base64encode(local.ec2_runtime_env)}' | base64 --decode > \"$runtime_env_file\"",
           "chmod 0750 \"$runtime_env_file\"",
+          "printf '%s' '${base64encode(local.ec2_deploy_service)}' | base64 --decode > \"$deploy_service_file\"",
+          "chmod 0750 \"$deploy_service_file\"",
           "printf '%s' '${base64encode(local.ec2_docker_compose)}' | base64 --decode > \"$compose_file\"",
           "chmod 0644 \"$compose_file\"",
           "printf '%s' '${base64encode(local.ec2_docker_cleanup)}' | base64 --decode > \"$cleanup_file\"",
@@ -346,6 +356,7 @@ resource "aws_ssm_document" "ec2_deploy" {
           "exec 9>/var/lock/landit-deploy.lock",
           "flock -x 9",
           "mv \"$runtime_env_file\" /opt/landit/bin/runtime-env",
+          "mv \"$deploy_service_file\" /opt/landit/bin/deploy-service",
           "mv \"$compose_file\" /opt/landit/compose.yml",
           "mv \"$cleanup_file\" /opt/landit/bin/docker-cleanup",
           "mv \"$cleanup_service_file\" /etc/systemd/system/landit-docker-cleanup.service",

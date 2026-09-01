@@ -605,3 +605,13 @@
 - [x] Docker image 보존 기간을 1일로 줄이고 develop EBS를 30GiB로 확장한다.
 - [x] Terraform 검증과 develop plan으로 변경 범위를 확인한다.
 - [x] 사용자 승인 후 EBS 확장 apply와 파일시스템 확장을 확인한다.
+
+## 2026-09-01 LAN-418 develop 배포 스크립트 동기화
+
+- [x] 실패한 AI 배포의 GitHub Actions, SSM과 EC2 lock 상태로 원인을 확인한다.
+- [x] 멈춘 SSM 명령을 취소하고 동일 SHA를 직접 배포해 AI health를 복구한다.
+- [x] SSM 문서가 최신 deploy-service를 lock 안에서 원자적으로 설치하는 계약 테스트를 RED로 확인한다.
+- [x] user-data와 SSM 문서가 같은 deploy-service 템플릿을 사용하도록 수정한다.
+- [x] 계약·runtime 테스트, Terraform 포맷, validate와 develop plan을 검증한다.
+- [ ] 변경을 커밋하고 PR을 생성한다.
+- [ ] 사용자 승인 후 develop SSM 문서를 apply하고 정상 배포를 재검증한다.

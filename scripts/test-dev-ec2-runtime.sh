@@ -14,6 +14,12 @@ trap cleanup EXIT
 
 cat > "${TEST_DIR}/main.tf" <<EOF
 locals {
+  deploy_service = templatefile("${ROOT_DIR}/environments/dev/templates/ec2-deploy-service.sh.tftpl", {
+    api_image    = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/develop-landit-api"
+    ai_image     = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/develop-landit-worker"
+    aws_region   = "ap-northeast-2"
+    ecr_registry = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com"
+  })
   runtime_env = templatefile("${ROOT_DIR}/environments/dev/templates/ec2-runtime-env.sh.tftpl", {
     aws_region             = "ap-northeast-2"
     parameter_store_path   = "/landit/develop"
@@ -37,6 +43,7 @@ locals {
     docker_cleanup       = templatefile("${ROOT_DIR}/environments/dev/templates/ec2-docker-cleanup.sh.tftpl", {})
     docker_cleanup_service = "[Unit]\nDescription=Test cleanup\n[Service]\nType=oneshot\nExecStart=/opt/landit/bin/docker-cleanup"
     docker_cleanup_timer   = "[Unit]\nDescription=Test cleanup timer\n[Timer]\nOnCalendar=weekly\n[Install]\nWantedBy=timers.target"
+    deploy_service_base64  = base64encode(local.deploy_service)
     runtime_env          = local.runtime_env
     docker_compose = templatefile("${ROOT_DIR}/environments/dev/templates/docker-compose.yml.tftpl", {
       api_log_group_name = "/landit/develop/api"
@@ -84,11 +91,13 @@ awk '
   capture { print }
 ' "${TEST_DIR}/user-data.sh" > "${TEST_DIR}/runtime-env"
 bash -n "${TEST_DIR}/runtime-env"
-awk '
-  /<<.DEPLOY_SERVICE.$/ { capture = 1; next }
-  /^DEPLOY_SERVICE$/ { exit }
-  capture { print }
-' "${TEST_DIR}/user-data.sh" > "${TEST_DIR}/deploy-service"
+(
+  cd "${TEST_DIR}"
+  terraform console <<'EOF' > "${TEST_DIR}/deploy-service.quoted"
+local.deploy_service
+EOF
+)
+sed '1d;$d' "${TEST_DIR}/deploy-service.quoted" > "${TEST_DIR}/deploy-service"
 chmod 0755 "${TEST_DIR}/deploy-service"
 if ! rg -q '^LOCK_FD="\$\{LANDIT_DEPLOY_LOCK_FD:-\}"$' "${TEST_DIR}/deploy-service" || \
   ! rg -q 'flock -n -x "\$\{LOCK_FD\}"' "${TEST_DIR}/deploy-service"; then

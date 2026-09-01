@@ -1,0 +1,103 @@
+#!/bin/bash
+# 지정한 서비스 이미지를 직렬 배포하고 loopback health를 확인한다.
+set -euo pipefail
+
+if [[ "$${#}" -ne 2 || ! "$${1}" =~ ^(api|ai)$ || ! "$${2}" =~ ^[0-9a-f]{40}$ ]]; then
+  echo 'usage: deploy-service api|ai <40-character-git-sha>' >&2
+  exit 64
+fi
+
+service="$${1}"
+image_tag="$${2}"
+LANDIT_DIR="$${LANDIT_DIR:-/opt/landit}"
+AWS_REGION="${aws_region}"
+ECR_REGISTRY="${ecr_registry}"
+LOCK_FILE="$${LANDIT_LOCK_FILE:-/var/lock/landit-deploy.lock}"
+LOCK_FD="$${LANDIT_DEPLOY_LOCK_FD:-}"
+
+if [[ -n "$${LOCK_FD}" ]]; then
+  if [[ ! "$${LOCK_FD}" =~ ^[0-9]+$ ]] || ! flock -n -x "$${LOCK_FD}"; then
+    echo 'inherited deploy lock is unavailable' >&2
+    exit 70
+  fi
+else
+  exec 9>"$${LOCK_FILE}"
+  flock -x 9
+fi
+
+write_images_env() {
+  local destination="$1"
+  local api_tag="$2"
+  local ai_tag="$3"
+
+  cat > "$${destination}" <<EOF
+API_IMAGE=${api_image}
+AI_IMAGE=${ai_image}
+API_TAG=$${api_tag}
+AI_TAG=$${ai_tag}
+EOF
+  chmod 0644 "$${destination}"
+}
+
+wait_for_health() {
+  local health_url
+
+  if [[ "$${service}" == api ]]; then
+    health_url='http://127.0.0.1:8080/actuator/health'
+  else
+    health_url='http://127.0.0.1:8000/health'
+  fi
+  for _ in $(seq 1 30); do
+    if curl --fail --silent --show-error "$${health_url}" >/dev/null; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+rollback() {
+  printf '%s\n' "$${previous_tag}" > "$${LANDIT_DIR}/$${service}.tag"
+  write_images_env "$${LANDIT_DIR}/images.env" \
+    "$(cat "$${LANDIT_DIR}/api.tag")" "$(cat "$${LANDIT_DIR}/ai.tag")"
+  if ! docker compose --project-directory "$${LANDIT_DIR}" --env-file "$${LANDIT_DIR}/images.env" \
+    -f "$${LANDIT_DIR}/compose.yml" up -d --no-deps "$${service}"; then
+    echo "rollback container start failed for $${service}" >&2
+    return 1
+  fi
+  if ! wait_for_health; then
+    echo "rollback health check failed for $${service}" >&2
+    return 1
+  fi
+  return 0
+}
+
+"$${LANDIT_DIR}/bin/runtime-env"
+aws ecr get-login-password --region "$${AWS_REGION}" |
+  docker login --username AWS --password-stdin "$${ECR_REGISTRY}"
+previous_tag="$(cat "$${LANDIT_DIR}/$${service}.tag")"
+candidate_images_env="$(mktemp "$${LANDIT_DIR}/images.env.XXXXXX")"
+trap 'rm -f "$${candidate_images_env}"' EXIT
+if [[ "$${service}" == api ]]; then
+  write_images_env "$${candidate_images_env}" "$${image_tag}" "$(cat "$${LANDIT_DIR}/ai.tag")"
+else
+  write_images_env "$${candidate_images_env}" "$(cat "$${LANDIT_DIR}/api.tag")" "$${image_tag}"
+fi
+docker compose --project-directory "$${LANDIT_DIR}" --env-file "$${candidate_images_env}" \
+  -f "$${LANDIT_DIR}/compose.yml" pull "$${service}"
+printf '%s\n' "$${image_tag}" > "$${LANDIT_DIR}/$${service}.tag"
+mv "$${candidate_images_env}" "$${LANDIT_DIR}/images.env"
+if ! docker compose --project-directory "$${LANDIT_DIR}" --env-file "$${LANDIT_DIR}/images.env" \
+  -f "$${LANDIT_DIR}/compose.yml" up -d --no-deps "$${service}"; then
+  rollback || true
+  exit 1
+fi
+if wait_for_health; then
+  exit 0
+fi
+if rollback; then
+  echo "health check failed for $${service}; restored $${previous_tag}" >&2
+else
+  echo "health check and rollback failed for $${service}" >&2
+fi
+exit 1

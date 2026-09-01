@@ -50,36 +50,44 @@ fi
 
 USER_DATA="${ROOT_DIR}/environments/dev/templates/ec2-user-data.sh.tftpl"
 RUNTIME_ENV="${ROOT_DIR}/environments/dev/templates/ec2-runtime-env.sh.tftpl"
+DEPLOY_SERVICE="${ROOT_DIR}/environments/dev/templates/ec2-deploy-service.sh.tftpl"
 COMPOSE="${ROOT_DIR}/environments/dev/templates/docker-compose.yml.tftpl"
 CADDY="${ROOT_DIR}/environments/dev/templates/Caddyfile.tftpl"
 test -f "${USER_DATA}"
 test -f "${RUNTIME_ENV}"
+test -f "${DEPLOY_SERVICE}"
 test -f "${COMPOSE}"
 test -f "${CADDY}"
 rg -q 'ec2_runtime_env[[:space:]]*=[[:space:]]*templatefile' "${DEV_EC2}"
+rg -q 'ec2_deploy_service[[:space:]]*=[[:space:]]*templatefile' "${DEV_EC2}"
 rg -q 'ec2_docker_cleanup[[:space:]]*=[[:space:]]*templatefile' "${DEV_EC2}"
 rg -q 'ec2_docker_compose[[:space:]]*=[[:space:]]*templatefile' "${DEV_EC2}"
 rg -q 'runtime_env[[:space:]]*=[[:space:]]*local.ec2_runtime_env' "${DEV_EC2}"
 rg -Fq 'base64encode(local.ec2_runtime_env)' "${DEV_EC2}"
+rg -Fq 'base64encode(local.ec2_deploy_service)' "${DEV_EC2}"
 rg -Fq 'base64encode(local.ec2_docker_cleanup)' "${DEV_EC2}"
 rg -Fq 'base64encode(local.ec2_docker_compose)' "${DEV_EC2}"
 runtime_install_line="$(rg -n 'mv .*runtime-env' "${DEV_EC2}" | cut -d: -f1)"
 compose_install_line="$(rg -n 'mv .*compose.yml' "${DEV_EC2}" | cut -d: -f1)"
-deploy_service_line="$(rg -n '/opt/landit/bin/deploy-service' "${DEV_EC2}" | cut -d: -f1)"
+deploy_install_line="$(rg -n 'mv .* /opt/landit/bin/deploy-service' "${DEV_EC2}" | cut -d: -f1)"
+deploy_service_line="$(rg -n 'LANDIT_DEPLOY_LOCK_FD=9 /opt/landit/bin/deploy-service' "${DEV_EC2}" | cut -d: -f1)"
 deploy_lock_line="$(rg -n 'flock -x 9' "${DEV_EC2}" | cut -d: -f1 || true)"
 deploy_unlock_line="$(rg -n 'flock -u 9' "${DEV_EC2}" | cut -d: -f1 || true)"
 cleanup_start_line="$(rg -n 'systemctl start landit-docker-cleanup.service' "${DEV_EC2}" | cut -d: -f1)"
-if [[ -z "${deploy_lock_line}" || -z "${runtime_install_line}" || -z "${compose_install_line}" || -z "${deploy_service_line}" || -z "${deploy_unlock_line}" || -z "${cleanup_start_line}" || \
-  "${deploy_lock_line}" -ge "${runtime_install_line}" || "${runtime_install_line}" -ge "${deploy_service_line}" || \
-  "${compose_install_line}" -ge "${deploy_service_line}" || "${deploy_service_line}" -ge "${deploy_unlock_line}" || \
+if [[ -z "${deploy_lock_line}" || -z "${runtime_install_line}" || -z "${deploy_install_line}" || -z "${compose_install_line}" || -z "${deploy_service_line}" || -z "${deploy_unlock_line}" || -z "${cleanup_start_line}" || \
+  "${deploy_lock_line}" -ge "${runtime_install_line}" || "${runtime_install_line}" -ge "${deploy_install_line}" || \
+  "${deploy_install_line}" -ge "${deploy_service_line}" || "${compose_install_line}" -ge "${deploy_service_line}" || \
+  "${deploy_service_line}" -ge "${deploy_unlock_line}" || \
   "${deploy_unlock_line}" -ge "${cleanup_start_line}" ]]; then
   echo '계약 위반. SSM 설정 동기화와 배포는 하나의 lock 안에서 실행하고 cleanup 전에 lock을 해제해야 한다.' >&2
   exit 1
 fi
 for atomic_install in \
+  'mktemp /opt/landit/bin/deploy-service.XXXXXX' \
   'mktemp /opt/landit/bin/docker-cleanup.XXXXXX' \
   'mktemp /etc/systemd/system/landit-docker-cleanup.service.XXXXXX' \
   'mktemp /etc/systemd/system/landit-docker-cleanup.timer.XXXXXX' \
+  'mv .*deploy-service' \
   'mv .*docker-cleanup' \
   'mv .*landit-docker-cleanup.service' \
   'mv .*landit-docker-cleanup.timer'; do
@@ -108,8 +116,8 @@ rg -q 'LANDIT_LOCK_FILE' "${USER_DATA}"
 rg -q 'landit-docker-cleanup.timer' "${USER_DATA}"
 rg -Fq 'if [[ ! -s "$${LANDIT_DIR}/api.tag" ]]' "${USER_DATA}"
 rg -Fq "grep -q '^/swapfile swap swap defaults 0 0$' /etc/fstab" "${USER_DATA}"
-rg -q 'previous_tag' "${USER_DATA}"
-rg -q 'rollback' "${USER_DATA}"
+rg -q 'previous_tag' "${DEPLOY_SERVICE}"
+rg -q 'rollback' "${DEPLOY_SERVICE}"
 rg -q 'mem_limit: 768m' "${COMPOSE}"
 rg -q 'mem_limit: 1024m' "${COMPOSE}"
 rg -q '127.0.0.1:8080:8080' "${COMPOSE}"

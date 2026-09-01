@@ -878,3 +878,16 @@
 - 개발자 문서는 Docker `until=24h`의 의미에 맞게 생성 후 24시간이 지난 미사용 image를 정리한다고 수정했다. 이 병합 전 리뷰 수정은 아직 live SSM 문서 version 5에 apply하지 않았다.
 - 첫 리뷰 수정 재검토에서 inherited-fd 로직이 생성되는 deploy-service heredoc이 아니라 바깥 user-data 초기화 구간에 들어가 SSM 부모가 fd 9를 보유한 채 자식 deploy-service가 같은 lock을 다시 열어 대기하는 deadlock이 확인됐다.
 - 렌더링된 deploy-service 자체에 `LANDIT_DEPLOY_LOCK_FD` 검증·재사용이 없으면 실패하는 runtime 테스트를 먼저 추가해 RED를 확인하고, 로직을 heredoc 내부로 이동해 GREEN을 확인했다. 직접 실행은 기존처럼 자체 lock을 잡고 SSM 실행만 상속 fd를 재사용한다.
+
+## 2026-09-01 LAN-418 develop 배포 스크립트 동기화
+
+- landit-ai develop run `33474279416`은 image build·ECR push까지 성공했지만 SSM command `0b6db982-f026-4de0-84ff-8d9d4c2b2106`이 `InProgress`에서 끝나지 않아 실패했다.
+- live EC2에서 SSM 부모 프로세스가 `/var/lock/landit-deploy.lock`을 보유한 상태로 자식 `/opt/landit/bin/deploy-service`가 같은 lock을 다시 기다리는 것을 `/proc/locks`와 프로세스 상태로 확인했다.
+- Terraform의 최신 user-data에는 상속 fd 재사용 로직이 있지만 기존 인스턴스의 `user_data` 변경은 무시되며, SSM 문서는 deploy-service 자체를 동기화하지 않아 기존 파일이 남은 runtime drift가 원인이다.
+- 멈춘 SSM 명령을 취소한 뒤 기존 deploy-service를 직접 실행해 AI SHA `fcd33c9ac5050f43ba487e212382d1aa66c2c363` 배포를 완료했다. 실행 image tag, `/opt/landit/ai.tag`와 loopback `/health`의 `{"status":"ok"}`를 확인했다.
+- 재발 방지는 deploy-service를 별도 단일 템플릿으로 분리하고 user-data와 SSM 문서가 함께 사용하도록 한다. SSM은 임시 파일을 준비한 뒤 기존 deploy lock 안에서 원자적으로 교체하고 새 스크립트를 실행한다.
+- Terraform apply는 fresh plan의 변경 범위를 확인한 뒤 별도 사용자 승인을 받는다.
+- `bash scripts/test-dev-ec2-contract.sh`, `bash scripts/test-dev-ec2-runtime.sh`, `bash scripts/test-dev-ec2-cleanup.sh`, `terraform fmt -recursive -check`, `git diff --check`와 develop `terraform validate`가 통과했다.
+- develop 전체 saved plan `/tmp/lan418-deploy-service-sync.tfplan`은 `0 add, 3 change, 0 destroy`이며 SSM 문서·연쇄 IAM policy 재평가 외에 기존 review reminder Scheduler의 `ENABLED -> DISABLED` drift가 포함되어 apply 대상에서 제외한다.
+- 복구 목적의 targeted saved plan `/tmp/lan418-deploy-service-sync-targeted.tfplan`은 `aws_ssm_document.ec2_deploy` 한 건만 in-place 갱신하는 `0 add, 1 change, 0 destroy`다. 사용자 승인 전에는 apply하지 않는다.
+- 수정 커밋 `fa44408`을 `fix/LAN-418`에 push하고 IaC PR #24를 생성했다. `bug` label과 작성자 assignee를 설정했으며 apply와 배포 재검증은 아직 실행하지 않았다.

@@ -890,3 +890,4 @@
 - `bash scripts/test-dev-ec2-contract.sh`, `bash scripts/test-dev-ec2-runtime.sh`, `bash scripts/test-dev-ec2-cleanup.sh`, `terraform fmt -recursive -check`, `git diff --check`와 develop `terraform validate`가 통과했다.
 - develop 전체 saved plan `/tmp/lan418-deploy-service-sync.tfplan`은 `0 add, 3 change, 0 destroy`이며 SSM 문서·연쇄 IAM policy 재평가 외에 기존 review reminder Scheduler의 `ENABLED -> DISABLED` drift가 포함되어 apply 대상에서 제외한다.
 - 복구 목적의 targeted saved plan `/tmp/lan418-deploy-service-sync-targeted.tfplan`은 `aws_ssm_document.ec2_deploy` 한 건만 in-place 갱신하는 `0 add, 1 change, 0 destroy`다. 사용자 승인 전에는 apply하지 않는다.
+- 수정 커밋 `fa44408`을 `fix/LAN-418`에 push하고 IaC PR #24를 생성했다. `bug` label과 작성자 assignee를 설정했으며 apply와 배포 재검증은 아직 실행하지 않았다.

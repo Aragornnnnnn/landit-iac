@@ -613,5 +613,5 @@
 - [x] SSM 문서가 최신 deploy-service를 lock 안에서 원자적으로 설치하는 계약 테스트를 RED로 확인한다.
 - [x] user-data와 SSM 문서가 같은 deploy-service 템플릿을 사용하도록 수정한다.
 - [x] 계약·runtime 테스트, Terraform 포맷, validate와 develop plan을 검증한다.
-- [ ] 변경을 커밋하고 PR을 생성한다.
+- [x] 변경을 커밋하고 PR을 생성한다.
 - [ ] 사용자 승인 후 develop SSM 문서를 apply하고 정상 배포를 재검증한다.

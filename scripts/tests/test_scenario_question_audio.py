@@ -1,4 +1,4 @@
-# LAN-351 고정 질문 오디오 배치 도구의 계약을 검증한다.
+# 시나리오 고정 질문 오디오 배치별 생성·게시 계약을 검증한다.
 
 import unittest
 from contextlib import redirect_stdout
@@ -66,6 +66,36 @@ def make_valid_snapshot() -> SourceSnapshot:
         target_locale="EN",
         base_locale="KR",
         assets=tuple(assets),
+    )
+
+
+def make_lan405_snapshot() -> SourceSnapshot:
+    assets = []
+    question_id = 121
+    scenario_id = 1
+    for character_id, scenario_count in (("chloe", 3), ("marco", 8), ("teddy", 29)):
+        for _ in range(scenario_count):
+            for question_level_group in ("LEVEL_1", "LEVEL_2_TO_3"):
+                for order in (1, 2, 3):
+                    assets.append(
+                        SourceAsset(
+                            scenario_id=scenario_id,
+                            scenario_question_id=question_id,
+                            display_order=order,
+                            character_id=character_id,
+                            question_text=f"Question {question_id}?",
+                            question_level_group=question_level_group,
+                        )
+                    )
+                    question_id += 1
+            scenario_id += 1
+    return SourceSnapshot(
+        schema_version=1,
+        environment="production",
+        target_locale="EN",
+        base_locale="KR",
+        assets=tuple(assets),
+        issue="LAN-405",
     )
 
 
@@ -235,6 +265,13 @@ class RecordingAwsRunner:
 
 
 class SourceContractTests(unittest.TestCase):
+    def test_validate_source_accepts_lan405_two_level_groups(self) -> None:
+        snapshot = make_lan405_snapshot()
+
+        validate_source(snapshot)
+
+        self.assertEqual(240, len(snapshot.assets))
+
     def test_validate_source_rejects_wrong_question_count(self) -> None:
         snapshot = make_valid_snapshot()
         invalid = replace(snapshot, assets=snapshot.assets[:-1])
@@ -767,6 +804,18 @@ class GenerationTests(unittest.TestCase):
 
 
 class ManifestTests(unittest.TestCase):
+    def test_lan405_manifest_preserves_question_level_groups(self) -> None:
+        snapshot = make_lan405_snapshot()
+
+        manifest = build_manifest(snapshot, make_generated_assets(snapshot))
+
+        self.assertEqual("LAN-405", manifest["issue"])
+        self.assertEqual(240, manifest["source"]["questionCount"])
+        self.assertEqual(
+            {"LEVEL_1", "LEVEL_2_TO_3"},
+            {asset["questionLevelGroup"] for asset in manifest["assets"]},
+        )
+
     def test_manifest_requires_all_120_generated_assets(self) -> None:
         with self.assertRaisesRegex(ValueError, "120 generated assets"):
             build_manifest(make_valid_snapshot(), make_generated_assets()[:-1])

@@ -25,7 +25,20 @@ VOICE_BY_CHARACTER = {
     "marco": "aura-2-hyperion-en",
     "teddy": "aura-2-draco-en",
 }
-EXPECTED_QUESTION_COUNTS = {"chloe": 9, "marco": 24, "teddy": 87}
+EXPECTED_BATCH_CONTRACTS = {
+    "LAN-351": {
+        "scenario_count": 40,
+        "question_count": 120,
+        "character_question_counts": {"chloe": 9, "marco": 24, "teddy": 87},
+        "question_level_groups": set(),
+    },
+    "LAN-405": {
+        "scenario_count": 40,
+        "question_count": 240,
+        "character_question_counts": {"chloe": 18, "marco": 48, "teddy": 174},
+        "question_level_groups": {"LEVEL_1", "LEVEL_2_TO_3"},
+    },
+}
 MODEL = "deepgram/aura-2"
 RESPONSE_FORMAT = "mp3"
 
@@ -37,6 +50,7 @@ class SourceAsset:
     display_order: int
     character_id: str
     question_text: str
+    question_level_group: str | None = None
 
 
 @dataclass(frozen=True)
@@ -46,6 +60,7 @@ class SourceSnapshot:
     target_locale: str
     base_locale: str
     assets: tuple[SourceAsset, ...]
+    issue: str = "LAN-351"
 
 
 @dataclass(frozen=True)
@@ -496,9 +511,11 @@ def load_source(path: Path) -> SourceSnapshot:
                 display_order=asset["displayOrder"],
                 character_id=asset["characterId"],
                 question_text=asset["questionText"],
+                question_level_group=asset.get("questionLevelGroup"),
             )
             for asset in payload["assets"]
         ),
+        issue=payload.get("issue", "LAN-351"),
     )
     validate_source(snapshot)
     return snapshot
@@ -554,6 +571,11 @@ def source_sha256(snapshot: SourceSnapshot) -> str:
                 "displayOrder": asset.display_order,
                 "characterId": asset.character_id,
                 "questionText": asset.question_text,
+                **(
+                    {"questionLevelGroup": asset.question_level_group}
+                    if asset.question_level_group is not None
+                    else {}
+                ),
             }
             for asset in sorted(
                 snapshot.assets,
@@ -579,8 +601,12 @@ def build_manifest(
     generated_assets: list[GeneratedAsset],
 ) -> dict:
     validate_source(snapshot)
-    if len(generated_assets) != 120:
-        raise ValueError("manifest requires exactly 120 generated assets")
+    contract = EXPECTED_BATCH_CONTRACTS[snapshot.issue]
+    expected_question_count = contract["question_count"]
+    if len(generated_assets) != expected_question_count:
+        raise ValueError(
+            f"manifest requires exactly {expected_question_count} generated assets"
+        )
     generated_by_question_id = {
         asset.scenario_question_id: asset for asset in generated_assets
     }
@@ -588,10 +614,12 @@ def build_manifest(
         asset.scenario_question_id for asset in snapshot.assets
     }
     if (
-        len(generated_by_question_id) != 120
+        len(generated_by_question_id) != expected_question_count
         or set(generated_by_question_id) != source_question_ids
     ):
-        raise ValueError("manifest requires exactly 120 generated assets")
+        raise ValueError(
+            f"manifest requires exactly {expected_question_count} generated assets"
+        )
 
     manifest_assets = []
     for source_asset in sorted(
@@ -620,6 +648,11 @@ def build_manifest(
                 "displayOrder": source_asset.display_order,
                 "characterId": source_asset.character_id,
                 "questionText": source_asset.question_text,
+                **(
+                    {"questionLevelGroup": source_asset.question_level_group}
+                    if source_asset.question_level_group is not None
+                    else {}
+                ),
                 "model": MODEL,
                 "providerVoiceId": VOICE_BY_CHARACTER[source_asset.character_id],
                 "responseFormat": RESPONSE_FORMAT,
@@ -635,14 +668,14 @@ def build_manifest(
         )
     return {
         "schemaVersion": 1,
-        "issue": "LAN-351",
+        "issue": snapshot.issue,
         "source": {
             "environment": snapshot.environment,
             "targetLocale": snapshot.target_locale,
             "baseLocale": snapshot.base_locale,
             "snapshotSha256": source_sha256(snapshot),
-            "scenarioCount": 40,
-            "questionCount": 120,
+            "scenarioCount": contract["scenario_count"],
+            "questionCount": expected_question_count,
         },
         "assets": manifest_assets,
     }
@@ -665,16 +698,24 @@ def manifest_sha256(manifest: dict) -> str:
 
 
 def verify_manifest(manifest: dict, work_dir: Path) -> None:
+    issue = manifest.get("issue")
+    contract = EXPECTED_BATCH_CONTRACTS.get(issue)
+    if contract is None:
+        raise ValueError("manifest issue is unsupported")
+    expected_question_count = contract["question_count"]
     if (
         manifest.get("schemaVersion") != 1
-        or manifest.get("issue") != "LAN-351"
-        or manifest.get("source", {}).get("scenarioCount") != 40
-        or manifest.get("source", {}).get("questionCount") != 120
-        or len(manifest.get("assets", [])) != 120
+        or manifest.get("source", {}).get("scenarioCount")
+        != contract["scenario_count"]
+        or manifest.get("source", {}).get("questionCount")
+        != expected_question_count
+        or len(manifest.get("assets", [])) != expected_question_count
     ):
-        raise ValueError("manifest must contain exactly 120 generated assets")
+        raise ValueError(
+            f"manifest must contain exactly {expected_question_count} generated assets"
+        )
     question_ids = [asset["scenarioQuestionId"] for asset in manifest["assets"]]
-    if len(set(question_ids)) != 120:
+    if len(set(question_ids)) != expected_question_count:
         raise ValueError("manifest contains duplicate question ids")
     snapshot = SourceSnapshot(
         schema_version=1,
@@ -688,9 +729,11 @@ def verify_manifest(manifest: dict, work_dir: Path) -> None:
                 display_order=asset["displayOrder"],
                 character_id=asset["characterId"],
                 question_text=asset["questionText"],
+                question_level_group=asset.get("questionLevelGroup"),
             )
             for asset in manifest["assets"]
         ),
+        issue=issue,
     )
     validate_source(snapshot)
     if source_sha256(snapshot) != manifest["source"]["snapshotSha256"]:
@@ -972,8 +1015,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "validate-source":
         snapshot = load_source(args.source)
+        character_counts = Counter(asset.character_id for asset in snapshot.assets)
         print(
-            "40 scenarios, 120 questions, chloe=9, marco=24, teddy=87, "
+            f"{len({asset.scenario_id for asset in snapshot.assets})} scenarios, "
+            f"{len(snapshot.assets)} questions, "
+            f"chloe={character_counts['chloe']}, "
+            f"marco={character_counts['marco']}, "
+            f"teddy={character_counts['teddy']}, "
             f"source_sha256={source_sha256(snapshot)}"
         )
     elif args.command == "generate":
@@ -1015,7 +1063,7 @@ def main(argv: list[str] | None = None) -> int:
             manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
             verify_manifest(manifest, args.work_dir)
             print(
-                f"manifest_assets=120, "
+                f"manifest_assets={len(manifest['assets'])}, "
                 f"manifest_sha256={manifest_sha256(manifest)}"
             )
     elif args.command == "build-manifest":
@@ -1027,7 +1075,8 @@ def main(argv: list[str] | None = None) -> int:
         temporary_path.write_bytes(canonical_manifest_bytes(manifest))
         os.replace(temporary_path, args.output)
         print(
-            f"assets=120, manifest_sha256={manifest_sha256(manifest)}, "
+            f"assets={len(manifest['assets'])}, "
+            f"manifest_sha256={manifest_sha256(manifest)}, "
             f"output={args.output}"
         )
     elif args.command == "upload":
@@ -1060,8 +1109,14 @@ def validate_source(snapshot: SourceSnapshot) -> None:
         or snapshot.base_locale != "KR"
     ):
         raise ValueError("source must use schema version 1 and production EN/KR metadata")
-    if len(snapshot.assets) != 120:
-        raise ValueError("source must contain exactly 120 questions")
+    contract = EXPECTED_BATCH_CONTRACTS.get(snapshot.issue)
+    if contract is None:
+        raise ValueError("source issue is unsupported")
+    expected_question_count = contract["question_count"]
+    if len(snapshot.assets) != expected_question_count:
+        raise ValueError(
+            f"source must contain exactly {expected_question_count} questions"
+        )
 
     question_ids = [asset.scenario_question_id for asset in snapshot.assets]
     if len(set(question_ids)) != len(question_ids):
@@ -1082,18 +1137,36 @@ def validate_source(snapshot: SourceSnapshot) -> None:
     character_question_counts = Counter(
         asset.character_id for asset in snapshot.assets
     )
-    if dict(character_question_counts) != EXPECTED_QUESTION_COUNTS:
+    if dict(character_question_counts) != contract["character_question_counts"]:
         raise ValueError(
-            "source character question counts must be chloe=9, marco=24, teddy=87"
+            "source character question counts do not match the batch contract"
         )
 
-    orders_by_scenario: dict[int, list[int]] = defaultdict(list)
+    orders_by_scenario_and_group: dict[tuple[int, str | None], list[int]] = defaultdict(
+        list
+    )
+    groups_by_scenario: dict[int, set[str | None]] = defaultdict(set)
     characters_by_scenario: dict[int, set[str]] = defaultdict(set)
     for asset in snapshot.assets:
-        orders_by_scenario[asset.scenario_id].append(asset.display_order)
+        key = (asset.scenario_id, asset.question_level_group)
+        orders_by_scenario_and_group[key].append(asset.display_order)
+        groups_by_scenario[asset.scenario_id].add(asset.question_level_group)
         characters_by_scenario[asset.scenario_id].add(asset.character_id)
-    if any(sorted(orders) != [1, 2, 3] for orders in orders_by_scenario.values()):
-        raise ValueError("each scenario must contain display orders 1, 2, and 3")
+    if len(groups_by_scenario) != contract["scenario_count"]:
+        raise ValueError("source scenario count does not match the batch contract")
+    if any(
+        sorted(orders) != [1, 2, 3]
+        for orders in orders_by_scenario_and_group.values()
+    ):
+        raise ValueError(
+            "each scenario and question level group must contain display orders 1, 2, and 3"
+        )
+    expected_groups = contract["question_level_groups"]
+    if expected_groups:
+        if any(groups != expected_groups for groups in groups_by_scenario.values()):
+            raise ValueError("each scenario must contain every question level group")
+    elif any(groups != {None} for groups in groups_by_scenario.values()):
+        raise ValueError("this batch does not support question level groups")
     if any(len(characters) != 1 for characters in characters_by_scenario.values()):
         raise ValueError("each scenario must use exactly one character")
 

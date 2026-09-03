@@ -891,3 +891,13 @@
 - develop 전체 saved plan `/tmp/lan418-deploy-service-sync.tfplan`은 `0 add, 3 change, 0 destroy`이며 SSM 문서·연쇄 IAM policy 재평가 외에 기존 review reminder Scheduler의 `ENABLED -> DISABLED` drift가 포함되어 apply 대상에서 제외한다.
 - 복구 목적의 targeted saved plan `/tmp/lan418-deploy-service-sync-targeted.tfplan`은 `aws_ssm_document.ec2_deploy` 한 건만 in-place 갱신하는 `0 add, 1 change, 0 destroy`다. 사용자 승인 전에는 apply하지 않는다.
 - 수정 커밋 `fa44408`을 `fix/LAN-418`에 push하고 IaC PR #24를 생성했다. `bug` label과 작성자 assignee를 설정했으며 apply와 배포 재검증은 아직 실행하지 않았다.
+
+## 2026-09-03 LAN-184 develop Scheduler 상태 정합화
+
+- `origin/main`과 현재 develop AWS를 refresh한 saved plan `/private/tmp/lan184-origin-main-dev.tfplan`은 `0 add, 1 change, 0 destroy`다.
+- SSM 배포 문서와 연쇄 IAM policy에는 변경이 없고, 유일한 drift는 live `ENABLED` Scheduler를 코드 기본값 `false` 때문에 `DISABLED`로 되돌리는 변경이다.
+- 최근 BE와 AI develop GitHub 배포는 성공했으므로 SSM 불일치가 자동 배포를 막는다는 증거는 없다.
+- 검증된 live 상태를 보존하도록 dev root의 Scheduler 기본값만 `true`로 바꾸고 production 기본값은 `false`로 유지한다.
+- 수정 후 fresh saved plan `/private/tmp/lan184-dev-scheduler-aligned.tfplan`은 `No changes`다. AWS 변경이 없으므로 Terraform apply는 필요하지 않고, 이 소스 변경이 main에 병합되면 이후 plan도 현재 live 상태를 유지한다.
+- 이후 LAN-430이 반영된 최신 `origin/main`으로 rebase한 전체 plan은 Scheduler와 SSM 변경 없이 `develop-golden-audio-read` IAM inline policy 생성 1건만 남는다.
+- IaC run `33747648789`의 apply는 기존 Scheduler `UpdateSchedule`과 golden audio `iam:PutRolePolicy` 권한 부족으로 실패했다. 이 변경은 Scheduler update를 제거하며, golden audio policy는 Actions apply role에 권한을 넓히지 않고 관리자 profile의 별도 targeted apply가 필요하다.

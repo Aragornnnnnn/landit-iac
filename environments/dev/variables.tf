@@ -156,7 +156,7 @@ variable "review_reminder_schedule_expression" {
 variable "review_reminder_schedule_enabled" {
   description = "Whether the development review reminder scheduler is enabled."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "alb_certificate_arn" {

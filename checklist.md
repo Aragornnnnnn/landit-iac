@@ -1,5 +1,12 @@
 # Checklist
 
+## 2026-09-03 LAN-184 develop Scheduler 상태 정합화
+
+- [x] `origin/main` 기준 fresh dev plan으로 현재 AWS drift를 확인한다.
+- [x] SSM 배포 문서에는 변경이 없고 Scheduler 상태만 다른 것을 확인한다.
+- [x] dev Scheduler 기본값과 계약 테스트, 운영 문서를 `ENABLED`로 맞춘다.
+- [x] Terraform 포맷, 계약 테스트, validate와 fresh plan을 검증한다.
+
 ## 2026-08-29 LAN-386 PR 리뷰 반영
 
 - [x] CodeRabbit 인라인 리뷰를 현재 계약 테스트와 HCL로 검증한다.

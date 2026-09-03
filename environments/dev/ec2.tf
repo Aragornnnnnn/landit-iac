@@ -392,3 +392,33 @@ resource "aws_iam_role_policy" "github_actions_ec2_deploy" {
   role   = data.aws_iam_role.github_actions_deploy.id
   policy = data.aws_iam_policy_document.github_actions_ec2_deploy.json
 }
+
+# 발음 골든 셋 오디오(개인 음성 — 저장소 미커밋, landit-ai LAN-389)를 CI가
+# 읽어 주간 드리프트 감시(golden-eval.yml)를 돌릴 수 있게 한다. 읽기 전용이며
+# golden/pronunciation/ 프리픽스로 한정한다 — 이 경로는 CDN(content/*) 밖이라
+# 공개되지 않고, AWS 권한 주체만 접근한다.
+data "aws_iam_policy_document" "github_actions_golden_audio" {
+  statement {
+    sid       = "ReadGoldenPronunciationAudio"
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::${data.terraform_remote_state.shared.outputs.content_bucket_name}/golden/pronunciation/*"]
+  }
+
+  statement {
+    sid       = "ListGoldenPronunciationAudio"
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:aws:s3:::${data.terraform_remote_state.shared.outputs.content_bucket_name}"]
+
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["golden/pronunciation/*"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "github_actions_golden_audio" {
+  name   = "develop-golden-audio-read"
+  role   = data.aws_iam_role.github_actions_deploy.id
+  policy = data.aws_iam_policy_document.github_actions_golden_audio.json
+}

@@ -283,7 +283,11 @@ for environment in dev prod; do
   schedule_expression_variable="$(block 'variable "review_reminder_schedule_expression"' "$variables_file")"
   require_text 'default[[:space:]]*=[[:space:]]*"cron\(0 20 \* \* \? \*\)"' "$schedule_expression_variable" "$environment review reminder schedule expression root variable"
   schedule_enabled_variable="$(block 'variable "review_reminder_schedule_enabled"' "$variables_file")"
-  require_text 'default[[:space:]]*=[[:space:]]*false' "$schedule_enabled_variable" "$environment review reminder schedule enabled root variable"
+  if [[ "$environment" == "dev" ]]; then
+    require_text 'default[[:space:]]*=[[:space:]]*true' "$schedule_enabled_variable" "$environment review reminder schedule enabled root variable"
+  else
+    require_text 'default[[:space:]]*=[[:space:]]*false' "$schedule_enabled_variable" "$environment review reminder schedule enabled root variable"
+  fi
 
   app_platform_module="$(block 'module "app_platform"' "$main_file")"
   require_text 'review_reminder_schedule_expression[[:space:]]*=[[:space:]]*var.review_reminder_schedule_expression' "$app_platform_module" "$environment app platform module input"

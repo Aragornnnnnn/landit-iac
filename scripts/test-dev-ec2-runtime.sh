@@ -93,6 +93,10 @@ if rg -q 'LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS=9999999' "${TEST_DIR}/user-dat
   echo 'develop API must not hardcode the free-talk speaking limit.' >&2
   exit 1
 fi
+if ! rg -q 'LANDIT_GRAFANA_CLOUD_OTLP_HEADERS LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION' "${TEST_DIR}/user-data.sh"; then
+  echo 'develop API must load the RevenueCat webhook authorization from SSM.' >&2
+  exit 1
+fi
 awk '
   /<<.RUNTIME_ENV.$/ { capture = 1; next }
   /^RUNTIME_ENV$/ { exit }

@@ -628,5 +628,6 @@
 - [x] develop EC2 runtime env가 SSM에서 `LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`을 읽도록 템플릿과 runtime 테스트를 갱신한다.
 - [x] SSM parameter 문서에 새 SecureString 항목을 추가한다.
 - [x] runtime 테스트, Terraform 포맷, validate와 develop plan으로 변경 범위를 확인한다.
-- [ ] 사용자 승인 후 develop SSM 배포 문서를 apply하고 BE 배포 뒤 웹훅 수신을 확인한다.
+- [x] 사용자 승인 후 develop SSM 배포 문서를 targeted apply한다.
+- [ ] BE develop 배포 뒤 RevenueCat 테스트 이벤트로 웹훅 수신을 확인한다.
 - [ ] production 출시 시 ECS task definition secret과 `/landit/prod` parameter를 함께 추가한다.

@@ -622,3 +622,11 @@
 - [x] 계약·runtime 테스트, Terraform 포맷, validate와 develop plan을 검증한다.
 - [x] 변경을 커밋하고 PR을 생성한다.
 - [ ] 사용자 승인 후 develop SSM 문서를 apply하고 정상 배포를 재검증한다.
+
+## 2026-09-04 LAN-442 develop RevenueCat 웹훅 비밀값 주입
+
+- [x] develop EC2 runtime env가 SSM에서 `LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`을 읽도록 템플릿과 runtime 테스트를 갱신한다.
+- [x] SSM parameter 문서에 새 SecureString 항목을 추가한다.
+- [x] runtime 테스트, Terraform 포맷, validate와 develop plan으로 변경 범위를 확인한다.
+- [ ] 사용자 승인 후 develop SSM 배포 문서를 apply하고 BE 배포 뒤 웹훅 수신을 확인한다.
+- [ ] production 출시 시 ECS task definition secret과 `/landit/prod` parameter를 함께 추가한다.

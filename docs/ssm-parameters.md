@@ -36,6 +36,7 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_BE_SENTRY_DSN` | `SecureString` | backend Sentry DSN, ECS에서 `SENTRY_DSN`으로 주입 |
 | `/landit/{environment}/LANDIT_AI_SENTRY_DSN` | `SecureString` | AI service Sentry DSN, ECS에서 `SENTRY_DSN`으로 주입 |
 | `/landit/{environment}/LANDIT_GRAFANA_CLOUD_OTLP_HEADERS` | `SecureString` | Grafana Cloud OTLP 인증 header, BE와 AI에서 `OTEL_EXPORTER_OTLP_HEADERS`로 주입 |
+| `/landit/{environment}/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION` | `SecureString` | RevenueCat 웹훅 Authorization header 공유 비밀값, backend `POST /webhooks/revenuecat` 검증에 사용 |
 | `/landit/{environment}/OPENROUTER_API_KEY` | `SecureString` | AI API provider key |
 | `/landit/{environment}/LLM_PROVIDER` | `String` | LLM provider identifier |
 | `/landit/{environment}/OPENROUTER_BASE_URL` | `String` | OpenRouter API base URL |
@@ -87,7 +88,7 @@ SSM parameter를 생성해도 ECS container environment에 자동으로 들어�
 ## 운영 규칙
 
 - SSM 값은 shell history, CI log, git diff에 남지 않는 방식으로 갱신합니다.
-- `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `LANDIT_AUTH_TOKEN_SECRET`, `LANDIT_BE_SENTRY_DSN`, `LANDIT_AI_SENTRY_DSN`, `LANDIT_GRAFANA_CLOUD_OTLP_HEADERS`, `LANDIT_SENTRY_RELAY_AUTH_TOKEN`, `LANDIT_SENTRY_DISCORD_WEBHOOK_URL`, `OPENROUTER_API_KEY`는 `SecureString`으로만 관리합니다.
+- `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `LANDIT_AUTH_TOKEN_SECRET`, `LANDIT_BE_SENTRY_DSN`, `LANDIT_AI_SENTRY_DSN`, `LANDIT_GRAFANA_CLOUD_OTLP_HEADERS`, `LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`, `LANDIT_SENTRY_RELAY_AUTH_TOKEN`, `LANDIT_SENTRY_DISCORD_WEBHOOK_URL`, `OPENROUTER_API_KEY`는 `SecureString`으로만 관리합니다.
 - `LANDIT_CORS_ALLOWED_ORIGINS`, `LANDIT_AI_CLIENT_MODE`, `LANDIT_AI_BASE_URL`, `LANDIT_MEMORY_WRITE_ENABLED`, `LANDIT_MEMORY_USE_ENABLED`, `LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES`, `LANDIT_AUTH_OIDC_KAKAO_AUDIENCES`, `LANDIT_AUTH_OIDC_APPLE_AUDIENCES`, `LLM_PROVIDER`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`, `MESSAGE_FEEDBACK_MODEL`, `MESSAGE_FEEDBACK_REVIEW_ENABLED`은 secret이 아니므로 `String`으로 관리합니다.
 - Terraform에서 secret 값을 직접 생성하거나 import하지 않습니다.
 - 값 변경 후에는 값 자체가 아니라 parameter name, type, version만 검증 기록에 남깁니다.

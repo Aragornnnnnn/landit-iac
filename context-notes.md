@@ -901,3 +901,14 @@
 - 수정 후 fresh saved plan `/private/tmp/lan184-dev-scheduler-aligned.tfplan`은 `No changes`다. AWS 변경이 없으므로 Terraform apply는 필요하지 않고, 이 소스 변경이 main에 병합되면 이후 plan도 현재 live 상태를 유지한다.
 - 이후 LAN-430이 반영된 최신 `origin/main`으로 rebase한 전체 plan은 Scheduler와 SSM 변경 없이 `develop-golden-audio-read` IAM inline policy 생성 1건만 남는다.
 - IaC run `33747648789`의 apply는 기존 Scheduler `UpdateSchedule`과 golden audio `iam:PutRolePolicy` 권한 부족으로 실패했다. 이 변경은 Scheduler update를 제거하며, golden audio policy는 Actions apply role에 권한을 넓히지 않고 관리자 profile의 별도 targeted apply가 필요하다.
+
+## 2026-09-04 LAN-442 develop RevenueCat 웹훅 비밀값 주입
+
+- BE LAN-442가 추가한 `POST /webhooks/revenuecat`는 `LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION` 환경변수와 Authorization header를 비교한다. 값이 비어 있으면 모든 웹훅을 401로 거절하므로 develop 배포 전에 env 주입이 필요하다.
+- develop EC2 runtime env는 고정 parameter 목록만 `/run/landit/api.env`로 내려주고, 목록의 parameter가 SSM에 없으면 `required SSM parameter is missing`으로 배포가 실패한다. 따라서 `/landit/develop/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`을 SecureString으로 먼저 등록한 뒤 SSM 배포 문서를 apply한다. parameter는 사용자가 이 작업 전에 등록했고 이름, 타입, 길이만 확인했다.
+- 기존 인스턴스의 `user_data` 변경은 `ignore_changes`로 무시되므로 이 변경의 apply 대상은 `aws_ssm_document.ec2_deploy` in-place 갱신뿐이어야 한다.
+- production은 아직 ECS task definition secret 목록(`modules/app-platform`)으로 주입되며, 여기에 항목을 추가하면 `/landit/prod` parameter가 없을 때 task 시작이 실패한다. production 출시 시점에 parameter 등록과 module secret 추가를 함께 진행하도록 보류한다.
+- `bash scripts/test-dev-ec2-runtime.sh`는 템플릿 수정 전 RED, 수정 후 GREEN을 확인했다. 로컬에 `rg`가 없어 테스트 실행에만 `grep -E` 대체 스크립트를 PATH 앞에 두고 실행했다.
+- `terraform fmt -recursive -check`, `git diff --check`, develop `terraform validate`가 통과했다. develop saved plan `/private/tmp/lan442-dev.tfplan`은 `0 add, 2 change, 0 destroy`이며 `aws_ssm_document.ec2_deploy` in-place 갱신과 문서 버전에 연쇄된 `aws_iam_role_policy.github_actions_ec2_deploy` 재평가만 포함한다. EC2·Scheduler 변경은 없다.
+- `aws_iam_role_policy.github_actions_ec2_deploy`는 문서 ARN만 참조하므로 apply 뒤 실제 policy JSON은 바뀌지 않는 plan-time 재평가다. 다만 Actions apply role에는 `iam:PutRolePolicy`가 없어 전체 apply가 이 항목에서 실패할 수 있으므로, LAN-418과 같이 관리자 profile의 targeted saved plan `/private/tmp/lan442-dev-ssm-doc-targeted.tfplan`(`0 add, 1 change, 0 destroy`, `aws_ssm_document.ec2_deploy`만)으로 apply한다. 사용자 승인 전에는 apply하지 않는다.
+- 사용자 승인 뒤 관리자 profile로 targeted saved plan을 apply해 `aws_ssm_document.ec2_deploy` 1건이 갱신됐다. live 문서의 runtime env 스크립트에 `LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`이 포함된 것을 확인했고, apply 후 develop 전체 plan은 `No changes`로 연쇄 IAM policy 재평가가 사라졌다. 다음 BE develop 배포부터 새 변수가 api.env에 들어간다.

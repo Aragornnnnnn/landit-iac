@@ -752,11 +752,15 @@ def verify_manifest(manifest: dict, work_dir: Path) -> None:
             or fingerprint != generation_fingerprint(source_asset)
         ):
             raise ValueError("manifest generation contract mismatch")
-        expected_key = (
+        initial_key = (
             "content/scenario-question-audio/"
             f"{asset['scenarioQuestionId']}/{fingerprint}.mp3"
         )
-        if asset["s3Key"] != expected_key:
+        corrected_key = (
+            "content/scenario-question-audio/"
+            f"{asset['scenarioQuestionId']}/revisions/{asset['audioSha256']}.mp3"
+        )
+        if asset["s3Key"] not in {initial_key, corrected_key}:
             raise ValueError("manifest s3 key mismatch")
         audio_path = (
             work_dir

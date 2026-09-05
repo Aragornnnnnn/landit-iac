@@ -23,12 +23,12 @@ audioUrl:            {CloudFront base URL}/{asset.s3Key}
 | 응답 형식 | MP3, `audio/mpeg` |
 | 총 용량 | 4,916,304 bytes |
 | Source SHA-256 | `bf534681837848ebb45644d2c7add05b023d4fd18880f3139f769017c14c5fce` |
-| Manifest SHA-256 | `72920aadc175491304fb0a5a6eea484a2a2cb94feda9b3f7ce312929b94aee60` |
+| Manifest SHA-256 | `2b19f576dfd4616adebc76c25f7316fab4fbc9c781ee1610372982d4a194d5e9` |
 
 게시된 manifest URL은 다음과 같습니다.
 
 ```text
-https://d19azau1un4t7r.cloudfront.net/content/scenario-question-audio/manifests/72920aadc175491304fb0a5a6eea484a2a2cb94feda9b3f7ce312929b94aee60.json
+https://d19azau1un4t7r.cloudfront.net/content/scenario-question-audio/manifests/2b19f576dfd4616adebc76c25f7316fab4fbc9c781ee1610372982d4a194d5e9.json
 ```
 
 ## Manifest 필드
@@ -81,7 +81,7 @@ val audioByQuestionId: Map<Long, ScenarioQuestionAudioAsset> =
 
 - FE가 고정 질문 MP3를 직접 재생한다면 위 CloudFront URL을 전달할 수 있습니다.
 - BE 또는 AI가 맞장구 음성과 결합한다면 MP3 두 개의 바이트를 단순 연결하지 않습니다. 각각 디코딩한 뒤 결합하고 최종 음성을 한 번 인코딩합니다.
-- 객체는 `Cache-Control: public, max-age=31536000, immutable`을 사용합니다. 2026-09-06 품질 보정에서 질문 ID 13, 14, 21, 56, 96, 111은 기존 URL을 유지한 채 교체했으므로 기존 브라우저 cache는 만료 전까지 이전 음성을 재생할 수 있습니다.
+- 객체는 `Cache-Control: public, max-age=31536000, immutable`을 사용합니다. 질문 ID 13, 14, 21, 56, 96, 111의 보정본은 manifest의 새 `revisions/{audioSha256}.mp3` URL을 사용합니다.
 - 질문 원문, model, voice 또는 출력 형식이 바뀌면 새 generation fingerprint와 새 key를 사용합니다.
 - 이번 LAN-351 작업에는 BE, AI 코드와 runtime IAM 변경이 포함되지 않았습니다.
 
@@ -92,7 +92,7 @@ LAN-351 고정 질문 MP3 120개 게시 완료.
 - Mapping source: LAN-351 manifest assets[]
 - Lookup key: scenarioQuestionId
 - URL: https://d19azau1un4t7r.cloudfront.net/{s3Key}
-- Manifest: https://d19azau1un4t7r.cloudfront.net/content/scenario-question-audio/manifests/72920aadc175491304fb0a5a6eea484a2a2cb94feda9b3f7ce312929b94aee60.json
+- Manifest: https://d19azau1un4t7r.cloudfront.net/content/scenario-question-audio/manifests/2b19f576dfd4616adebc76c25f7316fab4fbc9c781ee1610372982d4a194d5e9.json
 - Do not compose keys from scenarioId/displayOrder.
 - MP3 결합 시 바이트 단순 연결 금지. 디코딩 후 결합하고 재인코딩 필요.
 ```
@@ -103,6 +103,7 @@ LAN-351 고정 질문 MP3 120개 게시 완료.
 - 품질 보정 검증일: 2026-09-06.
 - 질문 ID 13, 14, 21, 56, 96, 111의 S3 객체 metadata와 바이트 SHA-256을 보정 manifest와 대조했다.
 - CloudFront invalidation `IBZOP5SXFZXKPRYWH6PNI3TVQE` 완료 후 같은 URL 6개의 바이트 SHA-256을 다시 대조했다.
+- 캐시 우회용 revision URL 6개와 새 content-addressed manifest를 S3에 게시하고 전체 120개 객체를 검증했다.
 - CloudFront distribution: 활성 상태.
 - 대표 MP3 URL: HTTP 200, `Content-Type: audio/mpeg`, `Content-Length: 62928`.
 - Manifest URL: HTTP 200, `Content-Type: application/json`, `Content-Length: 79606`.

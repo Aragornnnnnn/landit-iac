@@ -846,6 +846,31 @@ class ManifestTests(unittest.TestCase):
             manifest_sha256(manifest),
         )
 
+    def test_verify_manifest_accepts_content_addressed_correction_key(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            _, _, manifest = seed_full_manifest(Path(directory))
+            first = manifest["assets"][0]
+            first["s3Key"] = (
+                "content/scenario-question-audio/"
+                f"{first['scenarioQuestionId']}/revisions/{first['audioSha256']}.mp3"
+            )
+
+            verify_manifest(manifest, Path(directory))
+
+    def test_verify_manifest_rejects_correction_key_with_wrong_audio_digest(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            _, _, manifest = seed_full_manifest(Path(directory))
+            first = manifest["assets"][0]
+            first["s3Key"] = (
+                "content/scenario-question-audio/"
+                f"{first['scenarioQuestionId']}/revisions/{'0' * 64}.mp3"
+            )
+
+            with self.assertRaisesRegex(ValueError, "manifest s3 key mismatch"):
+                verify_manifest(manifest, Path(directory))
+
     def test_verify_manifest_detects_changed_audio_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             _, generated, manifest = seed_full_manifest(Path(directory))

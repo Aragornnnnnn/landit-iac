@@ -1,5 +1,14 @@
 # Context Notes
 
+## 2026-09-06 LAN-405 보정 자산 캐시 우회 전환
+
+- WebView의 기존 `immutable` cache를 즉시 우회하기 위해 사용자 승인으로 이미지 35개와 음원 14개를 모두 새 key에 게시했다. 기존 key와 사전 덮어쓰기 백업은 삭제하지 않는다.
+- 이미지 35개는 기존 parent path 아래 새 UUID를 사용한다. 로컬 1254x1254 WebP, S3 metadata·SHA-256, CloudFront 응답 바이트를 35/35 검증했다.
+- 음원 14개는 `content/scenario-question-audio/{scenarioQuestionId}/revisions/{audioSha256}.mp3`를 사용한다. LAN-351 게시 결과는 `new=7, reused=114, conflicts=0`, LAN-405는 `new=9, reused=232, conflicts=0`이며 각각 새 MP3와 manifest를 포함한다.
+- 새 manifest SHA-256은 LAN-351 `2b19f576dfd4616adebc76c25f7316fab4fbc9c781ee1610372982d4a194d5e9`, LAN-405 `cc8edd8a3bd0c3660f0cfd4b4da409f3216eda7c88b2f50f9585fec50aa1f2a2`다.
+- BE는 35개 `practice_examples_payload[].imageUrl`과 14개 `scenario_question_language_variant.audio_url`을 한 번의 forward migration으로 새 URL에 전환한다.
+- `python3 -m unittest scripts.tests.test_scenario_question_audio -v` 43개 테스트와 LAN-351·LAN-405 manifest 전체 검증을 통과했다. 이미지 35개의 파일 수, SHA-256, 용량과 1254x1254 크기도 일치했다.
+
 ## 2026-09-06 LAN-405 시나리오 질문 음원 품질 보정
 
 - Gemini 음성 검수에서 LAN-351 질문 ID 13, 14, 21, 56, 96, 111과 LAN-405 질문 ID 124, 128, 142, 158, 245, 252, 298, 299를 보정 대상으로 확정했다.

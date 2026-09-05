@@ -1,5 +1,15 @@
 # Checklist
 
+## 2026-09-06 LAN-405 시나리오 질문 음원 품질 보정
+
+- [x] Gemini 검수로 선별한 14개 보정 음원과 질문·캐릭터·voice 매핑을 확인한다.
+- [x] `origin/main` 기준 전용 브랜치에서 기존 S3 key 유지 범위를 분리한다.
+- [x] 교체 전 S3 객체의 key, SHA-256 metadata, 캐시 정책과 CloudFront 배포 상태를 확인한다.
+- [x] LAN-351·LAN-405 manifest의 음원 SHA-256, 용량과 생성 ID를 보정본 기준으로 갱신하고 로컬 전수 검증한다.
+- [x] 승인된 14개 MP3만 기존 S3 key에 덮어쓰고 객체 metadata를 검증한다.
+- [x] 새 content-addressed manifest를 게시하고 CloudFront invalidation 뒤 원격 SHA-256을 검증한다.
+- [x] 전달 문서, 계약 테스트와 Git diff를 검토하고 논리 변경을 커밋한다.
+
 ## 2026-09-03 LAN-184 develop Scheduler 상태 정합화
 
 - [x] `origin/main` 기준 fresh dev plan으로 현재 AWS drift를 확인한다.

@@ -1,5 +1,16 @@
 # Context Notes
 
+## 2026-09-06 LAN-405 시나리오 질문 음원 품질 보정
+
+- Gemini 음성 검수에서 LAN-351 질문 ID 13, 14, 21, 56, 96, 111과 LAN-405 질문 ID 124, 128, 142, 158, 245, 252, 298, 299를 보정 대상으로 확정했다.
+- 사용자는 캐시 만료 전 기존 음성이 재생될 수 있음을 수용하고 14개 모두 기존 S3 key에 덮어쓰기로 결정했다. 따라서 질문 URL, 원문, model, voice, generation fingerprint는 유지한다.
+- shared 콘텐츠 버킷은 versioning이 활성화되어 있지 않다. 덮어쓰기 전 원본 14개는 로컬 감사 폴더에서 기존 manifest SHA-256과 일치함을 확인했다.
+- 보정본은 질문·캐릭터·voice 매핑을 유지하며 Gemini 최종 검수를 통과했다. LAN-351 manifest 6개와 LAN-405 manifest 8개의 `audioSha256`, `audioByteSize`, `openRouterGenerationId`만 갱신한다.
+- 같은 key 덮어쓰기는 기존 immutable 게시 계약의 예외다. 새 manifest는 content-addressed key로 게시하고, CloudFront cache는 invalidation하지만 이미 브라우저에 저장된 응답은 만료 전까지 남을 수 있다.
+- shared S3의 14개 MP3를 기존 key에 덮어썼고, LAN-351 manifest `72920aadc175491304fb0a5a6eea484a2a2cb94feda9b3f7ce312929b94aee60`과 LAN-405 manifest `1783b2faa66cd6711cdbaeb87cd82c80048f3ebb9e19c273c340aa45b0e0e7bb`을 새 content-addressed key로 게시했다.
+- CloudFront invalidation `IBZOP5SXFZXKPRYWH6PNI3TVQE` 완료 후 14개 MP3와 두 manifest를 CDN에서 내려받아 로컬 canonical SHA-256과 일치함을 확인했다.
+- `python3 -m unittest scripts.tests.test_scenario_question_audio -v`의 41개 테스트, LAN-351·LAN-405 manifest 360개 로컬 MP3 검증과 Git 기준 변경 필드 대조를 통과했다. 14개 항목에서 `audioByteSize`, `audioSha256`, `openRouterGenerationId`만 바뀌었다.
+
 ## 2026-08-29 LAN-386 PR 리뷰 반영
 
 - PR #22 CodeRabbit 리뷰는 유효하다. 기존 계약 테스트가 첫 `access_control_allow_origins`부터 전역 검색하고 정책 연결도 전체 파일에서 검색해 다른 리소스가 오류를 가릴 수 있었다.

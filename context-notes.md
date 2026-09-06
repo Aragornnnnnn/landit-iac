@@ -7,6 +7,9 @@
 - 사용자 결정에 따라 production Worker를 CPU 1024 units, memory 2048MiB, desired count 1로 증설한다.
 - 값이 가장 최근 변경된 production SSM 파라미터는 2026-09-02 17:52 KST이고, 현재 API와 Worker ECS deployment는 각각 2026-09-06 16:16, 16:06 KST에 생성돼 SSM 변경 후 재배포된 상태다.
 - production saved plan `/tmp/lan418-prod-worker-1vcpu-2gib.tfplan`은 Worker Task Definition의 CPU 256→1024, memory 1024→2048 교체와 Service 갱신만 포함한 `1 add, 1 change, 1 destroy`다.
+- PR #34를 main에 병합하고 승인된 saved plan을 `1 added, 1 changed, 1 destroyed`로 적용했다.
+- 새 `prod-landit-worker:6`은 CPU 1024 units, memory 2048MiB, desired/running `1/1`, pending `0`, failed task `0`이다. 새 ALB target과 외부 `https://ai.landit.im/health`는 정상이며 이전 target은 deregistration 중이다.
+- apply 후 production 전체 Terraform plan은 `No changes`다.
 
 ## 2026-09-06 LAN-184 production Scheduler 활성화
 

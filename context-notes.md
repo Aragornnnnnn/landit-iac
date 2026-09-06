@@ -8,6 +8,9 @@
 - production plan에서 Scheduler 외 변경이나 삭제가 확인되면 apply하지 않는다.
 - production 전체 plan은 Scheduler 활성화 외에 Worker Task Definition 교체와 Service 갱신이 포함된 `1 add, 2 change, 1 destroy`라서 적용 대상에서 제외했다.
 - Scheduler만 대상으로 만든 saved plan `/tmp/lan184-prod-scheduler-enable-targeted.tfplan`은 `0 add, 1 change, 0 destroy`이며 `prod-landit-review-reminder`의 `DISABLED -> ENABLED`만 포함한다.
+- PR #32를 main에 병합하고 targeted saved plan을 적용했다. apply 결과는 `0 added, 1 changed, 0 destroyed`이며 live Scheduler는 `ENABLED`다.
+- post-apply 전체 plan에서 Scheduler 변경은 사라졌다. Worker memory `1024 -> 512` Task Definition 교체와 Service 갱신 `1 add, 1 change, 1 destroy`만 남아 이번 작업에서는 적용하지 않는다.
+- apply 직후 production Push main Queue와 DLQ의 visible·in-flight·delayed 메시지는 모두 0개다.
 
 ## 2026-09-06 LAN-405 보정 자산 캐시 우회 전환
 

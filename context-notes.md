@@ -1,5 +1,13 @@
 # Context Notes
 
+## 2026-09-06 LAN-418 production Worker CPU·메모리 증설
+
+- production Worker 메모리 1024MiB 변경 커밋 `0588228`은 PR #23 병합 후 기존 `feat/LAN-418` 브랜치에서 추가돼 main에 반영되지 않았다.
+- 실제 AWS는 이미 `prod-landit-worker:5`, 1024MiB로 안정화됐지만 origin/main은 512MiB여서 전체 plan이 512MiB로 되돌리는 Task Definition 교체를 생성했다.
+- 사용자 결정에 따라 production Worker를 CPU 1024 units, memory 2048MiB, desired count 1로 증설한다.
+- 값이 가장 최근 변경된 production SSM 파라미터는 2026-09-02 17:52 KST이고, 현재 API와 Worker ECS deployment는 각각 2026-09-06 16:16, 16:06 KST에 생성돼 SSM 변경 후 재배포된 상태다.
+- production saved plan `/tmp/lan418-prod-worker-1vcpu-2gib.tfplan`은 Worker Task Definition의 CPU 256→1024, memory 1024→2048 교체와 Service 갱신만 포함한 `1 add, 1 change, 1 destroy`다.
+
 ## 2026-09-06 LAN-184 production Scheduler 활성화
 
 - BE production은 GitHub Actions run `34018191363`에서 최신 main `7c0f3457` 배포를 성공했고, 해당 main에는 LAN-184 예약 알림 구현이 포함돼 있다.

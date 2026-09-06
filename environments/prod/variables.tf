@@ -114,7 +114,7 @@ variable "worker_cpu" {
 variable "worker_memory" {
   description = "Fargate memory MiB for the worker task."
   type        = number
-  default     = 512
+  default     = 1024
 }
 
 variable "api_desired_count" {

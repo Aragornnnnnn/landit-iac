@@ -1,5 +1,13 @@
 # Checklist
 
+## 2026-09-06 LAN-418 production Worker 메모리 정합화
+
+- [x] 실제 production Worker 1024MiB와 origin/main의 512MiB 차이를 확인한다.
+- [x] 기존 증설 커밋이 main에 반영되지 않은 원인을 확인한다.
+- [x] production Worker 메모리 기본값과 계약 테스트를 1024MiB로 맞춘다.
+- [x] Terraform 포맷, 계약 테스트, validate와 production plan을 검증한다.
+- [ ] 변경을 커밋하고 PR로 main에 반영한다.
+
 ## 2026-09-06 LAN-184 production Scheduler 활성화
 
 - [x] 최신 BE main의 production 배포 성공과 LAN-184 포함 여부를 확인한다.

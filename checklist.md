@@ -1,5 +1,24 @@
 # Checklist
 
+## 2026-09-06 LAN-405 보정 자산 캐시 우회 전환
+
+- [x] 보정 이미지 35개와 음원 14개의 로컬 파일, SHA-256, 용량과 매핑을 확인한다.
+- [x] 이미지에는 새 UUID key, 음원에는 `revisions/{audioSha256}` key를 발급한다.
+- [x] 신규 S3 key 49개가 비어 있음을 확인하고 `If-None-Match: *`로 게시한다.
+- [x] 이미지 35개를 S3·CloudFront에서 재다운로드해 SHA-256과 metadata를 검증한다.
+- [x] 음원 14개와 새 content-addressed manifest 2개를 게시하고 전체 manifest 계약을 검증한다.
+- [x] 캐시 우회 매핑과 BE 전달 문서를 갱신하고 변경을 커밋한다.
+
+## 2026-09-06 LAN-405 시나리오 질문 음원 품질 보정
+
+- [x] Gemini 검수로 선별한 14개 보정 음원과 질문·캐릭터·voice 매핑을 확인한다.
+- [x] `origin/main` 기준 전용 브랜치에서 기존 S3 key 유지 범위를 분리한다.
+- [x] 교체 전 S3 객체의 key, SHA-256 metadata, 캐시 정책과 CloudFront 배포 상태를 확인한다.
+- [x] LAN-351·LAN-405 manifest의 음원 SHA-256, 용량과 생성 ID를 보정본 기준으로 갱신하고 로컬 전수 검증한다.
+- [x] 승인된 14개 MP3만 기존 S3 key에 덮어쓰고 객체 metadata를 검증한다.
+- [x] 새 content-addressed manifest를 게시하고 CloudFront invalidation 뒤 원격 SHA-256을 검증한다.
+- [x] 전달 문서, 계약 테스트와 Git diff를 검토하고 논리 변경을 커밋한다.
+
 ## 2026-09-03 LAN-184 develop Scheduler 상태 정합화
 
 - [x] `origin/main` 기준 fresh dev plan으로 현재 AWS drift를 확인한다.

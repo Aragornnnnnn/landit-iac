@@ -1,5 +1,25 @@
 # Context Notes
 
+## 2026-09-06 LAN-405 보정 자산 캐시 우회 전환
+
+- WebView의 기존 `immutable` cache를 즉시 우회하기 위해 사용자 승인으로 이미지 35개와 음원 14개를 모두 새 key에 게시했다. 기존 key와 사전 덮어쓰기 백업은 삭제하지 않는다.
+- 이미지 35개는 기존 parent path 아래 새 UUID를 사용한다. 로컬 1254x1254 WebP, S3 metadata·SHA-256, CloudFront 응답 바이트를 35/35 검증했다.
+- 음원 14개는 `content/scenario-question-audio/{scenarioQuestionId}/revisions/{audioSha256}.mp3`를 사용한다. LAN-351 게시 결과는 `new=7, reused=114, conflicts=0`, LAN-405는 `new=9, reused=232, conflicts=0`이며 각각 새 MP3와 manifest를 포함한다.
+- 새 manifest SHA-256은 LAN-351 `2b19f576dfd4616adebc76c25f7316fab4fbc9c781ee1610372982d4a194d5e9`, LAN-405 `cc8edd8a3bd0c3660f0cfd4b4da409f3216eda7c88b2f50f9585fec50aa1f2a2`다.
+- BE는 35개 `practice_examples_payload[].imageUrl`과 14개 `scenario_question_language_variant.audio_url`을 한 번의 forward migration으로 새 URL에 전환한다.
+- `python3 -m unittest scripts.tests.test_scenario_question_audio -v` 43개 테스트와 LAN-351·LAN-405 manifest 전체 검증을 통과했다. 이미지 35개의 파일 수, SHA-256, 용량과 1254x1254 크기도 일치했다.
+
+## 2026-09-06 LAN-405 시나리오 질문 음원 품질 보정
+
+- Gemini 음성 검수에서 LAN-351 질문 ID 13, 14, 21, 56, 96, 111과 LAN-405 질문 ID 124, 128, 142, 158, 245, 252, 298, 299를 보정 대상으로 확정했다.
+- 사용자는 캐시 만료 전 기존 음성이 재생될 수 있음을 수용하고 14개 모두 기존 S3 key에 덮어쓰기로 결정했다. 따라서 질문 URL, 원문, model, voice, generation fingerprint는 유지한다.
+- shared 콘텐츠 버킷은 versioning이 활성화되어 있지 않다. 덮어쓰기 전 원본 14개는 로컬 감사 폴더에서 기존 manifest SHA-256과 일치함을 확인했다.
+- 보정본은 질문·캐릭터·voice 매핑을 유지하며 Gemini 최종 검수를 통과했다. LAN-351 manifest 6개와 LAN-405 manifest 8개의 `audioSha256`, `audioByteSize`, `openRouterGenerationId`만 갱신한다.
+- 같은 key 덮어쓰기는 기존 immutable 게시 계약의 예외다. 새 manifest는 content-addressed key로 게시하고, CloudFront cache는 invalidation하지만 이미 브라우저에 저장된 응답은 만료 전까지 남을 수 있다.
+- shared S3의 14개 MP3를 기존 key에 덮어썼고, LAN-351 manifest `72920aadc175491304fb0a5a6eea484a2a2cb94feda9b3f7ce312929b94aee60`과 LAN-405 manifest `1783b2faa66cd6711cdbaeb87cd82c80048f3ebb9e19c273c340aa45b0e0e7bb`을 새 content-addressed key로 게시했다.
+- CloudFront invalidation `IBZOP5SXFZXKPRYWH6PNI3TVQE` 완료 후 14개 MP3와 두 manifest를 CDN에서 내려받아 로컬 canonical SHA-256과 일치함을 확인했다.
+- `python3 -m unittest scripts.tests.test_scenario_question_audio -v`의 41개 테스트, LAN-351·LAN-405 manifest 360개 로컬 MP3 검증과 Git 기준 변경 필드 대조를 통과했다. 14개 항목에서 `audioByteSize`, `audioSha256`, `openRouterGenerationId`만 바뀌었다.
+
 ## 2026-08-29 LAN-386 PR 리뷰 반영
 
 - PR #22 CodeRabbit 리뷰는 유효하다. 기존 계약 테스트가 첫 `access_control_allow_origins`부터 전역 검색하고 정책 연결도 전체 파일에서 검색해 다른 리소스가 오류를 가릴 수 있었다.

@@ -53,10 +53,13 @@ production의 고정 질문 MP3와 생성 manifest는 shared private 콘텐츠 �
 
 ```text
 content/scenario-question-audio/{scenarioQuestionId}/{generationFingerprint}.mp3
+content/scenario-question-audio/{scenarioQuestionId}/revisions/{audioSha256}.mp3
 content/scenario-question-audio/manifests/{manifestSha256}.json
 ```
 
 MP3에는 `Content-Type: audio/mpeg`과 `Cache-Control: public, max-age=31536000, immutable`을 설정합니다. 질문 원문, model, voice 또는 출력 형식이 바뀌면 generation fingerprint와 key가 함께 바뀌며, 모든 업로드는 `If-None-Match: *`로 기존 객체 덮어쓰기를 거부합니다.
+
+합성 결함 보정본은 `revisions/{audioSha256}.mp3` 새 key에 게시하고 새 content-addressed manifest와 DB URL을 함께 갱신합니다. 기존 URL 유지가 명시적으로 승인된 예외 작업만 대상 key를 고정해 덮어쓴 뒤 CloudFront invalidation하고, 이미 브라우저에 저장된 `immutable` 응답은 만료 전까지 남을 수 있음을 기록합니다.
 
 후속 BE·AI runtime은 커밋된 manifest의 정확한 `s3Key`를 사용하고 질문 ID로 key를 추측하지 않습니다. 맞장구 음성과 고정 질문 MP3를 결합할 때는 두 음성을 디코딩한 뒤 하나의 출력으로 인코딩해야 하며 MP3 byte stream을 단순 연결하지 않습니다. runtime의 shared bucket `GetObject` 권한과 실제 결합 구현은 LAN-351 게시 작업 범위에 포함하지 않습니다.
 

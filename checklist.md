@@ -6,7 +6,8 @@
 - [x] 기존 증설 커밋이 main에 반영되지 않은 원인을 확인한다.
 - [x] production Worker를 1 vCPU, 2048MiB, 1개 태스크로 설정한다.
 - [x] Terraform 포맷, 계약 테스트, validate와 production plan을 검증한다.
-- [ ] 변경을 커밋하고 PR로 main에 반영한다.
+- [x] 변경을 커밋하고 PR로 main에 반영한다.
+- [x] 승인된 production plan을 apply하고 Worker 사양과 서비스 상태를 검증한다.
 
 ## 2026-09-06 LAN-184 production Scheduler 활성화
 

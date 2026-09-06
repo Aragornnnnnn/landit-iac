@@ -286,7 +286,7 @@ for environment in dev prod; do
   if [[ "$environment" == "dev" ]]; then
     require_text 'default[[:space:]]*=[[:space:]]*true' "$schedule_enabled_variable" "$environment review reminder schedule enabled root variable"
   else
-    require_text 'default[[:space:]]*=[[:space:]]*false' "$schedule_enabled_variable" "$environment review reminder schedule enabled root variable"
+    require_text 'default[[:space:]]*=[[:space:]]*true' "$schedule_enabled_variable" "$environment review reminder schedule enabled root variable"
   fi
 
   app_platform_module="$(block 'module "app_platform"' "$main_file")"

@@ -7,7 +7,7 @@ Push 알림은 환경별 Push 전용 SQS Standard Queue를 기존 BE API 런타�
 | 환경 | 이름 접두사 | Scheduler 기본 상태 | 기본 일정 |
 | --- | --- | --- | --- |
 | dev | `develop-landit` | `ENABLED` | `cron(0 20 * * ? *)`, `Asia/Seoul` |
-| prod | `prod-landit` | `DISABLED` | `cron(0 20 * * ? *)`, `Asia/Seoul` |
+| prod | `prod-landit` | `ENABLED` | `cron(0 20 * * ? *)`, `Asia/Seoul` |
 
 각 환경에는 main queue `${prefix}-push-notifications`, DLQ `${prefix}-push-notifications-dlq`, `${prefix}-review-reminder` Scheduler, backlog와 DLQ CloudWatch Alarm이 있다. main queue visibility timeout은 300초, retention은 4일, redrive `maxReceiveCount`는 3이다. DLQ retention은 14일이다.
 
@@ -66,13 +66,13 @@ main queue visibility timeout은 300초를 유지한다. Consumer는 `ON_SUCCESS
 4. dev Scheduler는 검증된 현재 운영 상태에 맞춰 기본 `ENABLED`로 유지한다.
 5. `SCHEDULED_NOTIFICATION_BATCH`, `PUSH_RECEIPT_CHECK`와 visibility 연장 구현이 포함된 BE를 dev에 먼저 배포한다.
 6. dev main queue에 두 메시지 유형을 각각 수동 발행하고, 500명 페이지 경계, Expo 최대 100건 단위 직접 발송, `PUSH_RECEIPT_CHECK` 900초 지연, 멱등성, DLQ 이동과 배치 처리 시간을 검증한다.
-7. prod Scheduler는 dev 실기기 E2E와 운영 검토가 완료될 때까지 반드시 `DISABLED`로 유지한다. prod enable plan과 apply는 별도 승인 범위다.
+7. prod Scheduler는 dev 실기기 E2E와 운영 검토를 마치고 BE 운영 배포가 확인된 뒤 활성화한다.
 
-prod Scheduler 활성화는 기본값을 바꾸지 않고 별도 plan으로만 수행한다.
+prod Scheduler 활성화는 production 기본값을 변경해 소스와 실제 AWS 상태를 일치시킨다.
 
 ```bash
 AWS_PROFILE=landit terraform -chdir=environments/prod plan \
-  -var='review_reminder_schedule_enabled=true' \
+  -target=module.app_platform.aws_scheduler_schedule.review_reminder \
   -out=/tmp/lan184-prod-scheduler-enable.tfplan
 ```
 

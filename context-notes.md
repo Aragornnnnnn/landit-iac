@@ -1,5 +1,14 @@
 # Context Notes
 
+## 2026-09-06 LAN-184 production Scheduler 활성화
+
+- BE production은 GitHub Actions run `34018191363`에서 최신 main `7c0f3457` 배포를 성공했고, 해당 main에는 LAN-184 예약 알림 구현이 포함돼 있다.
+- 현재 `prod-landit-review-reminder`는 `DISABLED`, `cron(0 20 * * ? *)`, `Asia/Seoul`이며 `prod-landit-push-notifications` Queue를 대상으로 한다.
+- dev 실기기 E2E와 BE 운영 배포가 완료됐으므로 production root의 Scheduler 기본값을 `true`로 바꿔 소스와 활성화할 실제 상태를 일치시킨다.
+- production plan에서 Scheduler 외 변경이나 삭제가 확인되면 apply하지 않는다.
+- production 전체 plan은 Scheduler 활성화 외에 Worker Task Definition 교체와 Service 갱신이 포함된 `1 add, 2 change, 1 destroy`라서 적용 대상에서 제외했다.
+- Scheduler만 대상으로 만든 saved plan `/tmp/lan184-prod-scheduler-enable-targeted.tfplan`은 `0 add, 1 change, 0 destroy`이며 `prod-landit-review-reminder`의 `DISABLED -> ENABLED`만 포함한다.
+
 ## 2026-09-06 LAN-405 보정 자산 캐시 우회 전환
 
 - WebView의 기존 `immutable` cache를 즉시 우회하기 위해 사용자 승인으로 이미지 35개와 음원 14개를 모두 새 key에 게시했다. 기존 key와 사전 덮어쓰기 백업은 삭제하지 않는다.

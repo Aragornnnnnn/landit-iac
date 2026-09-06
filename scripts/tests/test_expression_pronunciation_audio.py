@@ -9,6 +9,7 @@ from unittest.mock import Mock
 
 from scripts.expression_pronunciation_audio import (
     AccentContrast,
+    Boto3AwsRunner,
     InvalidAudioResponse,
     OpenRouterSpeechClient,
     PermanentTtsError,
@@ -26,6 +27,7 @@ from scripts.expression_pronunciation_audio import (
     load_source,
     manifest_sha256,
     plan_s3_upload,
+    execute_s3_upload,
     publish_be_manifest,
     publish_reference,
     s3_key,
@@ -557,6 +559,89 @@ class UploadPlanTests(unittest.TestCase):
                     aws_runner=head_conflict,
                 )
 
+    def test_replace_overwrites_changed_keys_without_precondition(self):
+        snapshot = load_snapshot(make_source_payload())
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            client = Mock()
+            client.synthesize = Mock(
+                side_effect=lambda asset: Mock(
+                    body=f"mp3:{asset_id(asset)}".encode(), generation_id="gen-x"
+                )
+            )
+            generated = generate_assets(
+                snapshot,
+                work_dir,
+                client=client,
+                probe_runner=fake_probe_runner,
+                probe_name="ffprobe",
+            )
+            manifest = build_manifest(snapshot, generated)
+            changed_key = manifest["assets"][0]["s3Key"]
+            puts = []
+            remote = {}
+
+            def option(command, name):
+                return command[command.index(name) + 1]
+
+            def aws_runner(command, **kwargs):
+                result = Mock()
+                result.returncode = 0
+                if "list-objects-v2" in command:
+                    result.stdout = json.dumps([changed_key])
+                    return result
+                key = option(command, "--key")
+                if "put-object" in command:
+                    puts.append(command)
+                    remote[key] = {
+                        "ContentLength": Path(option(command, "--body")).stat().st_size,
+                        "ContentType": option(command, "--content-type"),
+                        "CacheControl": option(command, "--cache-control"),
+                        "Metadata": dict(
+                            item.split("=", 1)
+                            for item in option(command, "--metadata").split(",")
+                        ),
+                    }
+                    return result
+                # head-object: 게시 전의 changed_key는 낡은 내용, 게시 후에는 put 그대로
+                if key in remote:
+                    result.stdout = json.dumps(remote[key])
+                    return result
+                if key == changed_key:
+                    result.stdout = json.dumps(
+                        {
+                            "ContentLength": 1,
+                            "ContentType": "audio/mpeg",
+                            "CacheControl": "public, max-age=31536000, immutable",
+                            "Metadata": {"audio-sha256": "stale"},
+                        }
+                    )
+                    return result
+                result.returncode = 1
+                result.stderr = "404 Not Found"
+                return result
+
+            with self.assertRaises(ValueError):
+                plan_s3_upload(
+                    manifest, "bucket", work_dir=work_dir, aws_runner=aws_runner
+                )
+            plan = plan_s3_upload(
+                manifest,
+                "bucket",
+                work_dir=work_dir,
+                aws_runner=aws_runner,
+                allow_replace=True,
+            )
+            self.assertEqual(plan.replace_keys, (changed_key,))
+            self.assertNotIn(changed_key, plan.new_keys)
+
+            result = execute_s3_upload(plan, execute=True, aws_runner=aws_runner)
+            self.assertEqual(result.conflicts, 0)
+            replace_put = next(c for c in puts if c[c.index("--key") + 1] == changed_key)
+            self.assertNotIn("--if-none-match", replace_put)
+            other_put = next(c for c in puts if c[c.index("--key") + 1] != changed_key)
+            self.assertIn("--if-none-match", other_put)
+
 
 class ValidateSourceTests(unittest.TestCase):
     def test_missing_sentence_kind_is_rejected(self):
@@ -938,3 +1023,80 @@ class BeManifestTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Boto3RunnerTests(unittest.TestCase):
+    def make_runner(self, client):
+        runner = Boto3AwsRunner.__new__(Boto3AwsRunner)
+        runner._client = client
+        return runner
+
+    def test_list_head_put_follow_cli_contract(self):
+        client = Mock()
+        paginator = Mock()
+        paginator.paginate = Mock(
+            return_value=[{"Contents": [{"Key": "a"}]}, {"Contents": [{"Key": "b"}]}]
+        )
+        client.get_paginator = Mock(return_value=paginator)
+        client.head_object = Mock(
+            return_value={
+                "ContentLength": 3,
+                "ContentType": "audio/mpeg",
+                "CacheControl": "cc",
+                "Metadata": {"audio-sha256": "x"},
+            }
+        )
+        runner = self.make_runner(client)
+
+        listed = runner(
+            ["aws", "s3api", "list-objects-v2", "--bucket", "b", "--prefix", "p",
+             "--query", "Contents[].Key", "--output", "json"],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(json.loads(listed.stdout), ["a", "b"])
+
+        head = runner(
+            ["aws", "s3api", "head-object", "--bucket", "b", "--key", "k",
+             "--output", "json"],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(json.loads(head.stdout)["Metadata"], {"audio-sha256": "x"})
+
+        with tempfile.NamedTemporaryFile(delete=False) as handle:
+            handle.write(b"mp3")
+            body = Path(handle.name)
+        try:
+            put = runner(
+                ["aws", "s3api", "put-object", "--bucket", "b", "--key", "k",
+                 "--body", str(body), "--if-none-match", "*", "--content-type",
+                 "audio/mpeg", "--cache-control", "cc", "--metadata",
+                 "audio-sha256=x,source-sha256=y"],
+                capture_output=True, text=True, check=False,
+            )
+        finally:
+            body.unlink(missing_ok=True)
+        self.assertEqual(put.returncode, 0)
+        client.put_object.assert_called_once_with(
+            Bucket="b", Key="k", Body=b"mp3", ContentType="audio/mpeg",
+            CacheControl="cc", Metadata={"audio-sha256": "x", "source-sha256": "y"},
+            IfNoneMatch="*",
+        )
+
+    def test_missing_object_reports_404_like_cli(self):
+        from botocore.exceptions import ClientError
+
+        client = Mock()
+        client.head_object = Mock(
+            side_effect=ClientError(
+                {"Error": {"Code": "404"}, "ResponseMetadata": {"HTTPStatusCode": 404}},
+                "HeadObject",
+            )
+        )
+        runner = self.make_runner(client)
+        result = runner(
+            ["aws", "s3api", "head-object", "--bucket", "b", "--key", "k",
+             "--output", "json"],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("404", result.stderr)

@@ -42,6 +42,8 @@ VOICE_BY_LOCALE = {
 SUPPORTED_LOCALES = frozenset(VOICE_BY_LOCALE)
 
 # 생성 종류. S3 키의 한 단계로 쓰인다.
+DEFAULT_GENERATE_WORKERS = 4
+STATE_FLUSH_INTERVAL_SECONDS = 5.0
 KIND_EXPRESSION = "expression"
 KIND_SENTENCE = "sentence"
 KIND_WORD = "word"
@@ -154,10 +156,16 @@ class UploadPlan:
     reused_keys: tuple[str, ...]
     conflict_keys: tuple[str, ...]
     objects: tuple[UploadObject, ...]
+    # QA 재합성 등으로 내용이 바뀐 기존 키. --replace일 때만 채워지고 덮어쓴다.
+    replace_keys: tuple[str, ...] = ()
 
     @property
     def reused_count(self) -> int:
         return len(self.reused_keys)
+
+    @property
+    def replace_count(self) -> int:
+        return len(self.replace_keys)
 
     @property
     def conflict_count(self) -> int:
@@ -841,6 +849,9 @@ def generate_assets(
     probe_name: str | None = None,
     reuse_bucket: str | None = None,
     aws_runner: Callable = subprocess.run,
+    max_workers: int = DEFAULT_GENERATE_WORKERS,
+    state_flush_interval_seconds: float = STATE_FLUSH_INTERVAL_SECONDS,
+    clock: Callable[[], float] = time.monotonic,
 ) -> list[GeneratedAsset]:
     resolved_probe = probe_name or resolve_probe()
     speech_client = client or OpenRouterSpeechClient(os.environ["OPENROUTER_API_KEY"])
@@ -892,13 +903,27 @@ def generate_assets(
             duration_seconds=probe.duration_seconds,
         )
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    # state.json은 자산마다 전체를 다시 쓰므로(수만 건이면 한 번에 수 MB) 매 완료마다
+    # 쓰면 메인 스레드가 병목이 된다. 일정 간격으로만 내려쓰고, 실패로 빠져나갈 때도
+    # 그때까지 완료된 자산은 남긴다 — 재실행 시 이어서 생성한다.
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    last_flush = clock()
+    try:
         futures = {executor.submit(generate_one, asset): asset for asset in pending}
         for future in as_completed(futures):
             generated = future.result()
             completed[generated.asset_id] = generated
             state[generated.asset_id] = generated
+            if clock() - last_flush >= state_flush_interval_seconds:
+                write_generation_state(state_path, state)
+                last_flush = clock()
+    except BaseException:
+        # 아직 시작하지 않은 작업은 취소해 실패 뒤 몇 시간씩 대기하지 않게 한다.
+        executor.shutdown(wait=True, cancel_futures=True)
+        if pending:
             write_generation_state(state_path, state)
+        raise
+    executor.shutdown(wait=True)
 
     if pending:
         state.update(completed)
@@ -915,16 +940,19 @@ def verify_generated_assets(
 ) -> list[GeneratedAsset]:
     resolved_probe = probe_name or resolve_probe()
     state = load_generation_state(work_dir / "state.json")
-    verified = [
-        generated
-        for asset in snapshot.assets
-        if (
-            generated := _verified_existing_asset(
-                asset, work_dir, state, probe_runner, resolved_probe
-            )
+
+    def verify_one(asset: SourceAsset) -> GeneratedAsset | None:
+        return _verified_existing_asset(
+            asset, work_dir, state, probe_runner, resolved_probe
         )
-        is not None
-    ]
+
+    # 자산마다 ffprobe 프로세스를 띄우므로 직렬이면 수만 개에 십수 분이 걸린다.
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        verified = [
+            generated
+            for generated in executor.map(verify_one, snapshot.assets)
+            if generated is not None
+        ]
     if len(verified) != len(snapshot.assets):
         raise InvalidMp3Error(
             f"expected {len(snapshot.assets)} generated assets, "
@@ -1109,6 +1137,80 @@ def _upload_objects(manifest: dict, work_dir: Path) -> tuple[UploadObject, ...]:
     return tuple(objects)
 
 
+class _CompletedCall:
+    def __init__(self, returncode: int, stdout: str = "", stderr: str = "") -> None:
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+class Boto3AwsRunner:
+    """aws CLI 호출 3종(list-objects-v2·head-object·put-object)을 boto3로 대신한다.
+
+    CLI는 호출마다 파이썬 프로세스를 새로 띄워 객체당 1초 이상 걸리므로 수만 개 게시에
+    한 시간이 넘는다. 같은 인자 계약을 받아 프로세스 안에서 처리하면 스레드 32개로
+    초당 수백 개까지 올라간다. 게시 결과(키·메타데이터·If-None-Match)는 CLI와 같다.
+    """
+
+    def __init__(self) -> None:
+        import boto3
+
+        self._client = boto3.client("s3")
+
+    @staticmethod
+    def _option(command: list[str], name: str) -> str | None:
+        return command[command.index(name) + 1] if name in command else None
+
+    def __call__(self, command: list[str], **kwargs) -> _CompletedCall:
+        from botocore.exceptions import ClientError
+
+        operation = command[2]
+        bucket = self._option(command, "--bucket")
+        try:
+            if operation == "list-objects-v2":
+                keys: list[str] = []
+                paginator = self._client.get_paginator("list_objects_v2")
+                for page in paginator.paginate(
+                    Bucket=bucket, Prefix=self._option(command, "--prefix")
+                ):
+                    keys.extend(item["Key"] for item in page.get("Contents", []))
+                return _CompletedCall(0, json.dumps(keys or None))
+            if operation == "head-object":
+                head = self._client.head_object(
+                    Bucket=bucket, Key=self._option(command, "--key")
+                )
+                payload = {
+                    "ContentLength": head.get("ContentLength"),
+                    "ContentType": head.get("ContentType"),
+                    "CacheControl": head.get("CacheControl"),
+                    "Metadata": head.get("Metadata", {}),
+                }
+                return _CompletedCall(0, json.dumps(payload))
+            if operation == "put-object":
+                metadata = dict(
+                    item.split("=", 1)
+                    for item in self._option(command, "--metadata").split(",")
+                )
+                body = Path(self._option(command, "--body")).read_bytes()
+                request = {
+                    "Bucket": bucket,
+                    "Key": self._option(command, "--key"),
+                    "Body": body,
+                    "ContentType": self._option(command, "--content-type"),
+                    "CacheControl": self._option(command, "--cache-control"),
+                    "Metadata": metadata,
+                }
+                if "--if-none-match" in command:
+                    request["IfNoneMatch"] = self._option(command, "--if-none-match")
+                self._client.put_object(**request)
+                return _CompletedCall(0)
+        except ClientError as error:
+            code = error.response.get("Error", {}).get("Code", "")
+            status = error.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            return _CompletedCall(1, "", f"{code} {status} {error}")
+        raise ValueError(f"unsupported aws command: {command[:3]}")
+
+
 def _head_object(
     bucket: str, upload_object: UploadObject, aws_runner: Callable
 ) -> dict | None:
@@ -1195,12 +1297,21 @@ def plan_s3_upload(
     *,
     work_dir: Path = Path("."),
     aws_runner: Callable = subprocess.run,
+    allow_replace: bool = False,
 ) -> UploadPlan:
+    """게시 계획을 세운다.
+
+    allow_replace=False(기본)면 내용이 다른 기존 키는 충돌로 막는다 (immutable 게시 원칙).
+    allow_replace=True면 그 키들을 replace_keys로 분류해 덮어쓴다 — QA 재합성으로 같은
+    텍스트의 음성을 교체할 때 쓴다. 키가 같으므로 DB URL은 그대로지만 CloudFront 캐시가
+    immutable이라 게시 후 무효화가 필요하다 (upload 출력의 invalidation 안내 참고).
+    """
     objects = _upload_objects(manifest, work_dir)
     existing = _list_existing_keys(bucket, KEY_PREFIX, aws_runner)
     new_keys = []
     reused_keys = []
     conflict_keys = []
+    replace_keys = []
     for upload_object in objects:
         if upload_object.key not in existing:
             new_keys.append(upload_object.key)
@@ -1210,6 +1321,8 @@ def plan_s3_upload(
             new_keys.append(upload_object.key)
         elif _head_matches(upload_object, head):
             reused_keys.append(upload_object.key)
+        elif allow_replace and not upload_object.manifest_object:
+            replace_keys.append(upload_object.key)
         else:
             conflict_keys.append(upload_object.key)
     if conflict_keys:
@@ -1220,6 +1333,7 @@ def plan_s3_upload(
         reused_keys=tuple(reused_keys),
         conflict_keys=tuple(conflict_keys),
         objects=objects,
+        replace_keys=tuple(replace_keys),
     )
 
 
@@ -1228,10 +1342,14 @@ def _put_object(
     upload_object: UploadObject,
     body_path: Path,
     aws_runner: Callable,
+    *,
+    overwrite: bool = False,
 ) -> None:
     metadata = ",".join(
         f"{key}={value}" for key, value in upload_object.metadata.items()
     )
+    # 신규 키는 If-None-Match: * 로 우연한 덮어쓰기를 막고, 교체 키만 조건 없이 올린다.
+    precondition = [] if overwrite else ["--if-none-match", "*"]
     completed = aws_runner(
         [
             "aws",
@@ -1243,8 +1361,7 @@ def _put_object(
             upload_object.key,
             "--body",
             str(body_path),
-            "--if-none-match",
-            "*",
+            *precondition,
             "--content-type",
             upload_object.content_type,
             "--cache-control",
@@ -1265,6 +1382,7 @@ def execute_s3_upload(
     *,
     execute: bool = False,
     aws_runner: Callable = subprocess.run,
+    max_workers: int = 12,
 ) -> UploadResult:
     if not execute:
         return UploadResult(
@@ -1276,6 +1394,8 @@ def execute_s3_upload(
         (objects_by_key[key] for key in plan.new_keys),
         key=lambda item: item.manifest_object,
     )
+    replace_key_set = set(plan.replace_keys)
+
     def upload_one(upload_object: UploadObject) -> None:
         temporary_manifest_path = None
         body_path = upload_object.body_path
@@ -1289,7 +1409,13 @@ def execute_s3_upload(
         if body_path is None:
             raise ValueError("upload object body path is missing")
         try:
-            _put_object(plan, upload_object, body_path, aws_runner)
+            _put_object(
+                plan,
+                upload_object,
+                body_path,
+                aws_runner,
+                overwrite=upload_object.key in replace_key_set,
+            )
         finally:
             if temporary_manifest_path is not None:
                 temporary_manifest_path.unlink(missing_ok=True)
@@ -1303,10 +1429,11 @@ def execute_s3_upload(
     # 객체들은 서로 독립이므로 병렬로 올리되, 게시 완료의 표식인 매니페스트는
     # 데이터 객체가 전부 성공한 뒤 마지막에 단독으로 올린다.
     data_objects = [o for o in ordered_new_objects if not o.manifest_object]
+    data_objects += [objects_by_key[key] for key in plan.replace_keys]
     marker_objects = [o for o in ordered_new_objects if o.manifest_object]
     uploaded = 0
     verified = plan.reused_count
-    with ThreadPoolExecutor(max_workers=12) as executor:
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         for _ in executor.map(upload_one, data_objects):
             uploaded += 1
             verified += 1
@@ -1573,6 +1700,12 @@ def main(argv: list[str] | None = None) -> int:
         "--reuse-s3-bucket",
         help="이미 이 버킷에 게시된 키는 합성하지 않고 내려받아 재사용한다",
     )
+    generate_parser.add_argument(
+        "--workers",
+        type=int,
+        default=DEFAULT_GENERATE_WORKERS,
+        help="동시 합성 스레드 수 (OpenRouter 429가 잦으면 줄인다)",
+    )
     verify_parser = subparsers.add_parser("verify")
     verify_parser.add_argument("--source", type=Path)
     verify_parser.add_argument("--manifest", type=Path)
@@ -1605,6 +1738,17 @@ def main(argv: list[str] | None = None) -> int:
     upload_parser.add_argument("--work-dir", required=True, type=Path)
     upload_parser.add_argument("--bucket", required=True)
     upload_parser.add_argument("--execute", action="store_true")
+    upload_parser.add_argument(
+        "--replace",
+        action="store_true",
+        help="내용이 바뀐 기존 키를 충돌 대신 덮어쓴다 (QA 교체용, 게시 후 CloudFront 무효화 필요)",
+    )
+    for s3_parser in (upload_parser, be_parser, reference_parser):
+        s3_parser.add_argument(
+            "--boto3",
+            action="store_true",
+            help="aws CLI 대신 boto3로 S3를 호출한다 (수만 개 게시 시 수십 배 빠름)",
+        )
     args = parser.parse_args(argv)
 
     if args.command == "validate-source":
@@ -1618,8 +1762,13 @@ def main(argv: list[str] | None = None) -> int:
         )
     elif args.command == "generate":
         snapshot = load_source(args.source)
+        if args.workers < 1:
+            parser.error("--workers must be at least 1")
         generated = generate_assets(
-            snapshot, args.work_dir, reuse_bucket=args.reuse_s3_bucket
+            snapshot,
+            args.work_dir,
+            reuse_bucket=args.reuse_s3_bucket,
+            max_workers=args.workers,
         )
         print(f"completed={len(generated)}, failed=0")
     elif args.command == "verify":
@@ -1670,6 +1819,7 @@ def main(argv: list[str] | None = None) -> int:
             args.tts_manifest_key,
             args.bucket,
             execute=args.execute,
+            aws_runner=Boto3AwsRunner() if args.boto3 else subprocess.run,
         )
         print(f"reference_keys={len(published)}")
         # 사람이 BE Swagger의 manifestKey 파라미터에 복사해 넣는 키
@@ -1691,6 +1841,7 @@ def main(argv: list[str] | None = None) -> int:
             manifest["source"]["snapshotSha256"],
             args.bucket,
             execute=args.execute,
+            aws_runner=Boto3AwsRunner() if args.boto3 else subprocess.run,
         )
         print(f"expressions={len(be_manifest['assets'])}")
         # 사람이 BE Swagger의 manifestKey 파라미터에 복사해 넣는 키
@@ -1698,14 +1849,34 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "upload":
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
         verify_manifest(manifest, args.work_dir)
-        plan = plan_s3_upload(manifest, args.bucket, work_dir=args.work_dir)
+        aws_runner = Boto3AwsRunner() if args.boto3 else subprocess.run
+        plan = plan_s3_upload(
+            manifest,
+            args.bucket,
+            work_dir=args.work_dir,
+            aws_runner=aws_runner,
+            allow_replace=args.replace,
+        )
         print(
             f"new={len(plan.new_keys)}, reused={plan.reused_count}, "
-            f"conflicts={plan.conflict_count}"
+            f"replace={plan.replace_count}, conflicts={plan.conflict_count}"
         )
         for key in plan.new_keys:
             print(key)
-        result = execute_s3_upload(plan, execute=args.execute)
+        for key in plan.replace_keys:
+            print(f"replace {key}")
+        if plan.replace_keys:
+            print(
+                "NOTE: 교체 키는 CloudFront 캐시(immutable)에 남는다. 게시 후 "
+                "무효화할 것: aws cloudfront create-invalidation --distribution-id <id> "
+                "--paths <교체 키들 앞에 / 붙인 경로>"
+            )
+        result = execute_s3_upload(
+            plan,
+            execute=args.execute,
+            aws_runner=aws_runner,
+            max_workers=32 if args.boto3 else 12,
+        )
         print(
             f"uploaded={result.uploaded}, verified={result.verified}, "
             f"conflicts={result.conflicts}"

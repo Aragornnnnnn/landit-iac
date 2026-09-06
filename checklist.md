@@ -6,8 +6,8 @@
 - [x] 현재 production Scheduler가 `DISABLED`인지 확인한다.
 - [x] production Scheduler 기본값과 계약 테스트, 운영 문서를 `ENABLED`로 맞춘다.
 - [x] Terraform 포맷, 계약 테스트, validate와 production fresh plan을 검증한다.
-- [ ] 변경을 커밋하고 PR로 main에 반영한다.
-- [ ] 승인된 production saved plan을 apply하고 live 상태를 검증한다.
+- [x] 변경을 커밋하고 PR로 main에 반영한다.
+- [x] 승인된 production saved plan을 apply하고 live 상태를 검증한다.
 
 ## 2026-09-06 LAN-405 보정 자산 캐시 우회 전환
 

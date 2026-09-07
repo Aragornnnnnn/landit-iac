@@ -171,6 +171,10 @@ class VariantTests(unittest.TestCase):
         self.assertEqual(variant_text("help out", 2), "help out,")
         self.assertEqual(variant_text("help out", 3), "help out")
 
+    def test_suffix_override_wins_over_cycle(self):
+        self.assertEqual(variant_text("her", 1, suffix=","), "her,")
+        self.assertEqual(variant_text("her.", 0, suffix=","), "her,")
+
     def test_replaces_existing_trailing_punctuation(self):
         self.assertEqual(variant_text("Take care of it.", 2), "Take care of it,")
 
@@ -353,6 +357,49 @@ class RunCheckTests(unittest.TestCase):
                 {("EN_US", "it", 3), ("EN_GB", "it", 3)},
             )
             self.assertTrue(all(p["heard"] == "hey" for p in patterns))
+
+
+class SilenceRetryTests(unittest.TestCase):
+    def test_silent_clip_is_resynthesized_with_comma_variant(self):
+        snapshot = load_snapshot(make_source_payload())
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            make_generated_work_dir(snapshot, work_dir)
+            target = snapshot.assets[0]
+            target_path = audio_path_for(work_dir, target)
+            calls = {"n": 0}
+
+            def decoder(path):
+                if path == target_path and calls["n"] == 0:
+                    calls["n"] += 1
+                    return array.array("h", [0] * 16000)  # 첫 파일만 무음
+                return array.array("h", [8000, -8000] * 8000)
+
+            client = Mock()
+            client.synthesize = Mock(
+                side_effect=lambda asset: Mock(
+                    body=f"resynth:{asset.text}".encode(), generation_id="gen-r"
+                )
+            )
+            outcomes = run_check(
+                snapshot,
+                work_dir,
+                work_dir / "qa.json",
+                transcribe=lambda path: next(
+                    a.text for a in snapshot.assets if audio_path_for(work_dir, a) == path
+                ),
+                client=client,
+                max_resynth=3,
+                workers=1,
+                asset_ids={asset_id(target)},
+                decoder=decoder,
+                probe_runner=fake_probe_runner,
+                probe_name="ffprobe",
+                progress=lambda message: None,
+            )
+            self.assertTrue(outcomes[asset_id(target)].passed)
+            self.assertEqual(client.synthesize.call_args.args[0].text, target.text + ",")
+            self.assertEqual(client.synthesize.call_count, 1)
 
 
 class SampleTests(unittest.TestCase):

@@ -1312,11 +1312,20 @@ def plan_s3_upload(
     reused_keys = []
     conflict_keys = []
     replace_keys = []
+    # 기존 키의 head-object 대조는 서로 독립이라 병렬로 한다 (29k 직렬 실측 15분 → 1분대).
+    existing_objects = [o for o in objects if o.key in existing]
+    with ThreadPoolExecutor(max_workers=16) as executor:
+        heads = dict(
+            zip(
+                (o.key for o in existing_objects),
+                executor.map(lambda o: _head_object(bucket, o, aws_runner), existing_objects),
+            )
+        )
     for upload_object in objects:
         if upload_object.key not in existing:
             new_keys.append(upload_object.key)
             continue
-        head = _head_object(bucket, upload_object, aws_runner)
+        head = heads[upload_object.key]
         if head is None:
             new_keys.append(upload_object.key)
         elif _head_matches(upload_object, head):

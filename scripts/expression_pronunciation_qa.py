@@ -494,8 +494,14 @@ def check_audio(
 # ---------------------------------------------------------------- 재합성
 
 
-def variant_text(text: str, attempt: int) -> str:
-    suffix = VARIANT_SUFFIXES[attempt % len(VARIANT_SUFFIXES)]
+# 무음 불합격의 재합성에 쓰는 변형. 호주 보이스 실측(2026-09-07): 기능어 단독 입력에서
+# "a." 4/4·"her." 3/4가 무음, 원문 1/4~5/8, 쉼표 변형 "a,"·"her,"·"I'll,"는 12회 중 1회.
+SILENCE_RETRY_SUFFIX = ","
+
+
+def variant_text(text: str, attempt: int, *, suffix: str | None = None) -> str:
+    if suffix is None:
+        suffix = VARIANT_SUFFIXES[attempt % len(VARIANT_SUFFIXES)]
     if not suffix:
         return text
     return text.rstrip(".,!?") + suffix
@@ -515,13 +521,16 @@ def resynthesize(
     probe_name: str | None = None,
     keep_failed_dir: Path | None = None,
     keep_failed_max: int = DEFAULT_KEEP_FAILED_MAX,
+    suffix: str | None = None,
 ) -> epa.GeneratedAsset:
     """원문 대신 변형 텍스트로 합성하되, 파일 경로·핑거프린트는 원문 자산 기준을 유지한다.
 
     keep_failed_dir를 주면 덮어쓰기 전의 불합격 파일을 `{자산id}-attempt{n}.mp3`로 보관한다
     (사람 판정·TTS 불량 유형 분석용).
     """
-    variant = dataclasses.replace(asset, text=variant_text(asset.text, attempt))
+    variant = dataclasses.replace(
+        asset, text=variant_text(asset.text, attempt, suffix=suffix)
+    )
     response = client.synthesize(variant)
     final_path = epa.audio_path_for(work_dir, asset)
     if (
@@ -668,6 +677,7 @@ def run_check(
     kinds: set[str] | None = None,
     silence_only_kinds: set[str] = frozenset(),
     only_report_failures: bool = False,
+    asset_ids: set[str] | None = None,
     decoder: Callable[[Path], array.array] = decode_pcm16k,
     probe_runner: Callable = subprocess.run,
     probe_name: str | None = None,
@@ -688,6 +698,10 @@ def run_check(
         key = epa.asset_id(asset)
         generated = state.get(key)
         cached = previous.get(key)
+        if asset_ids is not None and key not in asset_ids:
+            if cached is not None:
+                outcomes[key] = _outcome_from_cached(asset, cached)
+            continue
         if only_report_failures and (cached is None or cached["passed"]):
             # 이전 보고서에서 불합격으로 확정된 자산만 다시 본다. 합격 기록은 보고서에
             # 그대로 남기고(덮어쓰지 않게 outcomes에 옮김), 아직 안 본 자산은 건너뛴다.
@@ -727,6 +741,8 @@ def run_check(
                 first_reason = result.reason
             if result.passed or client is None or attempts > max_resynth:
                 break
+            # 무음은 마침표 변형이 오히려 무음을 부르므로 쉼표 변형으로만 재시도한다.
+            suffix = SILENCE_RETRY_SUFFIX if result.reason.startswith("silence") else None
             regenerated = resynthesize(
                 asset,
                 attempts - 1,
@@ -736,6 +752,7 @@ def run_check(
                 probe_name=probe_name,
                 keep_failed_dir=keep_failed_dir,
                 keep_failed_max=keep_failed_max,
+                suffix=suffix,
             )
             with lock:
                 state[key] = regenerated
@@ -906,6 +923,11 @@ def main(argv: list[str] | None = None) -> int:
         help="검사할 종류 부분집합 (expression,sentence,word). 기본은 전부",
     )
     check.add_argument(
+        "--asset-ids-file",
+        type=Path,
+        help="한 줄에 하나씩 적힌 자산 id(예: 1005/EN_AU/word-4)만 검사한다. 나머지는 보고서 그대로",
+    )
+    check.add_argument(
         "--keep-failed-dir",
         type=Path,
         help="재합성으로 덮어쓰기 전의 불합격 파일을 보관할 폴더",
@@ -981,6 +1003,11 @@ def main(argv: list[str] | None = None) -> int:
             kinds=kinds,
             silence_only_kinds=silence_only,
             only_report_failures=args.only_report_failures,
+            asset_ids=(
+                {line.strip() for line in args.asset_ids_file.read_text().splitlines() if line.strip()}
+                if args.asset_ids_file
+                else None
+            ),
             keep_failed_dir=args.keep_failed_dir,
             keep_failed_max=args.keep_failed_max,
         )

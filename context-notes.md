@@ -965,3 +965,10 @@
 
 - dev/prod validate, fmt-check, EC2 계약·runtime, Push 인프라 계약 테스트와 독립 리뷰를 통과했다. runtime 첫 실행의 success fixture 실패는 trace 재실행에서 재현되지 않았고 전체 rollback 케이스까지 통과했다.
 - landit 프로필의 전체 plan에서 dev는 0 add/3 change/0 destroy(SSM 문서·Scheduler 실행 정책·SSM 참조에 따른 GitHub 배포 정책 재평가), prod는 1 add/2 change/1 destroy(API task definition 교체·service 연결·Scheduler 실행 정책)다. 새 상시 리소스는 없고 실제 apply는 수행하지 않았다.
+
+### 2026-09-09 승인된 적용
+
+- 사용자의 plan → apply → PR merge 요청으로 최신 saved plan을 적용했다. develop은 실제 0 add/2 change/0 destroy, prod는 1 add/2 change/1 destroy다. 새 상시 리소스 없이 기존 Push DLQ를 재사용한다.
+- 양 환경의 post-apply 전체 plan이 No changes다. live IAM 시뮬레이션으로 자기 큐·DLQ만 SendMessage 허용, 다른 환경·기존 학습 예약 권한 거부를 확인했다.
+- develop SSM 기본 문서 v11에 새 API 설정 7개가 포함된다. prod API service는 revision 10을 참조하며 기존 실행 이미지와 같은 latest digest를 유지한다. 읽기 DB SSM 3개 경로와 Scheduler DLQ ARN도 확인했다.
+- 기존 20시 학습 예약과 prod worker revision 6은 유지됐다. 이번 적용은 기존 이미지의 환경설정 반영이며 LAN-462 기능의 운영 배포·기기 알림 검증을 의미하지 않는다.

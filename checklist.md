@@ -671,3 +671,6 @@
 
 - [x] 기존 Push DLQ에 Scheduler 전달 실패를 보관하도록 IAM·API 환경설정을 연결한다.
 - [x] 계약·runtime·Terraform 검증과 독립 리뷰를 완료한다.
+
+- [x] 사용자 승인 후 양 환경 fresh plan을 적용하고 post-apply 전체 plan이 No changes인지 확인한다.
+- [x] live DLQ 권한·환경 격리·SSM v11·prod API revision 10 설정을 검증한다.

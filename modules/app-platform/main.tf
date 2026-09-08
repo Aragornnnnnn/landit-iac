@@ -1489,6 +1489,9 @@ resource "aws_ecs_task_definition" "api" {
         { name = "CONTENT_CLOUDFRONT_URL", value = var.content_cloudfront_url },
         { name = "SQS_JOBS_QUEUE_URL", value = aws_sqs_queue.jobs.url },
         { name = "SQS_PUSH_NOTIFICATIONS_QUEUE_URL", value = aws_sqs_queue.push_notifications.url },
+        { name = "LANDIT_PUSH_SCHEDULER_QUEUE_ARN", value = aws_sqs_queue.push_notifications.arn },
+        { name = "LANDIT_PUSH_SCHEDULER_GROUP", value = aws_scheduler_schedule_group.admin_push.name },
+        { name = "LANDIT_PUSH_SCHEDULER_ROLE_ARN", value = aws_iam_role.admin_push_scheduler.arn },
         { name = "LANDIT_NOTIFICATION_CONSUMER_ENABLED", value = "true" }
         ], var.notification_test_api_enabled ? [
         { name = "LANDIT_NOTIFICATION_TEST_API_ENABLED", value = "true" }
@@ -1506,6 +1509,9 @@ resource "aws_ecs_task_definition" "api" {
         { name = "DB_URL", valueFrom = "${local.ssm_path}/DB_URL" },
         { name = "DB_USERNAME", valueFrom = "${local.ssm_path}/DB_USERNAME" },
         { name = "DB_PASSWORD", valueFrom = "${local.ssm_path}/DB_PASSWORD" },
+        { name = "LANDIT_PUSH_AUDIENCE_DB_URL", valueFrom = "${local.ssm_path}/LANDIT_PUSH_AUDIENCE_DB_URL" },
+        { name = "LANDIT_PUSH_AUDIENCE_DB_USERNAME", valueFrom = "${local.ssm_path}/LANDIT_PUSH_AUDIENCE_DB_USERNAME" },
+        { name = "LANDIT_PUSH_AUDIENCE_DB_PASSWORD", valueFrom = "${local.ssm_path}/LANDIT_PUSH_AUDIENCE_DB_PASSWORD" },
         { name = "LANDIT_CORS_ALLOWED_ORIGINS", valueFrom = "${local.ssm_path}/LANDIT_CORS_ALLOWED_ORIGINS" },
         { name = "LANDIT_AUTH_TOKEN_SECRET", valueFrom = "${local.ssm_path}/LANDIT_AUTH_TOKEN_SECRET" },
         { name = "LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS", valueFrom = "${local.ssm_path}/LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS" },

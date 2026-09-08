@@ -15,6 +15,19 @@ production API Task Role과 develop EC2 instance role만 Push main queue에 `Rec
 
 ## Scheduler 메시지 계약
 
+### 관리자 일회성 예약 (LAN-462)
+
+- 환경별 `${prefix}-admin-push` 그룹과 `${prefix}-admin-push-scheduler` 실행 역할을 사용한다. 기존 20시 예약은 기본 그룹에 그대로 둔다.
+- BE가 `admin-push-{campaignId}` 예약을 한국 시간 `at(...)`, flexible window OFF, 완료 후 DELETE로 생성하고 기존 Push SQS에 `ADMIN_PUSH_CAMPAIGN` 메시지를 발행한다. 실제 캠페인 예약은 Terraform 관리 대상이 아니다.
+- API는 자기 그룹의 `admin-push-*`만 Create/Get/Delete할 수 있다. PassRole은 전용 실행 역할과 `scheduler.amazonaws.com`으로 제한한다. 실행 역할의 trust는 자기 계정·그룹 ARN으로 제한하고 기존 자기 환경 Push SQS SendMessage만 허용한다.
+- 별도 서버나 Queue는 추가하지 않는다. 비용은 [Scheduler 호출 요금](https://aws.amazon.com/eventbridge/pricing/)과 기존 SQS 사용량에 따른다. 그룹별 trust 조건은 [AWS 공식 지침](https://docs.aws.amazon.com/scheduler/latest/UserGuide/cross-service-confused-deputy-prevention.html)을 따른다.
+- 읽기 DB 설정은 [SSM 목록](ssm-parameters.md)을 따른다. 값은 Terraform state에 넣지 않는다.
+- 신규 develop 인스턴스의 user-data는 gzip과 base64로 전달해 16KiB 입력 제한을 지킨다. 기존 인스턴스의 user-data는 변경하지 않는다.
+- develop은 갱신된 SSM 배포 문서가 다음 BE 배포 때 API env를 동기화한다. **production은 새 ECS API task definition과 service 갱신을 배포 단계에 포함해야 한다.** 현재 BE workflow의 `--force-new-deployment`만으로는 새 환경변수가 추가되지 않는다.
+- IAM·그룹·SSM 문서만 적용하는 사전 준비와 실제 서비스 배포를 구분한다. 배포 후 SQL 권한, 예약 생성·취소·시간 도래, SQS 소비와 기기 수신을 검증한다.
+
+### 매일 학습 알림
+
 Scheduler는 매일 `Asia/Seoul` 20시에 main queue로 `SCHEDULED_NOTIFICATION_BATCH` 한 건을 발행한다. 20시는 배치 시작 시각이며, 실제 발송은 사용자 수와 페이지 처리 시간에 따라 수 분에 걸쳐 진행될 수 있다. Scheduler는 사용자, Push token, 기준 날짜를 계산하지 않는다.
 
 | 필드 | 값 | Consumer 규칙 |

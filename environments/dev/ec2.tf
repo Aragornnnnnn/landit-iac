@@ -54,6 +54,9 @@ locals {
     content_cloudfront_url = data.terraform_remote_state.shared.outputs.cloudfront_url
     jobs_queue_url         = module.app_platform.jobs_queue_url
     push_queue_url         = module.app_platform.push_notifications_queue_url
+    push_queue_arn         = module.app_platform.push_notifications_queue_arn
+    push_scheduler_group   = module.app_platform.admin_push_scheduler_group
+    push_scheduler_role    = module.app_platform.admin_push_scheduler_role_arn
     grafana_otlp_enabled   = tostring(var.grafana_otlp_enabled)
     grafana_otlp_endpoint  = var.grafana_otlp_endpoint
   })
@@ -78,6 +81,12 @@ resource "aws_iam_role" "ec2_app" {
 resource "aws_iam_instance_profile" "ec2_app" {
   name = "${local.name_prefix}-ec2-app"
   role = aws_iam_role.ec2_app.name
+}
+
+resource "aws_iam_role_policy" "ec2_admin_push_manage" {
+  name   = "${local.name_prefix}-admin-push-manage"
+  role   = aws_iam_role.ec2_app.id
+  policy = module.app_platform.admin_push_manage_policy_json
 }
 
 resource "aws_iam_role_policy_attachment" "ec2_ssm_managed_instance" {
@@ -253,7 +262,7 @@ resource "aws_instance" "app" {
   vpc_security_group_ids      = [aws_security_group.ec2_app.id]
   iam_instance_profile        = aws_iam_instance_profile.ec2_app.name
   associate_public_ip_address = true
-  user_data = templatefile("${path.module}/templates/ec2-user-data.sh.tftpl", {
+  user_data_base64 = base64gzip(templatefile("${path.module}/templates/ec2-user-data.sh.tftpl", {
     api_image              = module.app_platform.api_ecr_repository_url
     ai_image               = module.app_platform.worker_ecr_repository_url
     api_log_group_name     = module.app_platform.api_log_group_name
@@ -271,7 +280,7 @@ resource "aws_instance" "app" {
       api_domain_names = "${var.api_ec2_domain_name}, ${var.api_domain_name}"
       ai_domain_names  = "${var.ai_ec2_domain_name}, ${var.ai_domain_name}"
     })
-  })
+  }))
 
   credit_specification {
     cpu_credits = "standard"
@@ -293,7 +302,7 @@ resource "aws_instance" "app" {
   }
 
   lifecycle {
-    ignore_changes = [ami, user_data]
+    ignore_changes = [ami, user_data, user_data_base64]
   }
 }
 

@@ -944,3 +944,16 @@
 - 수정 후 fresh saved plan `/private/tmp/lan184-dev-scheduler-aligned.tfplan`은 `No changes`다. AWS 변경이 없으므로 Terraform apply는 필요하지 않고, 이 소스 변경이 main에 병합되면 이후 plan도 현재 live 상태를 유지한다.
 - 이후 LAN-430이 반영된 최신 `origin/main`으로 rebase한 전체 plan은 Scheduler와 SSM 변경 없이 `develop-golden-audio-read` IAM inline policy 생성 1건만 남는다.
 - IaC run `33747648789`의 apply는 기존 Scheduler `UpdateSchedule`과 golden audio `iam:PutRolePolicy` 권한 부족으로 실패했다. 이 변경은 Scheduler update를 제거하며, golden audio policy는 Actions apply role에 권한을 넓히지 않고 관리자 profile의 별도 targeted apply가 필요하다.
+
+## 2026-09-08 LAN-462 관리자 예약 푸시
+
+- 사용자가 예약 AWS 설정의 즉시 구성을 승인했다. 기존 prod/develop Push SQS와 서버를 재사용하고 전용 Scheduler 그룹·역할을 추가한다. 기존 20시 Scheduler와 운영 서비스 배포는 변경 대상에서 제외한다.
+- Scheduler Create/Get/Delete는 환경별 그룹의 admin-push-*로, PassRole은 전용 실행 역할과 scheduler.amazonaws.com으로 제한한다. 실행 역할은 자기 환경의 Push SQS SendMessage만 허용한다.
+- SSM 읽기 DB 3개 값은 두 환경에 이미 저장됐다. API가 Java Push 소비도 담당하므로 AI Worker에는 추가하지 않는다. Terraform에는 secret 값 대신 SSM 경로만 기록한다.
+- 기존 기본 그룹·20시 실행 역할을 재사용하는 대안보다 전용 그룹·역할이 캠페인 관리 권한을 분리한다. 추가 상시 컴퓨팅은 없으며 Scheduler 호출과 기존 SQS 요청량 기준 비용이다.
+- Terraform fmt, dev/prod validate, EC2 contract/runtime 및 Push infra contract가 통과했다. runtime 테스트의 health 실패 출력은 가짜 Docker/curl을 통한 rollback 분기 검증이며 테스트 종료 코드는 0이다. 독립 리뷰에서 IAM·환경 분리 차단 결함 없음.
+- 검증된 scoped saved plan을 적용했다. develop은 그룹·실행 역할·전송 정책·EC2 API 정책 4개 생성과 SSM 문서 1개 갱신, production은 그룹·실행 역할·전송 정책·API 정책 4개 생성이다. 서비스 재배포, Queue, 기존 20시 예약은 적용 범위에서 제외했다.
+- 실제 양 환경 그룹 ACTIVE와 실행 역할 trust를 확인했다. IAM principal simulation에서 자기 그룹 예약 관리·자기 역할 PassRole·자기 Queue 전송은 허용, 다른 환경 및 기존 학습 예약 관리·다른 서비스 PassRole은 거부됐다. SSM 기본 문서 version 10의 base64 runtime 내용을 복원해 API 설정 6개를 확인했다. 실제 예약 생성/발송 검증을 의미하지 않는다.
+- 적용 전후 기존 20시 예약의 상태·일정·수정 시각·대상과 운영 ECS API/Worker의 task definition·desired/running/pending count가 일치했다.
+- 신규 환경변수로 개발 초기화 스크립트가 16KiB 한도를 넘어 user_data_base64=base64gzip(...)로 전송하도록 보완했다. 두 user-data 속성은 ignore_changes로 유지해 기존 인스턴스 변경을 방지한다. 압축 크기·복원 일치 회귀 검증과 독립 후속 리뷰를 통과했다.
+- 최종 develop 전체 plan은 No changes다. production 전체 plan에는 의도적으로 보류한 API task definition 교체와 API service 연결 갱신만 남는다. 운영 배포 때 이 IaC 변경을 적용해야 하며 BE의 기존 force-new-deployment만으로는 새 환경변수가 들어가지 않는다. 이 작업에서 API 배포·DB 마이그레이션·SQL 접속·알림 발송은 수행하지 않았다.

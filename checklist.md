@@ -659,3 +659,10 @@
 - [x] 계약·runtime 테스트, Terraform 포맷, validate와 develop plan을 검증한다.
 - [x] 변경을 커밋하고 PR을 생성한다.
 - [ ] 사용자 승인 후 develop SSM 문서를 apply하고 정상 배포를 재검증한다.
+
+## 2026-09-08 LAN-462 관리자 예약 푸시
+
+- [x] 기존 Push SQS를 재사용하는 환경별 Scheduler 그룹·실행 역할·API 권한을 구성한다.
+- [x] 읽기 DB SSM 및 Scheduler 값을 API 런타임에 연결한다.
+- [x] Terraform 검증·제한된 plan·독립 리뷰 후 승인된 인프라를 적용한다.
+- [x] live 권한·그룹을 확인하고 배포 후 검증 범위를 기록한다.

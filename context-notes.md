@@ -972,3 +972,5 @@
 - 양 환경의 post-apply 전체 plan이 No changes다. live IAM 시뮬레이션으로 자기 큐·DLQ만 SendMessage 허용, 다른 환경·기존 학습 예약 권한 거부를 확인했다.
 - develop SSM 기본 문서 v11에 새 API 설정 7개가 포함된다. prod API service는 revision 10을 참조하며 기존 실행 이미지와 같은 latest digest를 유지한다. 읽기 DB SSM 3개 경로와 Scheduler DLQ ARN도 확인했다.
 - 기존 20시 학습 예약과 prod worker revision 6은 유지됐다. 이번 적용은 기존 이미지의 환경설정 반영이며 LAN-462 기능의 운영 배포·기기 알림 검증을 의미하지 않는다.
+
+- 머지 직전 추가 리뷰의 DLQ runtime ARN 일치·예약 Target 검증, 단건 복구·확인 후 삭제 절차를 문서화하고 인프라 계약 테스트는 실제 DLQ ARN 할당까지 검사하도록 강화했다. bash 문법·계약 테스트·독립 리뷰를 통과했으며 Terraform 리소스 변경은 없다.

@@ -957,3 +957,20 @@
 - 적용 전후 기존 20시 예약의 상태·일정·수정 시각·대상과 운영 ECS API/Worker의 task definition·desired/running/pending count가 일치했다.
 - 신규 환경변수로 개발 초기화 스크립트가 16KiB 한도를 넘어 user_data_base64=base64gzip(...)로 전송하도록 보완했다. 두 user-data 속성은 ignore_changes로 유지해 기존 인스턴스 변경을 방지한다. 압축 크기·복원 일치 회귀 검증과 독립 후속 리뷰를 통과했다.
 - 최종 develop 전체 plan은 No changes다. production 전체 plan에는 의도적으로 보류한 API task definition 교체와 API service 연결 갱신만 남는다. 운영 배포 때 이 IaC 변경을 적용해야 하며 BE의 기존 force-new-deployment만으로는 새 환경변수가 들어가지 않는다. 이 작업에서 API 배포·DB 마이그레이션·SQL 접속·알림 발송은 수행하지 않았다.
+
+## 2026-09-09 LAN-462 PR 리뷰 보완
+
+- BE PR #170의 Scheduler 전달 실패 보관 지적을 해결한다. 기존 환경별 Push DLQ와 경보를 재사용하므로 새 큐나 상시 리소스를 추가하지 않는다.
+- Scheduler 실행 역할에 자기 환경 DLQ의 SendMessage만 추가하고 API에는 ARN 값만 전달한다. AWS apply는 이번 리뷰 수정 범위에 포함하지 않는다.
+
+- dev/prod validate, fmt-check, EC2 계약·runtime, Push 인프라 계약 테스트와 독립 리뷰를 통과했다. runtime 첫 실행의 success fixture 실패는 trace 재실행에서 재현되지 않았고 전체 rollback 케이스까지 통과했다.
+- landit 프로필의 전체 plan에서 dev는 0 add/3 change/0 destroy(SSM 문서·Scheduler 실행 정책·SSM 참조에 따른 GitHub 배포 정책 재평가), prod는 1 add/2 change/1 destroy(API task definition 교체·service 연결·Scheduler 실행 정책)다. 새 상시 리소스는 없고 실제 apply는 수행하지 않았다.
+
+### 2026-09-09 승인된 적용
+
+- 사용자의 plan → apply → PR merge 요청으로 최신 saved plan을 적용했다. develop은 실제 0 add/2 change/0 destroy, prod는 1 add/2 change/1 destroy다. 새 상시 리소스 없이 기존 Push DLQ를 재사용한다.
+- 양 환경의 post-apply 전체 plan이 No changes다. live IAM 시뮬레이션으로 자기 큐·DLQ만 SendMessage 허용, 다른 환경·기존 학습 예약 권한 거부를 확인했다.
+- develop SSM 기본 문서 v11에 새 API 설정 7개가 포함된다. prod API service는 revision 10을 참조하며 기존 실행 이미지와 같은 latest digest를 유지한다. 읽기 DB SSM 3개 경로와 Scheduler DLQ ARN도 확인했다.
+- 기존 20시 학습 예약과 prod worker revision 6은 유지됐다. 이번 적용은 기존 이미지의 환경설정 반영이며 LAN-462 기능의 운영 배포·기기 알림 검증을 의미하지 않는다.
+
+- 머지 직전 추가 리뷰의 DLQ runtime ARN 일치·예약 Target 검증, 단건 복구·확인 후 삭제 절차를 문서화하고 인프라 계약 테스트는 실제 DLQ ARN 할당까지 검사하도록 강화했다. bash 문법·계약 테스트·독립 리뷰를 통과했으며 Terraform 리소스 변경은 없다.

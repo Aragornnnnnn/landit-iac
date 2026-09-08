@@ -55,6 +55,7 @@ locals {
     jobs_queue_url         = module.app_platform.jobs_queue_url
     push_queue_url         = module.app_platform.push_notifications_queue_url
     push_queue_arn         = module.app_platform.push_notifications_queue_arn
+    push_dlq_arn           = module.app_platform.push_notifications_dlq_arn
     push_scheduler_group   = module.app_platform.admin_push_scheduler_group
     push_scheduler_role    = module.app_platform.admin_push_scheduler_role_arn
     grafana_otlp_enabled   = tostring(var.grafana_otlp_enabled)

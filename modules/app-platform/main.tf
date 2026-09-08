@@ -1490,6 +1490,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "SQS_JOBS_QUEUE_URL", value = aws_sqs_queue.jobs.url },
         { name = "SQS_PUSH_NOTIFICATIONS_QUEUE_URL", value = aws_sqs_queue.push_notifications.url },
         { name = "LANDIT_PUSH_SCHEDULER_QUEUE_ARN", value = aws_sqs_queue.push_notifications.arn },
+        { name = "LANDIT_PUSH_SCHEDULER_DLQ_ARN", value = aws_sqs_queue.push_notifications_dlq.arn },
         { name = "LANDIT_PUSH_SCHEDULER_GROUP", value = aws_scheduler_schedule_group.admin_push.name },
         { name = "LANDIT_PUSH_SCHEDULER_ROLE_ARN", value = aws_iam_role.admin_push_scheduler.arn },
         { name = "LANDIT_NOTIFICATION_CONSUMER_ENABLED", value = "true" }

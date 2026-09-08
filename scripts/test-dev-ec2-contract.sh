@@ -129,7 +129,8 @@ bash "${ROOT_DIR}/scripts/test-dev-ec2-cleanup.sh"
 
 rg -q 'variable "ecs_platform_enabled"' "${MODULE_VARIABLES}"
 rg -q 'ecs_platform_enabled[[:space:]]*=[[:space:]]*false' "${ROOT_DIR}/environments/dev/main.tf"
-rg -q 'ignore_changes[[:space:]]*=[[:space:]]*\[ami, user_data\]' "${DEV_EC2}"
+rg -q 'user_data_base64[[:space:]]*=[[:space:]]*base64gzip\(templatefile' "${DEV_EC2}"
+rg -q 'ignore_changes[[:space:]]*=[[:space:]]*\[ami, user_data, user_data_base64\]' "${DEV_EC2}"
 
 for resource_address in \
   'aws_security_group.alb' \

@@ -29,6 +29,9 @@ locals {
     content_cloudfront_url = "https://d1234567890.cloudfront.net"
     jobs_queue_url         = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/develop-landit-jobs"
     push_queue_url         = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/develop-landit-push-notifications"
+    push_queue_arn         = "arn:aws:sqs:ap-northeast-2:123456789012:develop-landit-push-notifications"
+    push_scheduler_group   = "develop-landit-admin-push"
+    push_scheduler_role    = "arn:aws:iam::123456789012:role/develop-landit-admin-push-scheduler"
     grafana_otlp_enabled   = "true"
     grafana_otlp_endpoint  = "https://otlp.example.com/otlp"
   })
@@ -67,6 +70,19 @@ EOF
 sed '1d;$d' "${TEST_DIR}/user-data.sh" > "${TEST_DIR}/user-data.rendered.sh"
 mv "${TEST_DIR}/user-data.rendered.sh" "${TEST_DIR}/user-data.sh"
 bash -n "${TEST_DIR}/user-data.sh"
+(
+  cd "${TEST_DIR}"
+  terraform console <<'EOF' > "${TEST_DIR}/user-data-gzip.json"
+base64gzip(local.user_data)
+EOF
+)
+python3 - "${TEST_DIR}" <<'PY'
+import base64, gzip, json, pathlib, sys
+directory = pathlib.Path(sys.argv[1])
+compressed = base64.b64decode(json.loads((directory / "user-data-gzip.json").read_text()))
+assert len(compressed) <= 16384, "EC2 user data exceeds the 16 KiB limit"
+assert gzip.decompress(compressed).rstrip() == (directory / "user-data.sh").read_bytes().rstrip()
+PY
 if ! rg -q 'CONTENT_BUCKET_NAME="?develop-landit-content-123456789012' "${TEST_DIR}/user-data.sh"; then
   echo 'rendered runtime must provide CONTENT_BUCKET_NAME to the API.' >&2
   exit 1
@@ -85,6 +101,19 @@ for notification_flag in LANDIT_NOTIFICATION_CONSUMER_ENABLED LANDIT_NOTIFICATIO
     exit 1
   fi
 done
+for scheduler_setting in \
+  'LANDIT_PUSH_SCHEDULER_GROUP=develop-landit-admin-push' \
+  'LANDIT_PUSH_SCHEDULER_QUEUE_ARN=arn:aws:sqs:ap-northeast-2:123456789012:develop-landit-push-notifications' \
+  'LANDIT_PUSH_SCHEDULER_ROLE_ARN=arn:aws:iam::123456789012:role/develop-landit-admin-push-scheduler'; do
+  if ! grep -Fq "${scheduler_setting}" "${TEST_DIR}/user-data.sh"; then
+    echo 'rendered API runtime must use the matching environment scheduler and queue.' >&2
+    exit 1
+  fi
+done
+if ! grep -Fq 'LANDIT_PUSH_AUDIENCE_DB_URL LANDIT_PUSH_AUDIENCE_DB_USERNAME LANDIT_PUSH_AUDIENCE_DB_PASSWORD' "${TEST_DIR}/user-data.sh"; then
+  echo 'rendered API runtime must load audience credentials from SSM.' >&2
+  exit 1
+fi
 if ! rg -q 'LANDIT_MEMORY_WRITE_ENABLED LANDIT_MEMORY_USE_ENABLED LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS' "${TEST_DIR}/user-data.sh"; then
   echo 'develop API must load the free-talk speaking limit from SSM.' >&2
   exit 1

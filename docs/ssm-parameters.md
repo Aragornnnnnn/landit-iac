@@ -22,6 +22,9 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/DB_URL` | `SecureString` | backend JDBC database connection URL |
 | `/landit/{environment}/DB_USERNAME` | `SecureString` | backend database username |
 | `/landit/{environment}/DB_PASSWORD` | `SecureString` | backend database password |
+| `/landit/{environment}/LANDIT_PUSH_AUDIENCE_DB_URL` | `SecureString` | 관리자 대상 SQL용 JDBC URL, 인증정보 없이 session pooler 5432와 `sslmode=require` 사용 |
+| `/landit/{environment}/LANDIT_PUSH_AUDIENCE_DB_USERNAME` | `SecureString` | 읽기 역할 `landit_push_reader.<project-ref>` |
+| `/landit/{environment}/LANDIT_PUSH_AUDIENCE_DB_PASSWORD` | `SecureString` | 해당 환경 읽기 역할의 비밀번호 |
 | `/landit/{environment}/LANDIT_CORS_ALLOWED_ORIGINS` | `String` | backend CORS allowed origins, comma-separated |
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_SECRET` | `SecureString` | backend 자체 token signing secret |
 | `/landit/{environment}/LANDIT_AI_CLIENT_MODE` | `String` | backend AI client mode |
@@ -69,6 +72,8 @@ AWS_PROFILE=landit AWS_REGION=ap-northeast-2 \
 ```
 
 ## 새 parameter 추가 절차
+
+관리자 푸시의 세 DB 값은 기존 `DB_*`와 별개다. develop에서는 EC2 API env, production에서는 ECS API의 secrets로 주입하며, Java API가 Push 소비도 담당하므로 AI Worker에는 주입하지 않는다. Scheduler의 `LANDIT_PUSH_SCHEDULER_GROUP`, `LANDIT_PUSH_SCHEDULER_QUEUE_ARN`, `LANDIT_PUSH_SCHEDULER_ROLE_ARN`은 Terraform 리소스 참조로 주입하며 별도 SSM 값은 만들지 않는다.
 
 SSM parameter를 생성해도 ECS container environment에 자동으로 들어가지 않습니다. 애플리케이션이 새 값을 환경변수로 읽는다면 아래 절차를 함께 진행합니다.
 

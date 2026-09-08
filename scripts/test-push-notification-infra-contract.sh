@@ -298,3 +298,7 @@ for environment in dev prod; do
     require_text "value[[:space:]]*=[[:space:]]*module.app_platform.${output_name}" "$root_output" "$environment root output"
   done
 done
+
+# Scheduler 실패 보관은 기존 Push DLQ를 재사용하고 API에는 ARN만 전달한다.
+require 'Resource = \[aws_sqs_queue.push_notifications.arn, aws_sqs_queue.push_notifications_dlq.arn\]' "$MODULE_DIR/admin-push-scheduler.tf"
+require 'LANDIT_PUSH_SCHEDULER_DLQ_ARN' "$MODULE_DIR/main.tf"

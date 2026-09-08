@@ -36,7 +36,7 @@ resource "aws_iam_role_policy" "admin_push_scheduler" {
     Statement = [{
       Effect   = "Allow"
       Action   = "sqs:SendMessage"
-      Resource = aws_sqs_queue.push_notifications.arn
+      Resource = [aws_sqs_queue.push_notifications.arn, aws_sqs_queue.push_notifications_dlq.arn]
     }]
   })
 }

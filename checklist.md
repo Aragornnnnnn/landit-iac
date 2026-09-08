@@ -666,3 +666,8 @@
 - [x] 읽기 DB SSM 및 Scheduler 값을 API 런타임에 연결한다.
 - [x] Terraform 검증·제한된 plan·독립 리뷰 후 승인된 인프라를 적용한다.
 - [x] live 권한·그룹을 확인하고 배포 후 검증 범위를 기록한다.
+
+## 2026-09-09 LAN-462 PR 리뷰 보완
+
+- [x] 기존 Push DLQ에 Scheduler 전달 실패를 보관하도록 IAM·API 환경설정을 연결한다.
+- [x] 계약·runtime·Terraform 검증과 독립 리뷰를 완료한다.

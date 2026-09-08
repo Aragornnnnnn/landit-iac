@@ -30,6 +30,7 @@ locals {
     jobs_queue_url         = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/develop-landit-jobs"
     push_queue_url         = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/develop-landit-push-notifications"
     push_queue_arn         = "arn:aws:sqs:ap-northeast-2:123456789012:develop-landit-push-notifications"
+    push_dlq_arn           = "arn:aws:sqs:ap-northeast-2:123456789012:develop-landit-push-notifications-dlq"
     push_scheduler_group   = "develop-landit-admin-push"
     push_scheduler_role    = "arn:aws:iam::123456789012:role/develop-landit-admin-push-scheduler"
     grafana_otlp_enabled   = "true"
@@ -104,6 +105,7 @@ done
 for scheduler_setting in \
   'LANDIT_PUSH_SCHEDULER_GROUP=develop-landit-admin-push' \
   'LANDIT_PUSH_SCHEDULER_QUEUE_ARN=arn:aws:sqs:ap-northeast-2:123456789012:develop-landit-push-notifications' \
+  'LANDIT_PUSH_SCHEDULER_DLQ_ARN=arn:aws:sqs:ap-northeast-2:123456789012:develop-landit-push-notifications-dlq' \
   'LANDIT_PUSH_SCHEDULER_ROLE_ARN=arn:aws:iam::123456789012:role/develop-landit-admin-push-scheduler'; do
   if ! grep -Fq "${scheduler_setting}" "${TEST_DIR}/user-data.sh"; then
     echo 'rendered API runtime must use the matching environment scheduler and queue.' >&2

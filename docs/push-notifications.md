@@ -151,3 +151,10 @@ AWS_PROFILE=landit AWS_REGION=ap-northeast-2 aws ecs describe-task-definition \
 - 반드시 본문 확인이 필요한 경우에는 승인된 제한된 접근 경로에서 최소 인원만 확인하고, 값을 복사하거나 공유 채널에 붙여 넣지 않는다.
 - Queue URL과 Scheduler ARN은 secret이 아니지만, credential이나 SSM secret과 함께 출력하거나 기록하지 않는다.
 - Alarm은 초기에는 CloudWatch 상태만 생성하며 SNS나 Discord 같은 외부 action은 연결하지 않는다.
+
+### LAN-462 Scheduler 전달 실패 보관
+
+- API 환경변수 `LANDIT_PUSH_SCHEDULER_DLQ_ARN`은 같은 환경의 기존 Push DLQ ARN이다. Scheduler 실행 역할은 기존 Push 큐와 이 DLQ에만 `sqs:SendMessage`를 가진다. API 소비 역할의 DLQ 권한은 추가하지 않는다.
+- 일회성 예약 Target에 DLQ를 설정해 Scheduler 재시도를 소진한 SQS 전달 실패를 보관한다. 기존 DLQ의 14일 보관과 경보를 재사용하며 새 큐는 추가하지 않는다.
+- Scheduler 오류 속성(`SCHEDULE_ARN`, `ERROR_CODE` 등)이 있는 메시지는 소비 실패 메시지와 구분한다. 원인과 캠페인 상태를 확인하고 원본 Target Input을 검증해 복구하며, 혼합된 DLQ를 일괄 redrive하지 않는다. 이미 제출된 캠페인은 재발송 대상으로 임의 복제하지 않는다.
+- 이번 후속 변경의 IAM·develop SSM 문서·prod ECS task definition 및 service 연결을 적용한 뒤 BE를 배포해야 한다. 코드와 PR 생성만으로 AWS 적용 완료를 의미하지 않는다.

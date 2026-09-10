@@ -674,3 +674,9 @@
 
 - [x] 사용자 승인 후 양 환경 fresh plan을 적용하고 post-apply 전체 plan이 No changes인지 확인한다.
 - [x] live DLQ 권한·환경 격리·SSM v11·prod API revision 10 설정을 검증한다.
+
+## 2026-09-10 LAN-454 운영 장기기억 USE 활성화 준비
+
+- [x] 최신 main에서 작업 브랜치를 만들고 기존 SSM 연결·develop 검색 이력을 확인한다.
+- [x] 운영 USE 변경·BE 재배포·복구 절차를 문서화하고 명령과 diff를 검증한다.
+- [ ] 운영 반영 승인 후 SSM을 변경하고 BE 재배포와 실제 기억 검색을 확인한다.

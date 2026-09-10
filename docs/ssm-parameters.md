@@ -89,6 +89,34 @@ SSM parameter를 생성해도 ECS container environment에 자동으로 들어�
 
 기존 parameter의 값만 바꾸는 경우도 running task에는 자동 반영되지 않습니다. ECS secret은 container 시작 시점에 주입되므로, 값 변경 후에는 ECS service 새 deployment가 필요합니다.
 
+## 운영 장기기억 USE 활성화와 복구
+
+기존 SSM 값만 변경하므로 Terraform 코드 변경이나 apply는 필요하지 않습니다. 운영 반영 승인을 받은 뒤 아래 절차를 실행합니다. WRITE는 유지하며 API만 재배포합니다.
+
+1. 운영 WRITE가 활성화돼 있고, API task definition의 `secrets`에 두 기억 parameter가 연결돼 있는지 확인합니다. 변경 전 USE parameter의 이름·타입·버전과 API의 task definition·실행 image digest를 기록합니다.
+2. task definition이 가리키는 ECR tag의 digest와 현재 실행 image digest가 같은지 확인합니다. 다르면 아래 재배포를 진행하지 않고 배포할 이미지를 먼저 확정합니다. `latest` 재배포에 다른 코드가 섞이는 것을 방지하기 위한 확인입니다.
+3. 다음 명령으로 USE를 켜고 새 API task에 반영합니다. 비밀 값은 다루지 않습니다.
+
+```bash
+(
+  set -euo pipefail
+  aws --profile landit --region ap-northeast-2 ssm put-parameter \
+    --name /landit/prod/LANDIT_MEMORY_USE_ENABLED \
+    --type String --value true --overwrite
+  aws --profile landit --region ap-northeast-2 ecs update-service \
+    --cluster prod-landit-cluster --service prod-landit-api \
+    --force-new-deployment \
+    --query 'service.deployments[].{id:id,status:status,rolloutState:rolloutState}'
+  aws --profile landit --region ap-northeast-2 ecs wait services-stable \
+    --cluster prod-landit-cluster --services prod-landit-api
+)
+```
+
+4. SSM 버전 증가와 기대값 일치 여부를 확인합니다. 새 deployment가 PRIMARY·COMPLETED인지, running 수가 desired 수와 일치하는지, 새 task의 image digest가 변경 전과 같은지 확인합니다. waiter 성공만으로 새 deployment 성공을 단정하지 않습니다.
+5. API health와 새 task의 오류 로그를 확인하고, 저장된 기억이 있는 계정의 실제 프리톡에서 검색 기록과 응답을 함께 검수합니다. 다른 사람의 기억이나 원문에 없는 사실을 말하는지 확인합니다. health 성공은 기능 검증이 아니며, `used`는 모델 자기보고와 후처리 기록으로 인과적으로 검증된 사용률이나 응답 품질을 뜻하지 않습니다.
+
+기억 사용으로 잘못된 응답이 발생하면 위 `put-parameter`의 `--value true`를 `--value false`로 바꾸고 API 재배포·검증을 반복합니다. 배포가 실패해도 SSM 값은 자동 복구되지 않으므로 기대값을 다시 확인합니다. USE를 꺼도 WRITE와 기존 기억은 유지되며, 데이터 삭제는 이 절차에 포함하지 않습니다.
+
 ## 운영 규칙
 
 - SSM 값은 shell history, CI log, git diff에 남지 않는 방식으로 갱신합니다.

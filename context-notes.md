@@ -974,3 +974,12 @@
 - 기존 20시 학습 예약과 prod worker revision 6은 유지됐다. 이번 적용은 기존 이미지의 환경설정 반영이며 LAN-462 기능의 운영 배포·기기 알림 검증을 의미하지 않는다.
 
 - 머지 직전 추가 리뷰의 DLQ runtime ARN 일치·예약 Target 검증, 단건 복구·확인 후 삭제 절차를 문서화하고 인프라 계약 테스트는 실제 DLQ ARN 할당까지 검사하도록 강화했다. bash 문법·계약 테스트·독립 리뷰를 통과했으며 Terraform 리소스 변경은 없다.
+
+## 2026-09-10 LAN-454 운영 장기기억 USE 활성화 준비
+
+- 최신 `origin/main`의 `b166ca0`에서 `feat/LAN-454`를 만들었다. USE는 Terraform 밖의 기존 SSM String이며 API task definition에 이미 연결돼 있어 Terraform 변경은 필요 없다.
+- develop 읽기 조회에서 검색 기록 57건, 후보가 있는 기록 40건, 사용 표시 12건을 확인했다. 사용 표시는 모두 이전 `memory-retrieval-v1`이고 v2는 검색 기록 18건 중 사용 표시 0건이다. 기록 수는 세션 수나 인과적으로 검증된 사용률이 아니다.
+- 기존 WRITE를 유지하고 운영 USE만 활성화한다. 별도 계정 제한 기능을 추가하지 않는다. 현재 BE 이미지와 같은 이미지로 API를 재배포하고, 복구 시 USE를 끈 뒤 API를 다시 배포한다.
+- 이 브랜치는 운영 절차를 준비한다. SSM 변경과 실제 재배포는 아직 실행하지 않았다.
+- 운영 읽기 확인에서 USE는 String v1, WRITE는 String v2이며 각각 변경 전 기대 상태와 일치했다. API revision 10은 두 parameter를 참조하고 PRIMARY·COMPLETED, desired/running 1/1이다. 실행 이미지와 ECR latest의 digest가 일치했다. 실제 적용 직전에 다시 확인한다.
+- 활성화 명령 블록의 `bash -n`과 `git diff --check`를 통과했다. 문서만 변경했으므로 Terraform fmt·validate·plan과 애플리케이션 테스트는 실행하지 않았다.

@@ -28,8 +28,9 @@ Landit 서비스의 Infrastructure as Code 레포입니다.
 - [SSM Parameters](docs/ssm-parameters.md): runtime parameter 이름, 타입, 운영 규칙.
 - [Observability](docs/observability.md): Sentry와 Grafana Cloud 지표·로그 연동 구조와 검증 절차.
 - [Content Storage](docs/content-storage.md): 공통 콘텐츠 S3 key, CloudFront 조회, DB URL 반영, 파일 교체 절차.
-- [checklist.md](checklist.md): 작업 체크리스트.
-- [context-notes.md](context-notes.md): 작업 결정과 검증 기록.
+- [작업 문서](docs/tasks/): 이슈별 `plan.md`와 `design.md`.
+- [checklist.md](checklist.md): 과거 작업 체크리스트. 새 작업은 이슈별 문서에 기록합니다.
+- [context-notes.md](context-notes.md): 과거 결정과 검증 기록. 새 작업은 이슈별 문서에 기록합니다.
 
 ## 기본 값
 

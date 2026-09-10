@@ -983,3 +983,12 @@
 - 이 브랜치는 운영 절차를 준비한다. SSM 변경과 실제 재배포는 아직 실행하지 않았다.
 - 운영 읽기 확인에서 USE는 String v1, WRITE는 String v2이며 각각 변경 전 기대 상태와 일치했다. API revision 10은 두 parameter를 참조하고 PRIMARY·COMPLETED, desired/running 1/1이다. 실행 이미지와 ECR latest의 digest가 일치했다. 실제 적용 직전에 다시 확인한다.
 - 활성화 명령 블록의 `bash -n`과 `git diff --check`를 통과했다. 문서만 변경했으므로 Terraform fmt·validate·plan과 애플리케이션 테스트는 실행하지 않았다.
+
+### 현재 운영 버전의 로컬 검증과 활성화 보류
+
+- 사용자는 로컬 재검증에서 문제가 없으면 USE 변경과 동일 BE 이미지 재배포를 승인했다. 운영 AI `d26182f`의 tree는 로컬과 동일하며, BE `7c0f3457`은 별도 임시 디렉터리에 export해 기존 dirty 파일을 보존했다.
+- AI `.venv/bin/python -m unittest discover -s tests`는 504개 중 7개 skip, 실패 0건이다. 운영 BE 소스의 `./gradlew check --no-daemon`은 889개 테스트·Spotless·Checkstyle을 통과했다. 실제 로컬 HTTP 서버로 기억 쿼리 timeout과 일반 생성 timeout 유지도 검증했다. BE DB 통합 테스트는 H2 기반이며 운영 PostgreSQL 실행 증거가 아니다.
+- 운영 SSM의 `openai/gpt-5.4-mini`로 합성 발화를 실제 호출했다. 현재 발화 반복, 정정, 기억 회상, 날짜 경계와 정정 resolution을 확인했으며 실제 임베딩은 1536차원이었다. 초기 정정 fixture의 불허 필드를 제거한 뒤 해당 사례 2회가 통과했다. `usedMemoryIds`에는 자기보고 오탐·후처리 누락이 남아 있어 정확한 사용률로 해석할 수 없다.
+- 자동 승인 검토는 만료 기억을 현재 사실로 답할 위험으로 SSM 변경·ECS 재배포 실행을 거부했다. 추가로 현재 직장 질문과 과거 회상을 분리한 실제 LLM 9회에서 현재 직장 질문 3회 중 2회가 명확히 실패했다. 이전의 계약 테스트 통과를 품질 통과로 간주하지 않는다.
+- 재현 조건: 현재 시각 `2026-09-11T00:05:00+09:00`, 기억 `사용자는 베를린의 서점에서 일한다.`, validTo `2026-08-31T23:59:59+09:00`, 질문 `Where do I work now?`. 실패 응답은 `You work at a bookstore in Berlin.`이며 번역도 현재형이고 usedMemoryIds가 포함됐다. 과거 회상을 허용하면서 현재 사실 단정을 막는 보완이 필요하다.
+- 운영 USE String v1과 WRITE String v2가 모두 변경 전 기대 상태와 일치함을 재확인했다. SSM 변경·ECS 재배포·애플리케이션 코드 변경은 수행하지 않았다. 합성 검증 보고서는 로컬 `/tmp/lan454-use-llm-smoke.json`, `/tmp/lan454-use-llm-focused.json`, `/tmp/lan454-expiry-focused.json`에 있다.

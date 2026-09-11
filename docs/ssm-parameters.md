@@ -31,7 +31,7 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_AI_BASE_URL` | `String` | backend에서 호출하는 AI service base URL |
 | `/landit/{environment}/LANDIT_MEMORY_WRITE_ENABLED` | `String` | backend 장기기억 저장 기능 사용 여부, 기본값 `false` |
 | `/landit/{environment}/LANDIT_MEMORY_USE_ENABLED` | `String` | backend 프리톡 장기기억 검색 기능 사용 여부, 기본값 `false` |
-| `/landit/develop/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION` | `SecureString` | 개발 API의 RevenueCat 웹훅 Authorization 검증값 |
+| `/landit/{environment}/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION` | `SecureString` | API의 RevenueCat 웹훅 Authorization 검증값, develop EC2 env와 prod ECS secrets로 주입 |
 | `/landit/develop/LANDIT_SUBSCRIPTION_LAUNCHED_AT` | `String` | 개발 API의 유료 기능 제한 도입 시각, 오프셋을 포함한 ISO 8601 형식 |
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS` | `String` | backend access token 만료시간, 초 단위 |
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS` | `String` | backend refresh token 만료시간, 초 단위 |
@@ -76,6 +76,10 @@ AWS_PROFILE=landit AWS_REGION=ap-northeast-2 \
 ## 새 parameter 추가 절차
 
 개발 API의 RevenueCat 인증값과 결제 도입 시각은 `environments/dev/templates/ec2-runtime-env.sh.tftpl`에서 SSM을 읽어 `/run/landit/api.env`에 주입합니다. 두 parameter를 먼저 준비하고 `aws_ssm_document.ec2_deploy` 변경을 plan·apply한 뒤 API를 재배포해야 기존 EC2 컨테이너에 반영됩니다. SSM 값만 저장하거나 컨테이너를 단순 재시작하면 새 환경변수가 주입되지 않습니다.
+
+운영 API는 ECS task definition의 `secrets`로 `/landit/prod/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`만 연결합니다. 운영 반영 전에 RevenueCat 운영 웹훅의 Authorization과 같은 값을 해당 `SecureString`에 등록해야 합니다. parameter가 없으면 새 ECS task가 시작하지 못합니다. 운영 `LANDIT_SUBSCRIPTION_LAUNCHED_AT`은 연결하지 않으며, 결제 도입 시각은 추후 별도로 결정합니다.
+
+운영 연결 코드를 병합해도 현재 task에는 적용되지 않습니다. 운영 반영 시 SSM 등록 후 Terraform plan·apply가 필요하며, ECS service가 새 task definition을 사용하면서 배포가 시작됩니다. 이 apply는 운영 배포 일정에 맞춰 실행합니다.
 
 결제 장애 복구 시에는 컨테이너의 인증값 존재 여부를 값 노출 없이 확인하고, RevenueCat의 Sandbox 웹훅 전달 주소·Authorization 설정을 대조합니다. 실패한 결제 이벤트를 재전송한 뒤 구독 조회의 `premium=true`와 실제 기능 접근을 확인합니다. 스토어 결제 성공이나 API health만으로 복구 완료를 판단하지 않습니다.
 

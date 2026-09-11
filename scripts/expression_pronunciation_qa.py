@@ -14,12 +14,16 @@
 # 자동완성("Thank"→"Thank you")을 억제하는 데 도움이 된다. 재합성해도 S3 키는 바뀌지 않는다
 # (키 = 생성계약(모델·보이스·원문) 해시). 소진되면 실패 목록으로 분리해 사람 판정에 넘긴다.
 #
-# 자동검사의 한계: 단어 뒤 "크" 같은 비언어 잡음 꼬리는 RMS·전사 어느 것으로도 못 잡는다.
-# 게시 전 `sample`로 뽑은 무작위 파일을 사람이 들어 보는 절차를 생략하지 말 것.
+# 위 두 검사로도 남는 불합격은 `adjudicate`로 오디오 판정 모델에 다시 묻는다. 단어 뒤 "크"
+# 같은 비언어 잡음 꼬리는 RMS·Whisper 어느 것으로도 못 잡는데, 오디오를 직접 듣는 모델은
+# 이를 defect로 보고할 수 있다. 다만 모델도 완벽하지 않으니 게시 전 `sample`로 뽑은 무작위
+# 파일을 사람이 들어 보는 절차를 생략하지 말 것.
 #
 # 사용법 (generate 완료 후, upload 전):
 #   python3 scripts/expression_pronunciation_qa.py check  --source tts_source.json --work-dir work/ \
 #       --report work/qa_report.json --resynth
+#   python3 scripts/expression_pronunciation_qa.py adjudicate --source tts_source.json --work-dir work/ \
+#       --report work/qa_report.json --sample-passed 200        # 기록만; 반영은 --apply
 #   python3 scripts/expression_pronunciation_qa.py sample --source tts_source.json --work-dir work/ \
 #       --report work/qa_report.json --out-dir samples/ --count 45
 #
@@ -72,6 +76,11 @@ _APOSTROPHES = str.maketrans({"’": "'", "‘": "'", "`": "'"})
 _SEPARATORS = re.compile(r"[—–\-/]+")
 _NON_WORD = re.compile(r"[^a-z0-9' ]+")
 _DIGITS = re.compile(r"\d+")
+# Whisper는 "ten dollars"를 "$10"으로, "eleventh"를 "11th"로 적는다. 숫자를 단어로 풀기 전에
+# 통화·서수를 먼저 풀어야 기대 텍스트와 토큰이 맞는다 (LAN-453·471 실측 불합격의 주요 원인).
+_CURRENCY = re.compile(r"\$(\d+)(?:\.(\d{2}))?")
+_ORDINAL = re.compile(r"\b(\d+)(st|nd|rd|th)\b")
+_PERCENT = re.compile(r"(\d+)\s?%")
 _CONTRACTIONS = {
     "i'm": "i am",
     "i'll": "i will",
@@ -156,8 +165,33 @@ def _digits_to_words(token: str) -> str:
     return _DIGITS.sub(replace, token)
 
 
+def _currency_to_words(text: str) -> str:
+    from num2words import num2words
+
+    def replace(match: re.Match) -> str:
+        dollars = int(match.group(1))
+        words = f"{num2words(dollars)} {'dollar' if dollars == 1 else 'dollars'}"
+        if match.group(2) and int(match.group(2)):
+            words += f" {num2words(int(match.group(2)))} cents"
+        return " " + words.replace("-", " ").replace(",", "") + " "
+
+    return _CURRENCY.sub(replace, text)
+
+
+def _ordinals_to_words(text: str) -> str:
+    from num2words import num2words
+
+    def replace(match: re.Match) -> str:
+        return " " + num2words(int(match.group(1)), to="ordinal").replace("-", " ") + " "
+
+    return _ORDINAL.sub(replace, text)
+
+
 def normalize_tokens(text: str) -> list[str]:
     lowered = text.translate(_APOSTROPHES).lower()
+    lowered = _PERCENT.sub(r" \1 percent ", lowered)
+    lowered = _currency_to_words(lowered)
+    lowered = _ordinals_to_words(lowered)
     lowered = _SEPARATORS.sub(" ", lowered)
     lowered = _digits_to_words(lowered)
     lowered = _NON_WORD.sub(" ", lowered)
@@ -217,6 +251,8 @@ LISTENED_OK_PAIRS: frozenset[tuple[str, str, str]] = frozenset(
     {
         ("EN_AU", "i'll", "oh"),
         ("EN_AU", "move", "news"),
+        # 호주 영어는 비권설음이라 "year"의 r이 빠져 "yeah"처럼 난다 (2026-09-11 선녀 청취, 5건 전부 정상)
+        ("EN_AU", "year", "yeah"),
     }
 )
 
@@ -251,6 +287,10 @@ def transcript_matches(
     if sequences_match(expected, heard):
         return True
     if sequences_match(expand_contractions(expected), expand_contractions(heard)):
+        return True
+    # 붙여쓰기·띄어쓰기 차이("log in"↔"login", "secondhand"↔"second hand", "meet up"↔
+    # "meetup")는 소리가 같으므로 공백을 무시하고 한 번 더 비교한다 (LAN-471 실측).
+    if expected and heard and "".join(expected) == "".join(heard):
         return True
     if single_word_lenient and len(expected) == 1 and len(heard) == 1:
         if (accent_locale, expected[0], heard[0]) in LISTENED_OK_PAIRS:
@@ -497,6 +537,24 @@ def check_audio(
 # 무음 불합격의 재합성에 쓰는 변형. 호주 보이스 실측(2026-09-07): 기능어 단독 입력에서
 # "a." 4/4·"her." 3/4가 무음, 원문 1/4~5/8, 쉼표 변형 "a,"·"her,"·"I'll,"는 12회 중 1회.
 SILENCE_RETRY_SUFFIX = ","
+# 짧은 기능어 단독 클립은 무음이 아니어도 쉼표 입력이 훨씬 안정적이다. LAN-471 실측(기능어
+# 12개 × 3억양 × 각 3회): 쉼표 없이 합격 67%·무음 18·오인식 18 → 쉼표 89%·무음 4·오인식 8.
+# 사람 청취로 쉼표 버전 억양이 자연스러운 것도 확인했다. 일반 단어는 효과를 재지 않았으므로
+# 원래 변형 순환을 쓴다. 생성계약(키)은 원문 기준 그대로라 재합성해도 S3 키는 바뀌지 않는다.
+FUNCTION_WORDS = frozenset(
+    {
+        "the", "a", "an", "to", "of", "in", "on", "at", "and", "or", "it", "is", "i", "you",
+        "he", "she", "we", "they", "for", "with", "by", "from", "my", "your", "his", "her",
+        "our", "their", "this", "that", "be", "are", "was", "were", "do", "so", "but", "as",
+        "if", "up", "me", "him", "us", "them", "can", "will", "i'll", "i'm", "it's",
+    }
+)
+
+
+def is_function_word(asset: epa.SourceAsset) -> bool:
+    return asset.kind == epa.KIND_WORD and (
+        asset.text.translate(_APOSTROPHES).lower().strip(".,!?") in FUNCTION_WORDS
+    )
 
 
 def variant_text(text: str, attempt: int, *, suffix: str | None = None) -> str:
@@ -568,6 +626,222 @@ def resynthesize(
         generation_id=response.generation_id,
         duration_seconds=probe.duration_seconds,
     )
+
+
+# ---------------------------------------------------------------- Gemini 2차 판정
+
+# Whisper 전사 대조는 단독 단어 클립에서 오탐이 많고(1음소 차이·억양 특성), 단어 뒤에 붙는
+# 비언어 잡음 꼬리는 RMS로도 전사로도 잡히지 않는다. 오디오를 직접 듣는 모델에 불합격분만
+# 다시 물어 사람 청취 대상을 좁힌다.
+#
+# 프롬프트는 LAN-373 스파이크 교훈을 따른다 — 열린 질문("무슨 소리가 들리나")은 환각을
+# 부르므로 판정은 반드시 양자택일로 받고, 진단용 heard/problem은 참고값으로만 쓴다.
+ADJUDICATION_PROMPT = """Transcribe this audio clip exactly as spoken, word for word.
+Then report whether anything is wrong with the recording itself.
+
+Do not guess at words you cannot hear. If the clip is silent, leave "heard" empty.
+
+Answer with JSON only, no markdown fences:
+{"heard": "<exact words you hear>", "defect": "<none|silent|truncated|noise|unintelligible>"}
+
+defect meanings:
+  none            - clean speech, nothing cut off, no stray sounds
+  silent          - no speech at all
+  truncated       - a word is cut off at the start or end
+  noise           - a click, breath, or stray syllable around the speech
+  unintelligible  - speech is there but cannot be made out"""
+
+ADJUDICATION_MODEL = epa.JUDGMENT_MODEL
+DEFAULT_ADJUDICATION_WORKERS = 8
+
+
+@dataclass(frozen=True)
+class Adjudication:
+    """오디오 판정 결과. clean이 None이면 모델이 판별하지 못한 것이다."""
+
+    clean: bool | None
+    heard: str | None
+    problem: str | None
+
+
+def adjudicate_audio(
+    api_key: str,
+    audio_path: Path,
+    expected_text: str,
+    *,
+    accent_locale: str | None = None,
+    single_word_lenient: bool = False,
+    requester: Callable = epa.request_judgment,
+) -> Adjudication:
+    """오디오를 듣고 받아 적게 한 뒤, 기대 텍스트와의 대조는 이 코드가 한다.
+
+    기대 텍스트를 프롬프트에 넣으면 모델이 그대로 따라 적는다 (2026-09-10 실측: "Good
+    question" 클립에 기대 텍스트를 "purple elephant sandwich"로 주자 그대로 정상이라고
+    답했다). 그래서 모델에는 무엇이 들려야 하는지 알려주지 않고, 판정은 Whisper와 같은
+    정규화 규칙으로 여기서 내린다.
+    """
+    import base64
+
+    payload = {
+        "model": ADJUDICATION_MODEL,
+        "temperature": 0.0,
+        "max_tokens": 1000,
+        "reasoning": {"effort": "low"},
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": ADJUDICATION_PROMPT},
+                    {
+                        "type": "input_audio",
+                        "input_audio": {
+                            "data": base64.b64encode(audio_path.read_bytes()).decode(
+                                "ascii"
+                            ),
+                            "format": "mp3",
+                        },
+                    },
+                ],
+            }
+        ],
+    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    result = requester(payload, headers, 10, 60)
+    if result.status != 200:
+        raise epa.AccentVerificationError(
+            f"adjudication request failed with HTTP {result.status}"
+        )
+    # OpenRouter는 일시 장애 때 200이면서 choices가 비어 있는 몸통을 준다 — fail-closed.
+    try:
+        body = json.loads(result.body.decode("utf-8"))
+        raw = (body["choices"][0]["message"]["content"] or "").strip()
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError) as error:
+        raise epa.AccentVerificationError(
+            f"adjudication response body is malformed: {type(error).__name__}"
+        ) from error
+    if raw.startswith("```"):
+        raw = raw.strip("`").removeprefix("json").strip()
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return Adjudication(None, None, None)
+    heard = parsed.get("heard") if isinstance(parsed.get("heard"), str) else None
+    defect = parsed.get("defect") if isinstance(parsed.get("defect"), str) else None
+    if heard is None or defect is None:
+        return Adjudication(None, heard, defect)
+    if defect == "unintelligible":
+        return Adjudication(None, heard, defect)
+    if defect != "none":
+        return Adjudication(False, heard, defect)
+    matches = transcript_matches(
+        expected_text,
+        heard,
+        single_word_lenient=single_word_lenient,
+        accent_locale=accent_locale,
+    )
+    return Adjudication(matches, heard, defect if matches else "wrong_words")
+
+
+def run_adjudication(
+    report_path: Path,
+    work_dir: Path,
+    snapshot: epa.SourceSnapshot,
+    api_key: str,
+    *,
+    workers: int = DEFAULT_ADJUDICATION_WORKERS,
+    sample_passed: int = 0,
+    seed: int = 0,
+    apply_verdicts: bool = False,
+    adjudicator: Callable[..., Adjudication] = adjudicate_audio,
+    progress: Callable[[str], None] = print,
+) -> dict:
+    """불합격 자산(및 선택적으로 합격 표본)을 오디오 모델에 다시 물어 보고서에 기록한다.
+
+    apply_verdicts가 False면 판정만 기록하고 passed는 건드리지 않는다 — 합격/불합격을
+    조용히 뒤집지 않기 위해 반영은 명시적으로 요청받는다.
+    """
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assets = {item["assetId"]: item for item in payload["assets"]}
+    by_id = {epa.asset_id(a): a for a in snapshot.assets}
+
+    targets = [item for item in payload["assets"] if not item["passed"]]
+    passed_pool = [item for item in payload["assets"] if item["passed"]]
+    if sample_passed > 0 and passed_pool:
+        # 합격 표본도 함께 물어 "Whisper는 통과시켰지만 실제로는 불량"인 비율을 잰다.
+        rng = random.Random(seed)
+        targets += rng.sample(passed_pool, min(sample_passed, len(passed_pool)))
+
+    lock = threading.Lock()
+    done = 0
+    errors = 0
+
+    def judge(item: dict) -> tuple[dict, Adjudication | None]:
+        asset = by_id.get(item["assetId"])
+        if asset is None:
+            return item, None
+        try:
+            verdict = adjudicator(
+                api_key,
+                epa.audio_path_for(work_dir, asset),
+                item["text"],
+                accent_locale=asset.accent_locale,
+                single_word_lenient=asset.kind == epa.KIND_WORD,
+            )
+        except epa.AccentVerificationError:
+            return item, None
+        return item, verdict
+
+    progress(f"adjudicating {len(targets)} clips with {ADJUDICATION_MODEL}")
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for item, verdict in executor.map(judge, targets):
+            with lock:
+                done += 1
+                if verdict is None:
+                    errors += 1
+                    assets[item["assetId"]]["geminiClean"] = None
+                else:
+                    row = assets[item["assetId"]]
+                    row["geminiClean"] = verdict.clean
+                    row["geminiHeard"] = verdict.heard
+                    row["geminiProblem"] = verdict.problem
+                if done % 50 == 0:
+                    progress(f"  {done}/{len(targets)} judged, {errors} unavailable")
+
+    judged = [assets[i["assetId"]] for i in targets]
+    failed_judged = [r for r in judged if not r["passed"]]
+    passed_judged = [r for r in judged if r["passed"]]
+    would_flip = [r for r in failed_judged if r.get("geminiClean") is True]
+    still_bad = [r for r in failed_judged if r.get("geminiClean") is False]
+    unresolved = [r for r in failed_judged if r.get("geminiClean") is None]
+    false_negatives = [r for r in passed_judged if r.get("geminiClean") is False]
+
+    if apply_verdicts:
+        for row in would_flip:
+            row["passed"] = True
+            row["lastReason"] = f"gemini-clean: {row.get('lastReason', '')}".strip()
+
+    summary = {
+        "model": ADJUDICATION_MODEL,
+        "judged": len(targets),
+        "failedJudged": len(failed_judged),
+        "geminiSaysClean": len(would_flip),
+        "geminiConfirmsDefect": len(still_bad),
+        "unresolved": len(unresolved),
+        "problemCounts": dict(
+            Counter(r.get("geminiProblem") for r in still_bad if r.get("geminiProblem"))
+        ),
+        "passedSampleJudged": len(passed_judged),
+        "passedSampleDefects": len(false_negatives),
+        "applied": apply_verdicts,
+    }
+    payload.setdefault("summary", {})["adjudication"] = summary
+    payload["assets"] = sorted(assets.values(), key=lambda r: r["assetId"])
+    temporary = report_path.with_suffix(".json.part")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
+    os.replace(temporary, report_path)
+    return summary
 
 
 # ---------------------------------------------------------------- 검사 실행
@@ -742,7 +1016,10 @@ def run_check(
             if result.passed or client is None or attempts > max_resynth:
                 break
             # 무음은 마침표 변형이 오히려 무음을 부르므로 쉼표 변형으로만 재시도한다.
-            suffix = SILENCE_RETRY_SUFFIX if result.reason.startswith("silence") else None
+            if is_function_word(asset) or result.reason.startswith("silence"):
+                suffix = SILENCE_RETRY_SUFFIX
+            else:
+                suffix = None
             regenerated = resynthesize(
                 asset,
                 attempts - 1,
@@ -777,7 +1054,16 @@ def run_check(
             epa.write_generation_state(state_path, state)
             write_report(report_path, outcomes, summarize(outcomes))
 
-    progress(f"checking {len(pending)} assets ({len(outcomes)} cached as passed)")
+    cached_count = len(outcomes)
+    # 검사 대기 중인 자산도 이전 판정을 자리 표시로 넣어 둔다. 중간 저장(flush)은 outcomes를
+    # 통째로 쓰므로, 이게 없으면 아직 검사하지 않은 자산이 보고서에서 빠진 채 저장되고 도중에
+    # 멈추면 영영 사라진다 (LAN-471 실측: 재검사를 중단하자 불합격 16건이 보고서에서 사라져
+    # 다음 재검사 대상에서도 빠졌다). 검사가 끝나면 새 결과로 덮인다.
+    for asset in pending:
+        cached = previous.get(epa.asset_id(asset))
+        if cached is not None:
+            outcomes[epa.asset_id(asset)] = _outcome_from_cached(asset, cached)
+    progress(f"checking {len(pending)} assets ({cached_count} cached as passed)")
     last_flush = time.monotonic()
     executor = ThreadPoolExecutor(max_workers=workers)
     try:
@@ -960,6 +1246,26 @@ def main(argv: list[str] | None = None) -> int:
     worker.add_argument("--backend", choices=("auto", "mlx", "faster"), default="auto")
     worker.add_argument("--model", default=DEFAULT_WHISPER_MODEL)
 
+    adjudicate = subparsers.add_parser(
+        "adjudicate", help="불합격 클립을 오디오 판정 모델에 다시 물어 사람 청취 대상을 좁힌다"
+    )
+    adjudicate.add_argument("--source", required=True, type=Path)
+    adjudicate.add_argument("--work-dir", required=True, type=Path)
+    adjudicate.add_argument("--report", required=True, type=Path)
+    adjudicate.add_argument("--workers", type=int, default=DEFAULT_ADJUDICATION_WORKERS)
+    adjudicate.add_argument(
+        "--sample-passed",
+        type=int,
+        default=0,
+        help="합격 자산 중 이 수만큼도 함께 물어 오탐(놓친 불량) 비율을 잰다",
+    )
+    adjudicate.add_argument("--seed", type=int, default=20260910)
+    adjudicate.add_argument(
+        "--apply",
+        action="store_true",
+        help="모델이 정상이라고 한 불합격 자산을 합격으로 반영한다 (기본은 기록만)",
+    )
+
     sample = subparsers.add_parser("sample")
     sample.add_argument("--source", required=True, type=Path)
     sample.add_argument("--work-dir", required=True, type=Path)
@@ -1029,6 +1335,31 @@ def main(argv: list[str] | None = None) -> int:
             "sample 명령으로 무작위 청취를 거친 뒤 업로드할 것."
         )
         return 0 if summary["failed"] == 0 else 2
+
+    if args.command == "adjudicate":
+        summary = run_adjudication(
+            args.report,
+            args.work_dir,
+            snapshot,
+            os.environ["OPENROUTER_API_KEY"],
+            workers=args.workers,
+            sample_passed=args.sample_passed,
+            seed=args.seed,
+            apply_verdicts=args.apply,
+        )
+        print(json.dumps(summary, ensure_ascii=False))
+        if not summary["applied"] and summary["geminiSaysClean"]:
+            print(
+                f"NOTE: 불합격 {summary['geminiSaysClean']}건을 모델이 정상으로 봤다. "
+                "반영하려면 --apply로 다시 실행할 것."
+            )
+        if summary["passedSampleDefects"]:
+            print(
+                f"WARNING: 합격 표본 {summary['passedSampleJudged']}건 중 "
+                f"{summary['passedSampleDefects']}건을 모델이 불량으로 봤다 — "
+                "자동 검사가 놓치는 유형이 있다는 뜻이다."
+            )
+        return 0
 
     samples = pick_samples(snapshot, args.count, args.seed, _parse_ids(args.ids))
     index = write_samples(samples, args.work_dir, args.out_dir, load_report(args.report))

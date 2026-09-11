@@ -28,3 +28,5 @@
 2026-09-11 선배포 호환 점검: 운영 sandbox 기본값을 BE와 같은 true로 맞춰 IaC 적용만으로 심사 결제 처리가 꺼지지 않게 한다. 결제 공개는 기존 SSM과 FE 플래그가 담당하며, DB 공개 정책은 사용하지 않는다. 운영 실행 revision prod-landit-api:12의 결제 오픈 시각·sandbox 환경변수 및 secrets 주입이 모두 없음을 읽기 전용으로 확인했다. SSM 오픈 설정을 사용하기 전 task definition에 해당 파라미터 연결을 준비하고, 실제 주입 여부를 확인해야 한다. 이번 점검에서 SSM 값과 운영 task는 변경하지 않는다.
 
 후속 검증: `terraform fmt -recursive -check`, dev/prod `terraform validate`, `bash scripts/test-terraform-workflow-contract.sh`를 통과했다. 새 운영 저장 plan은 기존과 같은 ECS/ALB 7개 리소스 범위이며, 결제 오픈 시각 주입은 추가하지 않고 sandbox만 BE 기본값과 같은 true로 명시한다. plan의 task revision 교체는 skip_destroy로 이전 revision을 보존한다. apply는 하지 않았다.
+
+2026-09-12 PR 준비 검증: 사용자 운영 hotfix 배포 후 현재 실행 digest로 prod 저장 plan을 새로 만들었다. ECS service 2개·task definition 2개·ALB/target group 3개 범위이며 task definition은 `skip_destroy=true`로 이전 revision을 보존한다. saved plan과 현재 실행 revision·digest 비교를 통과했다. fmt, dev·prod·bootstrap validate, 이미지 snapshot Python 4개, dev runtime·contract·cleanup 및 Terraform workflow·OIDC 계약 테스트도 다시 통과했다. AWS apply·SSM 변경은 수행하지 않았다. 운영 코드 배포 역할의 revision 등록·태깅·PassRole 권한 준비는 기존 미해결 항목으로 남긴다.

@@ -31,6 +31,8 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_AI_BASE_URL` | `String` | backend에서 호출하는 AI service base URL |
 | `/landit/{environment}/LANDIT_MEMORY_WRITE_ENABLED` | `String` | backend 장기기억 저장 기능 사용 여부, 기본값 `false` |
 | `/landit/{environment}/LANDIT_MEMORY_USE_ENABLED` | `String` | backend 프리톡 장기기억 검색 기능 사용 여부, 기본값 `false` |
+| `/landit/develop/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION` | `SecureString` | 개발 API의 RevenueCat 웹훅 Authorization 검증값 |
+| `/landit/develop/LANDIT_SUBSCRIPTION_LAUNCHED_AT` | `String` | 개발 API의 유료 기능 제한 도입 시각, 오프셋을 포함한 ISO 8601 형식 |
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS` | `String` | backend access token 만료시간, 초 단위 |
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS` | `String` | backend refresh token 만료시간, 초 단위 |
 | `/landit/{environment}/LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES` | `String` | Google OIDC audience allowlist |
@@ -72,6 +74,10 @@ AWS_PROFILE=landit AWS_REGION=ap-northeast-2 \
 ```
 
 ## 새 parameter 추가 절차
+
+개발 API의 RevenueCat 인증값과 결제 도입 시각은 `environments/dev/templates/ec2-runtime-env.sh.tftpl`에서 SSM을 읽어 `/run/landit/api.env`에 주입합니다. 두 parameter를 먼저 준비하고 `aws_ssm_document.ec2_deploy` 변경을 plan·apply한 뒤 API를 재배포해야 기존 EC2 컨테이너에 반영됩니다. SSM 값만 저장하거나 컨테이너를 단순 재시작하면 새 환경변수가 주입되지 않습니다.
+
+결제 장애 복구 시에는 컨테이너의 인증값 존재 여부를 값 노출 없이 확인하고, RevenueCat의 Sandbox 웹훅 전달 주소·Authorization 설정을 대조합니다. 실패한 결제 이벤트를 재전송한 뒤 구독 조회의 `premium=true`와 실제 기능 접근을 확인합니다. 스토어 결제 성공이나 API health만으로 복구 완료를 판단하지 않습니다.
 
 관리자 푸시의 세 DB 값은 기존 `DB_*`와 별개다. develop에서는 EC2 API env, production에서는 ECS API의 secrets로 주입하며, Java API가 Push 소비도 담당하므로 AI Worker에는 주입하지 않는다. Scheduler의 `LANDIT_PUSH_SCHEDULER_GROUP`, `LANDIT_PUSH_SCHEDULER_QUEUE_ARN`, `LANDIT_PUSH_SCHEDULER_ROLE_ARN`은 Terraform 리소스 참조로 주입하며 별도 SSM 값은 만들지 않는다.
 

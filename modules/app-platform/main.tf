@@ -1489,6 +1489,10 @@ resource "aws_ecs_task_definition" "api" {
         { name = "CONTENT_CLOUDFRONT_URL", value = var.content_cloudfront_url },
         { name = "SQS_JOBS_QUEUE_URL", value = aws_sqs_queue.jobs.url },
         { name = "SQS_PUSH_NOTIFICATIONS_QUEUE_URL", value = aws_sqs_queue.push_notifications.url },
+        { name = "LANDIT_PUSH_SCHEDULER_QUEUE_ARN", value = aws_sqs_queue.push_notifications.arn },
+        { name = "LANDIT_PUSH_SCHEDULER_DLQ_ARN", value = aws_sqs_queue.push_notifications_dlq.arn },
+        { name = "LANDIT_PUSH_SCHEDULER_GROUP", value = aws_scheduler_schedule_group.admin_push.name },
+        { name = "LANDIT_PUSH_SCHEDULER_ROLE_ARN", value = aws_iam_role.admin_push_scheduler.arn },
         { name = "LANDIT_NOTIFICATION_CONSUMER_ENABLED", value = "true" }
         ], var.notification_test_api_enabled ? [
         { name = "LANDIT_NOTIFICATION_TEST_API_ENABLED", value = "true" }
@@ -1506,6 +1510,9 @@ resource "aws_ecs_task_definition" "api" {
         { name = "DB_URL", valueFrom = "${local.ssm_path}/DB_URL" },
         { name = "DB_USERNAME", valueFrom = "${local.ssm_path}/DB_USERNAME" },
         { name = "DB_PASSWORD", valueFrom = "${local.ssm_path}/DB_PASSWORD" },
+        { name = "LANDIT_PUSH_AUDIENCE_DB_URL", valueFrom = "${local.ssm_path}/LANDIT_PUSH_AUDIENCE_DB_URL" },
+        { name = "LANDIT_PUSH_AUDIENCE_DB_USERNAME", valueFrom = "${local.ssm_path}/LANDIT_PUSH_AUDIENCE_DB_USERNAME" },
+        { name = "LANDIT_PUSH_AUDIENCE_DB_PASSWORD", valueFrom = "${local.ssm_path}/LANDIT_PUSH_AUDIENCE_DB_PASSWORD" },
         { name = "LANDIT_CORS_ALLOWED_ORIGINS", valueFrom = "${local.ssm_path}/LANDIT_CORS_ALLOWED_ORIGINS" },
         { name = "LANDIT_AUTH_TOKEN_SECRET", valueFrom = "${local.ssm_path}/LANDIT_AUTH_TOKEN_SECRET" },
         { name = "LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS", valueFrom = "${local.ssm_path}/LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS" },
@@ -1517,6 +1524,10 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_AI_BASE_URL", valueFrom = "${local.ssm_path}/LANDIT_AI_BASE_URL" },
         { name = "LANDIT_MEMORY_WRITE_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_MEMORY_WRITE_ENABLED" },
         { name = "LANDIT_MEMORY_USE_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_MEMORY_USE_ENABLED" },
+        { name = "LANDIT_FREE_TALK_DAILY_SPEAKING_TIME_LIMIT_MS", valueFrom = "${local.ssm_path}/LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS" },
+        { name = "LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT", valueFrom = "${local.ssm_path}/LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT" },
+        { name = "LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT", valueFrom = "${local.ssm_path}/LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT" },
+        { name = "LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION", valueFrom = "${local.ssm_path}/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_BE_SENTRY_DSN" }
         ], var.grafana_otlp_enabled ? [
         { name = "OTEL_EXPORTER_OTLP_HEADERS", valueFrom = "${local.ssm_path}/LANDIT_GRAFANA_CLOUD_OTLP_HEADERS" }

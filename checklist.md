@@ -659,3 +659,27 @@
 - [x] 계약·runtime 테스트, Terraform 포맷, validate와 develop plan을 검증한다.
 - [x] 변경을 커밋하고 PR을 생성한다.
 - [ ] 사용자 승인 후 develop SSM 문서를 apply하고 정상 배포를 재검증한다.
+
+## 2026-09-04 LAN-442 develop RevenueCat 웹훅 비밀값 주입
+
+- [x] develop EC2 runtime env가 SSM에서 `LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`을 읽도록 템플릿과 runtime 테스트를 갱신한다.
+- [x] SSM parameter 문서에 새 SecureString 항목을 추가한다.
+- [x] runtime 테스트, Terraform 포맷, validate와 develop plan으로 변경 범위를 확인한다.
+- [x] 사용자 승인 후 develop SSM 배포 문서를 targeted apply한다.
+- [ ] BE develop 배포 뒤 RevenueCat 테스트 이벤트로 웹훅 수신을 확인한다.
+- [ ] production 출시 시 ECS task definition secret과 `/landit/prod` parameter를 함께 추가한다.
+
+## 2026-09-08 LAN-462 관리자 예약 푸시
+
+- [x] 기존 Push SQS를 재사용하는 환경별 Scheduler 그룹·실행 역할·API 권한을 구성한다.
+- [x] 읽기 DB SSM 및 Scheduler 값을 API 런타임에 연결한다.
+- [x] Terraform 검증·제한된 plan·독립 리뷰 후 승인된 인프라를 적용한다.
+- [x] live 권한·그룹을 확인하고 배포 후 검증 범위를 기록한다.
+
+## 2026-09-09 LAN-462 PR 리뷰 보완
+
+- [x] 기존 Push DLQ에 Scheduler 전달 실패를 보관하도록 IAM·API 환경설정을 연결한다.
+- [x] 계약·runtime·Terraform 검증과 독립 리뷰를 완료한다.
+
+- [x] 사용자 승인 후 양 환경 fresh plan을 적용하고 post-apply 전체 plan이 No changes인지 확인한다.
+- [x] live DLQ 권한·환경 격리·SSM v11·prod API revision 10 설정을 검증한다.

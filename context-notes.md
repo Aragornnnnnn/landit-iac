@@ -944,3 +944,44 @@
 - 수정 후 fresh saved plan `/private/tmp/lan184-dev-scheduler-aligned.tfplan`은 `No changes`다. AWS 변경이 없으므로 Terraform apply는 필요하지 않고, 이 소스 변경이 main에 병합되면 이후 plan도 현재 live 상태를 유지한다.
 - 이후 LAN-430이 반영된 최신 `origin/main`으로 rebase한 전체 plan은 Scheduler와 SSM 변경 없이 `develop-golden-audio-read` IAM inline policy 생성 1건만 남는다.
 - IaC run `33747648789`의 apply는 기존 Scheduler `UpdateSchedule`과 golden audio `iam:PutRolePolicy` 권한 부족으로 실패했다. 이 변경은 Scheduler update를 제거하며, golden audio policy는 Actions apply role에 권한을 넓히지 않고 관리자 profile의 별도 targeted apply가 필요하다.
+
+## 2026-09-04 LAN-442 develop RevenueCat 웹훅 비밀값 주입
+
+- BE LAN-442가 추가한 `POST /webhooks/revenuecat`는 `LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION` 환경변수와 Authorization header를 비교한다. 값이 비어 있으면 모든 웹훅을 401로 거절하므로 develop 배포 전에 env 주입이 필요하다.
+- develop EC2 runtime env는 고정 parameter 목록만 `/run/landit/api.env`로 내려주고, 목록의 parameter가 SSM에 없으면 `required SSM parameter is missing`으로 배포가 실패한다. 따라서 `/landit/develop/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`을 SecureString으로 먼저 등록한 뒤 SSM 배포 문서를 apply한다. parameter는 사용자가 이 작업 전에 등록했고 이름, 타입, 길이만 확인했다.
+- 기존 인스턴스의 `user_data` 변경은 `ignore_changes`로 무시되므로 이 변경의 apply 대상은 `aws_ssm_document.ec2_deploy` in-place 갱신뿐이어야 한다.
+- production은 아직 ECS task definition secret 목록(`modules/app-platform`)으로 주입되며, 여기에 항목을 추가하면 `/landit/prod` parameter가 없을 때 task 시작이 실패한다. production 출시 시점에 parameter 등록과 module secret 추가를 함께 진행하도록 보류한다.
+- `bash scripts/test-dev-ec2-runtime.sh`는 템플릿 수정 전 RED, 수정 후 GREEN을 확인했다. 로컬에 `rg`가 없어 테스트 실행에만 `grep -E` 대체 스크립트를 PATH 앞에 두고 실행했다.
+- `terraform fmt -recursive -check`, `git diff --check`, develop `terraform validate`가 통과했다. develop saved plan `/private/tmp/lan442-dev.tfplan`은 `0 add, 2 change, 0 destroy`이며 `aws_ssm_document.ec2_deploy` in-place 갱신과 문서 버전에 연쇄된 `aws_iam_role_policy.github_actions_ec2_deploy` 재평가만 포함한다. EC2·Scheduler 변경은 없다.
+- `aws_iam_role_policy.github_actions_ec2_deploy`는 문서 ARN만 참조하므로 apply 뒤 실제 policy JSON은 바뀌지 않는 plan-time 재평가다. 다만 Actions apply role에는 `iam:PutRolePolicy`가 없어 전체 apply가 이 항목에서 실패할 수 있으므로, LAN-418과 같이 관리자 profile의 targeted saved plan `/private/tmp/lan442-dev-ssm-doc-targeted.tfplan`(`0 add, 1 change, 0 destroy`, `aws_ssm_document.ec2_deploy`만)으로 apply한다. 사용자 승인 전에는 apply하지 않는다.
+- 사용자 승인 뒤 관리자 profile로 targeted saved plan을 apply해 `aws_ssm_document.ec2_deploy` 1건이 갱신됐다. live 문서의 runtime env 스크립트에 `LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`이 포함된 것을 확인했고, apply 후 develop 전체 plan은 `No changes`로 연쇄 IAM policy 재평가가 사라졌다. 다음 BE develop 배포부터 새 변수가 api.env에 들어간다.
+
+## 2026-09-08 LAN-462 관리자 예약 푸시
+
+- 사용자가 예약 AWS 설정의 즉시 구성을 승인했다. 기존 prod/develop Push SQS와 서버를 재사용하고 전용 Scheduler 그룹·역할을 추가한다. 기존 20시 Scheduler와 운영 서비스 배포는 변경 대상에서 제외한다.
+- Scheduler Create/Get/Delete는 환경별 그룹의 admin-push-*로, PassRole은 전용 실행 역할과 scheduler.amazonaws.com으로 제한한다. 실행 역할은 자기 환경의 Push SQS SendMessage만 허용한다.
+- SSM 읽기 DB 3개 값은 두 환경에 이미 저장됐다. API가 Java Push 소비도 담당하므로 AI Worker에는 추가하지 않는다. Terraform에는 secret 값 대신 SSM 경로만 기록한다.
+- 기존 기본 그룹·20시 실행 역할을 재사용하는 대안보다 전용 그룹·역할이 캠페인 관리 권한을 분리한다. 추가 상시 컴퓨팅은 없으며 Scheduler 호출과 기존 SQS 요청량 기준 비용이다.
+- Terraform fmt, dev/prod validate, EC2 contract/runtime 및 Push infra contract가 통과했다. runtime 테스트의 health 실패 출력은 가짜 Docker/curl을 통한 rollback 분기 검증이며 테스트 종료 코드는 0이다. 독립 리뷰에서 IAM·환경 분리 차단 결함 없음.
+- 검증된 scoped saved plan을 적용했다. develop은 그룹·실행 역할·전송 정책·EC2 API 정책 4개 생성과 SSM 문서 1개 갱신, production은 그룹·실행 역할·전송 정책·API 정책 4개 생성이다. 서비스 재배포, Queue, 기존 20시 예약은 적용 범위에서 제외했다.
+- 실제 양 환경 그룹 ACTIVE와 실행 역할 trust를 확인했다. IAM principal simulation에서 자기 그룹 예약 관리·자기 역할 PassRole·자기 Queue 전송은 허용, 다른 환경 및 기존 학습 예약 관리·다른 서비스 PassRole은 거부됐다. SSM 기본 문서 version 10의 base64 runtime 내용을 복원해 API 설정 6개를 확인했다. 실제 예약 생성/발송 검증을 의미하지 않는다.
+- 적용 전후 기존 20시 예약의 상태·일정·수정 시각·대상과 운영 ECS API/Worker의 task definition·desired/running/pending count가 일치했다.
+- 신규 환경변수로 개발 초기화 스크립트가 16KiB 한도를 넘어 user_data_base64=base64gzip(...)로 전송하도록 보완했다. 두 user-data 속성은 ignore_changes로 유지해 기존 인스턴스 변경을 방지한다. 압축 크기·복원 일치 회귀 검증과 독립 후속 리뷰를 통과했다.
+- 최종 develop 전체 plan은 No changes다. production 전체 plan에는 의도적으로 보류한 API task definition 교체와 API service 연결 갱신만 남는다. 운영 배포 때 이 IaC 변경을 적용해야 하며 BE의 기존 force-new-deployment만으로는 새 환경변수가 들어가지 않는다. 이 작업에서 API 배포·DB 마이그레이션·SQL 접속·알림 발송은 수행하지 않았다.
+
+## 2026-09-09 LAN-462 PR 리뷰 보완
+
+- BE PR #170의 Scheduler 전달 실패 보관 지적을 해결한다. 기존 환경별 Push DLQ와 경보를 재사용하므로 새 큐나 상시 리소스를 추가하지 않는다.
+- Scheduler 실행 역할에 자기 환경 DLQ의 SendMessage만 추가하고 API에는 ARN 값만 전달한다. AWS apply는 이번 리뷰 수정 범위에 포함하지 않는다.
+
+- dev/prod validate, fmt-check, EC2 계약·runtime, Push 인프라 계약 테스트와 독립 리뷰를 통과했다. runtime 첫 실행의 success fixture 실패는 trace 재실행에서 재현되지 않았고 전체 rollback 케이스까지 통과했다.
+- landit 프로필의 전체 plan에서 dev는 0 add/3 change/0 destroy(SSM 문서·Scheduler 실행 정책·SSM 참조에 따른 GitHub 배포 정책 재평가), prod는 1 add/2 change/1 destroy(API task definition 교체·service 연결·Scheduler 실행 정책)다. 새 상시 리소스는 없고 실제 apply는 수행하지 않았다.
+
+### 2026-09-09 승인된 적용
+
+- 사용자의 plan → apply → PR merge 요청으로 최신 saved plan을 적용했다. develop은 실제 0 add/2 change/0 destroy, prod는 1 add/2 change/1 destroy다. 새 상시 리소스 없이 기존 Push DLQ를 재사용한다.
+- 양 환경의 post-apply 전체 plan이 No changes다. live IAM 시뮬레이션으로 자기 큐·DLQ만 SendMessage 허용, 다른 환경·기존 학습 예약 권한 거부를 확인했다.
+- develop SSM 기본 문서 v11에 새 API 설정 7개가 포함된다. prod API service는 revision 10을 참조하며 기존 실행 이미지와 같은 latest digest를 유지한다. 읽기 DB SSM 3개 경로와 Scheduler DLQ ARN도 확인했다.
+- 기존 20시 학습 예약과 prod worker revision 6은 유지됐다. 이번 적용은 기존 이미지의 환경설정 반영이며 LAN-462 기능의 운영 배포·기기 알림 검증을 의미하지 않는다.
+
+- 머지 직전 추가 리뷰의 DLQ runtime ARN 일치·예약 Target 검증, 단건 복구·확인 후 삭제 절차를 문서화하고 인프라 계약 테스트는 실제 DLQ ARN 할당까지 검사하도록 강화했다. bash 문법·계약 테스트·독립 리뷰를 통과했으며 Terraform 리소스 변경은 없다.

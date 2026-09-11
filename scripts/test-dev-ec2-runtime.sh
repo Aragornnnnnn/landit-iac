@@ -29,6 +29,10 @@ locals {
     content_cloudfront_url = "https://d1234567890.cloudfront.net"
     jobs_queue_url         = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/develop-landit-jobs"
     push_queue_url         = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/develop-landit-push-notifications"
+    push_queue_arn         = "arn:aws:sqs:ap-northeast-2:123456789012:develop-landit-push-notifications"
+    push_dlq_arn           = "arn:aws:sqs:ap-northeast-2:123456789012:develop-landit-push-notifications-dlq"
+    push_scheduler_group   = "develop-landit-admin-push"
+    push_scheduler_role    = "arn:aws:iam::123456789012:role/develop-landit-admin-push-scheduler"
     grafana_otlp_enabled   = "true"
     grafana_otlp_endpoint  = "https://otlp.example.com/otlp"
   })
@@ -67,6 +71,19 @@ EOF
 sed '1d;$d' "${TEST_DIR}/user-data.sh" > "${TEST_DIR}/user-data.rendered.sh"
 mv "${TEST_DIR}/user-data.rendered.sh" "${TEST_DIR}/user-data.sh"
 bash -n "${TEST_DIR}/user-data.sh"
+(
+  cd "${TEST_DIR}"
+  terraform console <<'EOF' > "${TEST_DIR}/user-data-gzip.json"
+base64gzip(local.user_data)
+EOF
+)
+python3 - "${TEST_DIR}" <<'PY'
+import base64, gzip, json, pathlib, sys
+directory = pathlib.Path(sys.argv[1])
+compressed = base64.b64decode(json.loads((directory / "user-data-gzip.json").read_text()))
+assert len(compressed) <= 16384, "EC2 user data exceeds the 16 KiB limit"
+assert gzip.decompress(compressed).rstrip() == (directory / "user-data.sh").read_bytes().rstrip()
+PY
 if ! rg -q 'CONTENT_BUCKET_NAME="?develop-landit-content-123456789012' "${TEST_DIR}/user-data.sh"; then
   echo 'rendered runtime must provide CONTENT_BUCKET_NAME to the API.' >&2
   exit 1
@@ -85,6 +102,20 @@ for notification_flag in LANDIT_NOTIFICATION_CONSUMER_ENABLED LANDIT_NOTIFICATIO
     exit 1
   fi
 done
+for scheduler_setting in \
+  'LANDIT_PUSH_SCHEDULER_GROUP=develop-landit-admin-push' \
+  'LANDIT_PUSH_SCHEDULER_QUEUE_ARN=arn:aws:sqs:ap-northeast-2:123456789012:develop-landit-push-notifications' \
+  'LANDIT_PUSH_SCHEDULER_DLQ_ARN=arn:aws:sqs:ap-northeast-2:123456789012:develop-landit-push-notifications-dlq' \
+  'LANDIT_PUSH_SCHEDULER_ROLE_ARN=arn:aws:iam::123456789012:role/develop-landit-admin-push-scheduler'; do
+  if ! grep -Fq "${scheduler_setting}" "${TEST_DIR}/user-data.sh"; then
+    echo 'rendered API runtime must use the matching environment scheduler and queue.' >&2
+    exit 1
+  fi
+done
+if ! grep -Fq 'LANDIT_PUSH_AUDIENCE_DB_URL LANDIT_PUSH_AUDIENCE_DB_USERNAME LANDIT_PUSH_AUDIENCE_DB_PASSWORD' "${TEST_DIR}/user-data.sh"; then
+  echo 'rendered API runtime must load audience credentials from SSM.' >&2
+  exit 1
+fi
 if ! rg -q 'LANDIT_MEMORY_WRITE_ENABLED LANDIT_MEMORY_USE_ENABLED LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS' "${TEST_DIR}/user-data.sh"; then
   echo 'develop API must load the free-talk speaking limit from SSM.' >&2
   exit 1
@@ -99,6 +130,67 @@ awk '
   capture { print }
 ' "${TEST_DIR}/user-data.sh" > "${TEST_DIR}/runtime-env"
 bash -n "${TEST_DIR}/runtime-env"
+mkdir -p "${TEST_DIR}/runtime-bin"
+cat > "${TEST_DIR}/runtime-bin/aws" <<'EOF'
+#!/usr/bin/env bash
+cat "${TEST_SSM_RESPONSE}"
+EOF
+chmod 0755 "${TEST_DIR}/runtime-bin/aws"
+python3 - "${TEST_DIR}" <<'PY'
+import json, pathlib, sys
+directory = pathlib.Path(sys.argv[1])
+names = """DB_URL DB_USERNAME DB_PASSWORD LANDIT_CORS_ALLOWED_ORIGINS LANDIT_AUTH_TOKEN_SECRET
+LANDIT_PUSH_AUDIENCE_DB_URL LANDIT_PUSH_AUDIENCE_DB_USERNAME LANDIT_PUSH_AUDIENCE_DB_PASSWORD
+LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS
+LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES LANDIT_AUTH_OIDC_KAKAO_AUDIENCES LANDIT_AUTH_OIDC_APPLE_AUDIENCES
+LANDIT_AI_CLIENT_MODE LANDIT_BE_SENTRY_DSN LANDIT_MEMORY_WRITE_ENABLED LANDIT_MEMORY_USE_ENABLED
+LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS LANDIT_GRAFANA_CLOUD_OTLP_HEADERS LLM_PROVIDER
+OPENROUTER_BASE_URL OPENROUTER_MODEL MESSAGE_FEEDBACK_MODEL MESSAGE_FEEDBACK_REVIEW_ENABLED
+OPENROUTER_API_KEY LANDIT_AI_SENTRY_DSN""".split()
+values = dict.fromkeys(names, "test-value")
+values.update(LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS="7200000",
+              LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT="1000",
+              LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT="20")
+values.update(LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION="Bearer lan477-test$secret",
+              LANDIT_SUBSCRIPTION_LAUNCHED_AT="2026-09-11T14:44:00+09:00")
+(directory / "ssm.json").write_text(json.dumps({"Parameters": [
+    {"Name": "/landit/develop/" + name, "Value": value} for name, value in values.items()
+]}))
+script = (directory / "runtime-env").read_text().replace('/run/landit', str(directory / 'runtime'))
+if sys.platform == "darwin":
+    # Linux 배포 스크립트의 in-place 옵션만 로컬 BSD sed 문법에 맞춘다.
+    script = script.replace("sed -i '", "sed -i '' '")
+(directory / "runtime-env").write_text(script)
+PY
+PATH="${TEST_DIR}/runtime-bin:${PATH}" TEST_SSM_RESPONSE="${TEST_DIR}/ssm.json" \
+  bash "${TEST_DIR}/runtime-env"
+python3 - "${TEST_DIR}" <<'PY'
+import json, pathlib, stat, sys
+directory = pathlib.Path(sys.argv[1])
+api = directory / "runtime/api.env"
+expected = {
+    'LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS="7200000"',
+    'LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT="1000"',
+    'LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT="20"',
+    'LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION="Bearer lan477-test$$secret"',
+    'LANDIT_SUBSCRIPTION_LAUNCHED_AT="2026-09-11T14:44:00+09:00"',
+}
+assert expected <= set(api.read_text().splitlines()), "API must receive subscription and free-talk SSM values"
+assert stat.S_IMODE(api.stat().st_mode) == 0o600, "API secrets must remain owner-only"
+assert not any("LANDIT_REVENUECAT" in line or "LANDIT_SUBSCRIPTION" in line or "LANDIT_FREE_TALK" in line
+               for line in (directory / "runtime/ai.env").read_text().splitlines())
+(directory / "api-before.env").write_bytes(api.read_bytes())
+response = json.loads((directory / "ssm.json").read_text())
+response["Parameters"] = [p for p in response["Parameters"]
+                          if not p["Name"].endswith("/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION")]
+(directory / "ssm-missing.json").write_text(json.dumps(response))
+PY
+if PATH="${TEST_DIR}/runtime-bin:${PATH}" TEST_SSM_RESPONSE="${TEST_DIR}/ssm-missing.json" \
+  bash "${TEST_DIR}/runtime-env" > "${TEST_DIR}/missing-output" 2>&1; then
+  echo 'missing webhook authentication must stop runtime generation.' >&2
+  exit 1
+fi
+cmp "${TEST_DIR}/api-before.env" "${TEST_DIR}/runtime/api.env"
 (
   cd "${TEST_DIR}"
   terraform console <<'EOF' > "${TEST_DIR}/deploy-service.quoted"

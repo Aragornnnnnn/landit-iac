@@ -133,3 +133,8 @@ output "ecs_cluster_name" {
   description = "ECS cluster name."
   value       = try(aws_ecs_cluster.this[0].name, null)
 }
+
+output "push_notifications_dlq_arn" {
+  description = "Push Scheduler 전달 실패를 보관하는 DLQ ARN."
+  value       = aws_sqs_queue.push_notifications_dlq.arn
+}

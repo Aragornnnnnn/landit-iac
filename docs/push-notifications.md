@@ -15,6 +15,19 @@ production API Task Role과 develop EC2 instance role만 Push main queue에 `Rec
 
 ## Scheduler 메시지 계약
 
+### 관리자 일회성 예약 (LAN-462)
+
+- 환경별 `${prefix}-admin-push` 그룹과 `${prefix}-admin-push-scheduler` 실행 역할을 사용한다. 기존 20시 예약은 기본 그룹에 그대로 둔다.
+- BE가 `admin-push-{campaignId}` 예약을 한국 시간 `at(...)`, flexible window OFF, 완료 후 DELETE로 생성하고 기존 Push SQS에 `ADMIN_PUSH_CAMPAIGN` 메시지를 발행한다. 실제 캠페인 예약은 Terraform 관리 대상이 아니다.
+- API는 자기 그룹의 `admin-push-*`만 Create/Get/Delete할 수 있다. PassRole은 전용 실행 역할과 `scheduler.amazonaws.com`으로 제한한다. 실행 역할의 trust는 자기 계정·그룹 ARN으로 제한하고 기존 자기 환경 Push SQS SendMessage만 허용한다.
+- 별도 서버나 Queue는 추가하지 않는다. 비용은 [Scheduler 호출 요금](https://aws.amazon.com/eventbridge/pricing/)과 기존 SQS 사용량에 따른다. 그룹별 trust 조건은 [AWS 공식 지침](https://docs.aws.amazon.com/scheduler/latest/UserGuide/cross-service-confused-deputy-prevention.html)을 따른다.
+- 읽기 DB 설정은 [SSM 목록](ssm-parameters.md)을 따른다. 값은 Terraform state에 넣지 않는다.
+- 신규 develop 인스턴스의 user-data는 gzip과 base64로 전달해 16KiB 입력 제한을 지킨다. 기존 인스턴스의 user-data는 변경하지 않는다.
+- develop은 갱신된 SSM 배포 문서가 다음 BE 배포 때 API env를 동기화한다. **production은 새 ECS API task definition과 service 갱신을 배포 단계에 포함해야 한다.** 현재 BE workflow의 `--force-new-deployment`만으로는 새 환경변수가 추가되지 않는다.
+- IAM·그룹·SSM 문서만 적용하는 사전 준비와 실제 서비스 배포를 구분한다. 배포 후 SQL 권한, 예약 생성·취소·시간 도래, SQS 소비와 기기 수신을 검증한다.
+
+### 매일 학습 알림
+
 Scheduler는 매일 `Asia/Seoul` 20시에 main queue로 `SCHEDULED_NOTIFICATION_BATCH` 한 건을 발행한다. 20시는 배치 시작 시각이며, 실제 발송은 사용자 수와 페이지 처리 시간에 따라 수 분에 걸쳐 진행될 수 있다. Scheduler는 사용자, Push token, 기준 날짜를 계산하지 않는다.
 
 | 필드 | 값 | Consumer 규칙 |
@@ -138,3 +151,83 @@ AWS_PROFILE=landit AWS_REGION=ap-northeast-2 aws ecs describe-task-definition \
 - 반드시 본문 확인이 필요한 경우에는 승인된 제한된 접근 경로에서 최소 인원만 확인하고, 값을 복사하거나 공유 채널에 붙여 넣지 않는다.
 - Queue URL과 Scheduler ARN은 secret이 아니지만, credential이나 SSM secret과 함께 출력하거나 기록하지 않는다.
 - Alarm은 초기에는 CloudWatch 상태만 생성하며 SNS나 Discord 같은 외부 action은 연결하지 않는다.
+
+### LAN-462 Scheduler 전달 실패 보관
+
+- API 환경변수 `LANDIT_PUSH_SCHEDULER_DLQ_ARN`은 같은 환경의 기존 Push DLQ ARN이다. Scheduler 실행 역할은 기존 Push 큐와 이 DLQ에만 `sqs:SendMessage`를 가진다. API 소비 역할의 DLQ 권한은 추가하지 않는다.
+- 일회성 예약 Target에 DLQ를 설정해 Scheduler 재시도를 소진한 SQS 전달 실패를 보관한다. 기존 DLQ의 14일 보관과 경보를 재사용하며 새 큐는 추가하지 않는다.
+- Scheduler 오류 속성(`SCHEDULE_ARN`, `ERROR_CODE` 등)이 있는 메시지는 소비 실패 메시지와 구분한다. 원인과 캠페인 상태를 확인하고 원본 Target Input을 검증해 복구하며, 혼합된 DLQ를 일괄 redrive하지 않는다. 이미 제출된 캠페인은 재발송 대상으로 임의 복제하지 않는다.
+- 이번 후속 변경의 IAM·develop SSM 문서·prod ECS task definition 및 service 연결을 적용한 뒤 BE를 배포해야 한다. 코드와 PR 생성만으로 AWS 적용 완료를 의미하지 않는다.
+
+### LAN-462 배포 후 DLQ 연결 검증
+
+기존 queue URL·consumer/test flag 검사는 유지한다. 아래 비교는 누락·불일치 시 실패해야 한다. 먼저 확인할 환경을 정해 실제 큐의 ARN을 읽는다.
+
+```bash
+set -euo pipefail
+export AWS_PROFILE=landit AWS_REGION=ap-northeast-2
+PUSH_CHECK_ENV=develop # 운영은 prod.
+PUSH_CHECK_PREFIX="${PUSH_CHECK_ENV}-landit"
+PUSH_CHECK_DLQ_URL="$(aws sqs get-queue-url --queue-name "$PUSH_CHECK_PREFIX-push-notifications-dlq" --query QueueUrl --output text)"
+EXPECTED_DLQ="$(aws sqs get-queue-attributes --queue-url "$PUSH_CHECK_DLQ_URL" --attribute-names QueueArn --query Attributes.QueueArn --output text)"
+[[ "$EXPECTED_DLQ" == arn:aws:sqs:* ]]
+```
+
+develop은 위 `EXPECTED_DLQ` 값만 해당 EC2의 승인된 shell/SSM 실행에 전달하고, BE 배포 후 기존 runtime 검사와 함께 아래를 실행한다. 전체 `api.env`는 출력하지 않는다.
+
+```bash
+: "${EXPECTED_DLQ:?실제 develop DLQ ARN을 설정한다.}"
+test "$(sudo sed -n 's/^LANDIT_PUSH_SCHEDULER_DLQ_ARN=//p' /run/landit/api.env)" = "$EXPECTED_DLQ"
+```
+
+production은 위 환경을 prod로 바꾸고, 정상 배포 완료 후 실행 중인 API 태스크가 사용하는 정의를 검사한다. 빈 결과도 성공으로 처리하지 않는다.
+
+```bash
+PUSH_CHECK_TASK="$(aws ecs list-tasks --cluster prod-landit-cluster --service-name prod-landit-api --desired-status RUNNING --query 'taskArns[0]' --output text)"
+PUSH_CHECK_DEFINITION="$(aws ecs describe-tasks --cluster prod-landit-cluster --tasks "$PUSH_CHECK_TASK" --query 'tasks[0].taskDefinitionArn' --output text)"
+aws ecs describe-task-definition --task-definition "$PUSH_CHECK_DEFINITION" |
+  jq -e --arg expected "$EXPECTED_DLQ" '[.taskDefinition.containerDefinitions[] | select(.name=="api") | .environment[] | select(.name=="LANDIT_PUSH_SCHEDULER_DLQ_ARN") | .value] == [$expected]' >/dev/null
+```
+
+배포된 BE로 만든 일회성 테스트 예약도 시작 시각 전에 검사한다. `CAMPAIGN_ID`는 검증할 캠페인의 실제 UUID이며 이 검사를 위해 운영 전체 발송을 생성하지 않는다. 자동 삭제된 예약은 검증 성공으로 간주하지 않는다.
+
+```bash
+: "${CAMPAIGN_ID:?검증할 예약 캠페인 UUID를 설정한다.}"
+PUSH_CHECK_SCHEDULE_DLQ="$(aws scheduler get-schedule --group-name "$PUSH_CHECK_PREFIX-admin-push" --name "admin-push-$CAMPAIGN_ID" --query Target.DeadLetterConfig.Arn --output text)"
+test "$PUSH_CHECK_SCHEDULE_DLQ" = "$EXPECTED_DLQ"
+```
+
+### LAN-462 DLQ 단건 복구 절차
+
+본문 열람·재발행·삭제가 승인된 운영자만 실행한다. 아래는 절차이며 이번 인프라 apply에서 실제 메시지를 수신·발송·삭제하지 않았다. 메시지 내용은 제한된 임시 파일에만 보관하고 공유 로그에 출력하지 않는다.
+
+1. 해당 환경의 DLQ와 main queue를 확인하고 CloudWatch 수량·오류 발생 시각부터 조사한다. 승인 후 visibility 300초로 한 건만 가져온다. 메시지가 없으면 종료한다.
+
+```bash
+umask 077
+PUSH_RECOVERY_DIR="$(mktemp -d)"
+aws sqs receive-message --queue-url "$PUSH_CHECK_DLQ_URL" --max-number-of-messages 1 --visibility-timeout 300 --message-system-attribute-names All --message-attribute-names All > "$PUSH_RECOVERY_DIR/source.json"
+jq -e '.Messages | length == 1' "$PUSH_RECOVERY_DIR/source.json" >/dev/null
+jq '.Messages[0] | {MessageId, Attributes, Scheduler: {SCHEDULE_ARN: .MessageAttributes.SCHEDULE_ARN.StringValue, ERROR_CODE: .MessageAttributes.ERROR_CODE.StringValue, IS_PAYLOAD_TRUNCATED: .MessageAttributes.IS_PAYLOAD_TRUNCATED.StringValue}}' "$PUSH_RECOVERY_DIR/source.json"
+```
+
+2. `SCHEDULE_ARN`/`ERROR_CODE`가 있으면 Scheduler 전달 실패다. ARN의 환경·예약 이름과 실패 시각을 확인하고 IAM SendMessage·큐 존재·암호화 설정 등 오류 원인을 수정한다. Scheduler DLQ의 Body는 원본 앱 메시지를 감싼 호출 정보일 수 있다. 원본 `Target.Input` 또는 호출 정보의 `MessageBody`를 확인해 복구 입력을 얻는다. 잘림 표시가 있거나 원본이 없으면 중단한다. 예약이 자동 삭제됐다는 이유로 본문을 추측해서 만들지 않는다.
+3. Scheduler 속성이 없으면 consumer 처리 실패 후보로 분류한다. Body가 BE `PushQueueMessage` 계약의 `version`·`messageId`·`messageType`·`occurredAt`·`payload`를 만족하는지, 동일 캠페인/작업인지와 BE Push consumer 오류 로그를 확인한다. 알 수 없는 형식은 복구하지 않는다. SQL 오류·권한·일시 장애 원인을 먼저 수정한다.
+4. 어드민 `GET /api/v1/admin/push-campaigns/{campaignId}`와 저장된 발송 이력으로 상태를 확인한다. `CANCELLED`는 재발행하지 않는다. `COMPLETED` 캠페인의 발송 메시지도 재발행하지 않으며, Receipt 실패라면 기존 Ticket을 조회하는 `PUSH_RECEIPT_CHECK`만 검토한다. `DRAFT` 또는 아직 미래인 예약은 복구 대상으로 삼지 않는다. 발송 시각이 지난 미완료 캠페인은 기존 campaignId·messageId·payload를 유지한 원본 메시지만 재발행할 수 있다. 새 캠페인·새 중복 키로 복제하지 않는다.
+5. 검증한 **앱 원본 메시지 한 건**을 `payload.json`에 저장하고 아래로 main queue에 보낸다. Scheduler envelope 전체를 보내지 않는다. 수신·검토가 길어지면 visibility를 갱신하거나 원본이 다시 나타난 뒤 MessageId가 같은지 확인한다.
+
+```bash
+PUSH_RECOVERY_QUEUE="$(aws sqs get-queue-url --queue-name "$PUSH_CHECK_PREFIX-push-notifications" --query QueueUrl --output text)"
+aws sqs send-message --queue-url "$PUSH_RECOVERY_QUEUE" --message-body "file://$PUSH_RECOVERY_DIR/payload.json" --query MessageId --output text
+```
+
+6. SendMessage 성공만으로 원본을 삭제하지 않는다. BE Push consumer 처리와 동일 캠페인의 커서·발송 이력 또는 Receipt 갱신을 확인한다. API의 COMPLETED는 페이지 제출 완료이며 기기 수신 성공이 아니다. 실패·결과 불명이면 원본을 남겨 조사하고 혼합 DLQ를 일괄 redrive하지 않는다. 처리 성공 또는 취소/이미 처리됨을 이력으로 확인한 불필요 메시지는 같은 MessageId의 최신 ReceiptHandle로 한 건만 정리하고 제한된 임시 파일도 삭제한다.
+
+```bash
+# 원본 처리 완료를 확인한 뒤에만 실행한다. 만료된 ReceiptHandle이면 재수신 후 MessageId를 대조한다.
+aws sqs delete-message --queue-url "$PUSH_CHECK_DLQ_URL" --receipt-handle "$(jq -r '.Messages[0].ReceiptHandle' "$PUSH_RECOVERY_DIR/source.json")"
+rm -f "$PUSH_RECOVERY_DIR/source.json" "$PUSH_RECOVERY_DIR/payload.json"
+rmdir "$PUSH_RECOVERY_DIR"
+```
+
+Scheduler 오류 속성과 호출 envelope는 [AWS DLQ 공식 계약](https://docs.aws.amazon.com/scheduler/latest/UserGuide/configuring-schedule-dlq.html)을 따른다.

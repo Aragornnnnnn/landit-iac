@@ -6,9 +6,11 @@ Landit IaC 작업자가 로컬 또는 GitHub Actions에서 Terraform 작업을 �
 
 1. issue number를 확인하고 `feat/{issue number}` 브랜치에서 작업합니다.
 2. 예외적으로 issue number 없이 작업할 때는 사용자의 명시적인 허용을 기록합니다.
-3. [AGENTS.md](../AGENTS.md), [checklist.md](../checklist.md), [context-notes.md](../context-notes.md)를 먼저 읽습니다.
-4. 비 trivial 작업은 계획을 세우고 `checklist.md`, `context-notes.md`를 갱신합니다.
+3. [AGENTS.md](../AGENTS.md)와 해당 이슈의 기존 작업 문서를 먼저 읽습니다.
+4. 작업 문서가 필요하면 `docs/tasks/{ISSUE_NUMBER}/` 아래에서 승인된 `design.md` 또는 `plan.md`를 기준으로 진행합니다. 설계 결정은 `design.md`, 구현 순서·발견 사항·검증 결과는 `plan.md`에 기록하고 같은 내용을 중복하지 않습니다. 단순하거나 범위가 명확한 작업은 별도 문서를 만들지 않습니다.
 5. 변경 후 실제 실행한 검증 명령과 결과를 최종 응답에 남깁니다.
+
+기존 `checklist.md`, `context-notes.md`는 과거 기록으로만 유지하며 새 작업 기록을 추가하지 않습니다.
 
 ## 로컬 Terraform 실행
 

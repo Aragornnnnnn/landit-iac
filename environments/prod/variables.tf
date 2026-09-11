@@ -108,13 +108,13 @@ variable "api_memory" {
 variable "worker_cpu" {
   description = "Fargate CPU units for the worker task."
   type        = number
-  default     = 256
+  default     = 1024
 }
 
 variable "worker_memory" {
   description = "Fargate memory MiB for the worker task."
   type        = number
-  default     = 512
+  default     = 2048
 }
 
 variable "api_desired_count" {
@@ -138,7 +138,7 @@ variable "review_reminder_schedule_expression" {
 variable "review_reminder_schedule_enabled" {
   description = "Whether the production review reminder scheduler is enabled."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "alb_certificate_arn" {

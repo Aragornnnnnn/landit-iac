@@ -1,5 +1,48 @@
 # Context Notes
 
+## 2026-09-06 LAN-418 production Worker CPU·메모리 증설
+
+- production Worker 메모리 1024MiB 변경 커밋 `0588228`은 PR #23 병합 후 기존 `feat/LAN-418` 브랜치에서 추가돼 main에 반영되지 않았다.
+- 실제 AWS는 이미 `prod-landit-worker:5`, 1024MiB로 안정화됐지만 origin/main은 512MiB여서 전체 plan이 512MiB로 되돌리는 Task Definition 교체를 생성했다.
+- 사용자 결정에 따라 production Worker를 CPU 1024 units, memory 2048MiB, desired count 1로 증설한다.
+- 값이 가장 최근 변경된 production SSM 파라미터는 2026-09-02 17:52 KST이고, 현재 API와 Worker ECS deployment는 각각 2026-09-06 16:16, 16:06 KST에 생성돼 SSM 변경 후 재배포된 상태다.
+- production saved plan `/tmp/lan418-prod-worker-1vcpu-2gib.tfplan`은 Worker Task Definition의 CPU 256→1024, memory 1024→2048 교체와 Service 갱신만 포함한 `1 add, 1 change, 1 destroy`다.
+- PR #34를 main에 병합하고 승인된 saved plan을 `1 added, 1 changed, 1 destroyed`로 적용했다.
+- 새 `prod-landit-worker:6`은 CPU 1024 units, memory 2048MiB, desired/running `1/1`, pending `0`, failed task `0`이다. 새 ALB target과 외부 `https://ai.landit.im/health`는 정상이며 이전 target은 deregistration 중이다.
+- apply 후 production 전체 Terraform plan은 `No changes`다.
+
+## 2026-09-06 LAN-184 production Scheduler 활성화
+
+- BE production은 GitHub Actions run `34018191363`에서 최신 main `7c0f3457` 배포를 성공했고, 해당 main에는 LAN-184 예약 알림 구현이 포함돼 있다.
+- 현재 `prod-landit-review-reminder`는 `DISABLED`, `cron(0 20 * * ? *)`, `Asia/Seoul`이며 `prod-landit-push-notifications` Queue를 대상으로 한다.
+- dev 실기기 E2E와 BE 운영 배포가 완료됐으므로 production root의 Scheduler 기본값을 `true`로 바꿔 소스와 활성화할 실제 상태를 일치시킨다.
+- production plan에서 Scheduler 외 변경이나 삭제가 확인되면 apply하지 않는다.
+- production 전체 plan은 Scheduler 활성화 외에 Worker Task Definition 교체와 Service 갱신이 포함된 `1 add, 2 change, 1 destroy`라서 적용 대상에서 제외했다.
+- Scheduler만 대상으로 만든 saved plan `/tmp/lan184-prod-scheduler-enable-targeted.tfplan`은 `0 add, 1 change, 0 destroy`이며 `prod-landit-review-reminder`의 `DISABLED -> ENABLED`만 포함한다.
+- PR #32를 main에 병합하고 targeted saved plan을 적용했다. apply 결과는 `0 added, 1 changed, 0 destroyed`이며 live Scheduler는 `ENABLED`다.
+- post-apply 전체 plan에서 Scheduler 변경은 사라졌다. Worker memory `1024 -> 512` Task Definition 교체와 Service 갱신 `1 add, 1 change, 1 destroy`만 남아 이번 작업에서는 적용하지 않는다.
+- apply 직후 production Push main Queue와 DLQ의 visible·in-flight·delayed 메시지는 모두 0개다.
+
+## 2026-09-06 LAN-405 보정 자산 캐시 우회 전환
+
+- WebView의 기존 `immutable` cache를 즉시 우회하기 위해 사용자 승인으로 이미지 35개와 음원 14개를 모두 새 key에 게시했다. 기존 key와 사전 덮어쓰기 백업은 삭제하지 않는다.
+- 이미지 35개는 기존 parent path 아래 새 UUID를 사용한다. 로컬 1254x1254 WebP, S3 metadata·SHA-256, CloudFront 응답 바이트를 35/35 검증했다.
+- 음원 14개는 `content/scenario-question-audio/{scenarioQuestionId}/revisions/{audioSha256}.mp3`를 사용한다. LAN-351 게시 결과는 `new=7, reused=114, conflicts=0`, LAN-405는 `new=9, reused=232, conflicts=0`이며 각각 새 MP3와 manifest를 포함한다.
+- 새 manifest SHA-256은 LAN-351 `2b19f576dfd4616adebc76c25f7316fab4fbc9c781ee1610372982d4a194d5e9`, LAN-405 `cc8edd8a3bd0c3660f0cfd4b4da409f3216eda7c88b2f50f9585fec50aa1f2a2`다.
+- BE는 35개 `practice_examples_payload[].imageUrl`과 14개 `scenario_question_language_variant.audio_url`을 한 번의 forward migration으로 새 URL에 전환한다.
+- `python3 -m unittest scripts.tests.test_scenario_question_audio -v` 43개 테스트와 LAN-351·LAN-405 manifest 전체 검증을 통과했다. 이미지 35개의 파일 수, SHA-256, 용량과 1254x1254 크기도 일치했다.
+
+## 2026-09-06 LAN-405 시나리오 질문 음원 품질 보정
+
+- Gemini 음성 검수에서 LAN-351 질문 ID 13, 14, 21, 56, 96, 111과 LAN-405 질문 ID 124, 128, 142, 158, 245, 252, 298, 299를 보정 대상으로 확정했다.
+- 사용자는 캐시 만료 전 기존 음성이 재생될 수 있음을 수용하고 14개 모두 기존 S3 key에 덮어쓰기로 결정했다. 따라서 질문 URL, 원문, model, voice, generation fingerprint는 유지한다.
+- shared 콘텐츠 버킷은 versioning이 활성화되어 있지 않다. 덮어쓰기 전 원본 14개는 로컬 감사 폴더에서 기존 manifest SHA-256과 일치함을 확인했다.
+- 보정본은 질문·캐릭터·voice 매핑을 유지하며 Gemini 최종 검수를 통과했다. LAN-351 manifest 6개와 LAN-405 manifest 8개의 `audioSha256`, `audioByteSize`, `openRouterGenerationId`만 갱신한다.
+- 같은 key 덮어쓰기는 기존 immutable 게시 계약의 예외다. 새 manifest는 content-addressed key로 게시하고, CloudFront cache는 invalidation하지만 이미 브라우저에 저장된 응답은 만료 전까지 남을 수 있다.
+- shared S3의 14개 MP3를 기존 key에 덮어썼고, LAN-351 manifest `72920aadc175491304fb0a5a6eea484a2a2cb94feda9b3f7ce312929b94aee60`과 LAN-405 manifest `1783b2faa66cd6711cdbaeb87cd82c80048f3ebb9e19c273c340aa45b0e0e7bb`을 새 content-addressed key로 게시했다.
+- CloudFront invalidation `IBZOP5SXFZXKPRYWH6PNI3TVQE` 완료 후 14개 MP3와 두 manifest를 CDN에서 내려받아 로컬 canonical SHA-256과 일치함을 확인했다.
+- `python3 -m unittest scripts.tests.test_scenario_question_audio -v`의 41개 테스트, LAN-351·LAN-405 manifest 360개 로컬 MP3 검증과 Git 기준 변경 필드 대조를 통과했다. 14개 항목에서 `audioByteSize`, `audioSha256`, `openRouterGenerationId`만 바뀌었다.
+
 ## 2026-08-29 LAN-386 PR 리뷰 반영
 
 - PR #22 CodeRabbit 리뷰는 유효하다. 기존 계약 테스트가 첫 `access_control_allow_origins`부터 전역 검색하고 정책 연결도 전체 파일에서 검색해 다른 리소스가 오류를 가릴 수 있었다.
@@ -912,3 +955,33 @@
 - `terraform fmt -recursive -check`, `git diff --check`, develop `terraform validate`가 통과했다. develop saved plan `/private/tmp/lan442-dev.tfplan`은 `0 add, 2 change, 0 destroy`이며 `aws_ssm_document.ec2_deploy` in-place 갱신과 문서 버전에 연쇄된 `aws_iam_role_policy.github_actions_ec2_deploy` 재평가만 포함한다. EC2·Scheduler 변경은 없다.
 - `aws_iam_role_policy.github_actions_ec2_deploy`는 문서 ARN만 참조하므로 apply 뒤 실제 policy JSON은 바뀌지 않는 plan-time 재평가다. 다만 Actions apply role에는 `iam:PutRolePolicy`가 없어 전체 apply가 이 항목에서 실패할 수 있으므로, LAN-418과 같이 관리자 profile의 targeted saved plan `/private/tmp/lan442-dev-ssm-doc-targeted.tfplan`(`0 add, 1 change, 0 destroy`, `aws_ssm_document.ec2_deploy`만)으로 apply한다. 사용자 승인 전에는 apply하지 않는다.
 - 사용자 승인 뒤 관리자 profile로 targeted saved plan을 apply해 `aws_ssm_document.ec2_deploy` 1건이 갱신됐다. live 문서의 runtime env 스크립트에 `LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`이 포함된 것을 확인했고, apply 후 develop 전체 plan은 `No changes`로 연쇄 IAM policy 재평가가 사라졌다. 다음 BE develop 배포부터 새 변수가 api.env에 들어간다.
+
+## 2026-09-08 LAN-462 관리자 예약 푸시
+
+- 사용자가 예약 AWS 설정의 즉시 구성을 승인했다. 기존 prod/develop Push SQS와 서버를 재사용하고 전용 Scheduler 그룹·역할을 추가한다. 기존 20시 Scheduler와 운영 서비스 배포는 변경 대상에서 제외한다.
+- Scheduler Create/Get/Delete는 환경별 그룹의 admin-push-*로, PassRole은 전용 실행 역할과 scheduler.amazonaws.com으로 제한한다. 실행 역할은 자기 환경의 Push SQS SendMessage만 허용한다.
+- SSM 읽기 DB 3개 값은 두 환경에 이미 저장됐다. API가 Java Push 소비도 담당하므로 AI Worker에는 추가하지 않는다. Terraform에는 secret 값 대신 SSM 경로만 기록한다.
+- 기존 기본 그룹·20시 실행 역할을 재사용하는 대안보다 전용 그룹·역할이 캠페인 관리 권한을 분리한다. 추가 상시 컴퓨팅은 없으며 Scheduler 호출과 기존 SQS 요청량 기준 비용이다.
+- Terraform fmt, dev/prod validate, EC2 contract/runtime 및 Push infra contract가 통과했다. runtime 테스트의 health 실패 출력은 가짜 Docker/curl을 통한 rollback 분기 검증이며 테스트 종료 코드는 0이다. 독립 리뷰에서 IAM·환경 분리 차단 결함 없음.
+- 검증된 scoped saved plan을 적용했다. develop은 그룹·실행 역할·전송 정책·EC2 API 정책 4개 생성과 SSM 문서 1개 갱신, production은 그룹·실행 역할·전송 정책·API 정책 4개 생성이다. 서비스 재배포, Queue, 기존 20시 예약은 적용 범위에서 제외했다.
+- 실제 양 환경 그룹 ACTIVE와 실행 역할 trust를 확인했다. IAM principal simulation에서 자기 그룹 예약 관리·자기 역할 PassRole·자기 Queue 전송은 허용, 다른 환경 및 기존 학습 예약 관리·다른 서비스 PassRole은 거부됐다. SSM 기본 문서 version 10의 base64 runtime 내용을 복원해 API 설정 6개를 확인했다. 실제 예약 생성/발송 검증을 의미하지 않는다.
+- 적용 전후 기존 20시 예약의 상태·일정·수정 시각·대상과 운영 ECS API/Worker의 task definition·desired/running/pending count가 일치했다.
+- 신규 환경변수로 개발 초기화 스크립트가 16KiB 한도를 넘어 user_data_base64=base64gzip(...)로 전송하도록 보완했다. 두 user-data 속성은 ignore_changes로 유지해 기존 인스턴스 변경을 방지한다. 압축 크기·복원 일치 회귀 검증과 독립 후속 리뷰를 통과했다.
+- 최종 develop 전체 plan은 No changes다. production 전체 plan에는 의도적으로 보류한 API task definition 교체와 API service 연결 갱신만 남는다. 운영 배포 때 이 IaC 변경을 적용해야 하며 BE의 기존 force-new-deployment만으로는 새 환경변수가 들어가지 않는다. 이 작업에서 API 배포·DB 마이그레이션·SQL 접속·알림 발송은 수행하지 않았다.
+
+## 2026-09-09 LAN-462 PR 리뷰 보완
+
+- BE PR #170의 Scheduler 전달 실패 보관 지적을 해결한다. 기존 환경별 Push DLQ와 경보를 재사용하므로 새 큐나 상시 리소스를 추가하지 않는다.
+- Scheduler 실행 역할에 자기 환경 DLQ의 SendMessage만 추가하고 API에는 ARN 값만 전달한다. AWS apply는 이번 리뷰 수정 범위에 포함하지 않는다.
+
+- dev/prod validate, fmt-check, EC2 계약·runtime, Push 인프라 계약 테스트와 독립 리뷰를 통과했다. runtime 첫 실행의 success fixture 실패는 trace 재실행에서 재현되지 않았고 전체 rollback 케이스까지 통과했다.
+- landit 프로필의 전체 plan에서 dev는 0 add/3 change/0 destroy(SSM 문서·Scheduler 실행 정책·SSM 참조에 따른 GitHub 배포 정책 재평가), prod는 1 add/2 change/1 destroy(API task definition 교체·service 연결·Scheduler 실행 정책)다. 새 상시 리소스는 없고 실제 apply는 수행하지 않았다.
+
+### 2026-09-09 승인된 적용
+
+- 사용자의 plan → apply → PR merge 요청으로 최신 saved plan을 적용했다. develop은 실제 0 add/2 change/0 destroy, prod는 1 add/2 change/1 destroy다. 새 상시 리소스 없이 기존 Push DLQ를 재사용한다.
+- 양 환경의 post-apply 전체 plan이 No changes다. live IAM 시뮬레이션으로 자기 큐·DLQ만 SendMessage 허용, 다른 환경·기존 학습 예약 권한 거부를 확인했다.
+- develop SSM 기본 문서 v11에 새 API 설정 7개가 포함된다. prod API service는 revision 10을 참조하며 기존 실행 이미지와 같은 latest digest를 유지한다. 읽기 DB SSM 3개 경로와 Scheduler DLQ ARN도 확인했다.
+- 기존 20시 학습 예약과 prod worker revision 6은 유지됐다. 이번 적용은 기존 이미지의 환경설정 반영이며 LAN-462 기능의 운영 배포·기기 알림 검증을 의미하지 않는다.
+
+- 머지 직전 추가 리뷰의 DLQ runtime ARN 일치·예약 Target 검증, 단건 복구·확인 후 삭제 절차를 문서화하고 인프라 계약 테스트는 실제 DLQ ARN 할당까지 검사하도록 강화했다. bash 문법·계약 테스트·독립 리뷰를 통과했으며 Terraform 리소스 변경은 없다.

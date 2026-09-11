@@ -1,5 +1,42 @@
 # Checklist
 
+## 2026-09-06 LAN-418 production Worker CPU·메모리 증설
+
+- [x] 실제 production Worker 1024MiB와 origin/main의 512MiB 차이를 확인한다.
+- [x] 기존 증설 커밋이 main에 반영되지 않은 원인을 확인한다.
+- [x] production Worker를 1 vCPU, 2048MiB, 1개 태스크로 설정한다.
+- [x] Terraform 포맷, 계약 테스트, validate와 production plan을 검증한다.
+- [x] 변경을 커밋하고 PR로 main에 반영한다.
+- [x] 승인된 production plan을 apply하고 Worker 사양과 서비스 상태를 검증한다.
+
+## 2026-09-06 LAN-184 production Scheduler 활성화
+
+- [x] 최신 BE main의 production 배포 성공과 LAN-184 포함 여부를 확인한다.
+- [x] 현재 production Scheduler가 `DISABLED`인지 확인한다.
+- [x] production Scheduler 기본값과 계약 테스트, 운영 문서를 `ENABLED`로 맞춘다.
+- [x] Terraform 포맷, 계약 테스트, validate와 production fresh plan을 검증한다.
+- [x] 변경을 커밋하고 PR로 main에 반영한다.
+- [x] 승인된 production saved plan을 apply하고 live 상태를 검증한다.
+
+## 2026-09-06 LAN-405 보정 자산 캐시 우회 전환
+
+- [x] 보정 이미지 35개와 음원 14개의 로컬 파일, SHA-256, 용량과 매핑을 확인한다.
+- [x] 이미지에는 새 UUID key, 음원에는 `revisions/{audioSha256}` key를 발급한다.
+- [x] 신규 S3 key 49개가 비어 있음을 확인하고 `If-None-Match: *`로 게시한다.
+- [x] 이미지 35개를 S3·CloudFront에서 재다운로드해 SHA-256과 metadata를 검증한다.
+- [x] 음원 14개와 새 content-addressed manifest 2개를 게시하고 전체 manifest 계약을 검증한다.
+- [x] 캐시 우회 매핑과 BE 전달 문서를 갱신하고 변경을 커밋한다.
+
+## 2026-09-06 LAN-405 시나리오 질문 음원 품질 보정
+
+- [x] Gemini 검수로 선별한 14개 보정 음원과 질문·캐릭터·voice 매핑을 확인한다.
+- [x] `origin/main` 기준 전용 브랜치에서 기존 S3 key 유지 범위를 분리한다.
+- [x] 교체 전 S3 객체의 key, SHA-256 metadata, 캐시 정책과 CloudFront 배포 상태를 확인한다.
+- [x] LAN-351·LAN-405 manifest의 음원 SHA-256, 용량과 생성 ID를 보정본 기준으로 갱신하고 로컬 전수 검증한다.
+- [x] 승인된 14개 MP3만 기존 S3 key에 덮어쓰고 객체 metadata를 검증한다.
+- [x] 새 content-addressed manifest를 게시하고 CloudFront invalidation 뒤 원격 SHA-256을 검증한다.
+- [x] 전달 문서, 계약 테스트와 Git diff를 검토하고 논리 변경을 커밋한다.
+
 ## 2026-09-03 LAN-184 develop Scheduler 상태 정합화
 
 - [x] `origin/main` 기준 fresh dev plan으로 현재 AWS drift를 확인한다.
@@ -631,3 +668,18 @@
 - [x] 사용자 승인 후 develop SSM 배포 문서를 targeted apply한다.
 - [ ] BE develop 배포 뒤 RevenueCat 테스트 이벤트로 웹훅 수신을 확인한다.
 - [ ] production 출시 시 ECS task definition secret과 `/landit/prod` parameter를 함께 추가한다.
+
+## 2026-09-08 LAN-462 관리자 예약 푸시
+
+- [x] 기존 Push SQS를 재사용하는 환경별 Scheduler 그룹·실행 역할·API 권한을 구성한다.
+- [x] 읽기 DB SSM 및 Scheduler 값을 API 런타임에 연결한다.
+- [x] Terraform 검증·제한된 plan·독립 리뷰 후 승인된 인프라를 적용한다.
+- [x] live 권한·그룹을 확인하고 배포 후 검증 범위를 기록한다.
+
+## 2026-09-09 LAN-462 PR 리뷰 보완
+
+- [x] 기존 Push DLQ에 Scheduler 전달 실패를 보관하도록 IAM·API 환경설정을 연결한다.
+- [x] 계약·runtime·Terraform 검증과 독립 리뷰를 완료한다.
+
+- [x] 사용자 승인 후 양 환경 fresh plan을 적용하고 post-apply 전체 plan이 No changes인지 확인한다.
+- [x] live DLQ 권한·환경 격리·SSM v11·prod API revision 10 설정을 검증한다.

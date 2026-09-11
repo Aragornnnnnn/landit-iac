@@ -14,8 +14,15 @@ from scripts.expression_pronunciation_audio import (
     generate_assets,
     load_generation_state,
 )
+# QA 스크립트는 자기 디렉터리를 sys.path에 넣고 expression_pronunciation_audio를 최상위
+# 모듈로 임포트한다. 같은 파일이라도 scripts.* 경로로 임포트하면 다른 모듈 객체가 되어
+# 예외 클래스가 일치하지 않으므로, 예외는 QA 모듈이 들고 있는 참조에서 가져온다.
+from scripts.expression_pronunciation_qa import epa as qa_epa
 from scripts.expression_pronunciation_qa import (
     SILENCE_RMS_DBFS,
+    Adjudication,
+    adjudicate_audio,
+    run_adjudication,
     check_audio,
     normalize_tokens,
     pick_samples,
@@ -45,6 +52,33 @@ class NormalizeTests(unittest.TestCase):
         self.assertEqual(normalize_tokens("at 20 past"), ["at", "twenty", "past"])
         self.assertTrue(transcript_matches("at 20 past", "at twenty past"))
         self.assertTrue(transcript_matches("at twenty past", "at 20 past"))
+
+    def test_currency_matches_spelled_out_dollars(self):
+        # Whisper가 "$10"으로 적어 불합격되던 LAN-471 실측 사례
+        self.assertTrue(transcript_matches("It was only ten dollars.", "It was only $10."))
+        self.assertTrue(transcript_matches("They were one dollar each.", "They were $1 each."))
+        self.assertTrue(transcript_matches("I shelled out $120 for it.", "I shelled out $120 for it."))
+        self.assertTrue(transcript_matches("It costs five dollars fifty cents", "It costs $5.50"))
+        # 단수·복수가 틀리면 여전히 불합격
+        self.assertFalse(transcript_matches("one dollars", "$1"))
+
+    def test_percent_matches_spelled_out(self):
+        self.assertTrue(
+            transcript_matches("It was on sale for thirty percent off.", "It was on sale for 30% off.")
+        )
+
+    def test_compound_spacing_is_ignored(self):
+        self.assertTrue(transcript_matches("log in", "login"))
+        self.assertTrue(transcript_matches("meet up", "Meetup"))
+        self.assertTrue(transcript_matches("I bought it secondhand online.", "I bought it second hand online."))
+        # 공백만 다른 게 아니라 글자가 다르면 여전히 불합격
+        self.assertFalse(transcript_matches("close friend", "close friends"))
+
+    def test_ordinals_match_spelled_out(self):
+        self.assertTrue(
+            transcript_matches("It canceled at the eleventh hour.", "It canceled at the 11th hour.")
+        )
+        self.assertTrue(transcript_matches("the twenty first", "the 21st"))
 
     def test_hyphen_splits_like_whisper(self):
         self.assertTrue(transcript_matches("a well-known place", "a well known place"))
@@ -93,6 +127,13 @@ class SingleWordLenientTests(unittest.TestCase):
         )
         self.assertFalse(
             transcript_matches("I'll", "Oh.", single_word_lenient=True, accent_locale="EN_US")
+        )
+        self.assertTrue(
+            transcript_matches("year", "Yeah.", single_word_lenient=True, accent_locale="EN_AU")
+        )
+        # 억양 특성은 "yeah"로 들린 경우만이다 — 무음·다른 단어는 여전히 불합격
+        self.assertFalse(
+            transcript_matches("year", "", single_word_lenient=True, accent_locale="EN_AU")
         )
 
     def test_leniency_never_applies_to_multi_word_text(self):
@@ -400,6 +441,330 @@ class SilenceRetryTests(unittest.TestCase):
             self.assertTrue(outcomes[asset_id(target)].passed)
             self.assertEqual(client.synthesize.call_args.args[0].text, target.text + ",")
             self.assertEqual(client.synthesize.call_count, 1)
+
+
+def make_judgment_response(status, body):
+    return Mock(status=status, headers={}, body=json.dumps(body).encode())
+
+
+class AdjudicationTests(unittest.TestCase):
+    def reply(self, content):
+        return make_judgment_response(200, {"choices": [{"message": {"content": content}}]})
+
+    def clip(self):
+        handle = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+        handle.write(b"mp3")
+        handle.close()
+        return Path(handle.name)
+
+    def test_expected_text_is_never_sent_to_the_model(self):
+        """기대 텍스트를 프롬프트에 넣으면 모델이 그대로 따라 적는다 (2026-09-10 실측)."""
+        path = self.clip()
+        sent = {}
+
+        def capture(payload, headers, *rest):
+            sent["payload"] = payload
+            return self.reply('{"heard": "Good question", "defect": "none"}')
+
+        try:
+            verdict = adjudicate_audio("key", path, "purple elephant sandwich", requester=capture)
+        finally:
+            path.unlink(missing_ok=True)
+        prompt = sent["payload"]["messages"][0]["content"][0]["text"]
+        self.assertNotIn("purple elephant sandwich", prompt)
+        # 대조는 코드가 한다 — 들린 말이 기대와 다르면 불합격
+        self.assertFalse(verdict.clean)
+        self.assertEqual(verdict.heard, "Good question")
+        self.assertEqual(verdict.problem, "wrong_words")
+
+    def test_matching_transcript_with_no_defect_is_clean(self):
+        path = self.clip()
+        try:
+            verdict = adjudicate_audio(
+                "key", path, "help out",
+                requester=lambda *a, **k: self.reply(
+                    '```json\n{"heard": "Help out.", "defect": "none"}\n```'
+                ),
+            )
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertEqual(verdict, Adjudication(True, "Help out.", "none"))
+
+    def test_reported_defect_fails_even_when_words_match(self):
+        """잡음 꼬리·잘림은 전사가 맞아도 불량이다 — RMS·Whisper가 못 잡는 유형."""
+        path = self.clip()
+        try:
+            for defect in ("noise", "truncated", "silent"):
+                verdict = adjudicate_audio(
+                    "key", path, "help out",
+                    requester=lambda *a, **k: self.reply(
+                        '{"heard": "help out", "defect": "%s"}' % defect
+                    ),
+                )
+                self.assertFalse(verdict.clean, defect)
+                self.assertEqual(verdict.problem, defect)
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_word_leniency_applies_like_whisper_rules(self):
+        path = self.clip()
+        try:
+            lenient = adjudicate_audio(
+                "key", path, "an", single_word_lenient=True,
+                requester=lambda *a, **k: self.reply('{"heard": "and", "defect": "none"}'),
+            )
+            strict = adjudicate_audio(
+                "key", path, "an",
+                requester=lambda *a, **k: self.reply('{"heard": "and", "defect": "none"}'),
+            )
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertTrue(lenient.clean)
+        self.assertFalse(strict.clean)
+
+    def test_unintelligible_and_malformed_are_unresolved_not_clean(self):
+        path = self.clip()
+        try:
+            for content in (
+                '{"heard": "mmm", "defect": "unintelligible"}',
+                '{"heard": "x"}',
+                "not json",
+            ):
+                verdict = adjudicate_audio(
+                    "key", path, "it", requester=lambda *a, **k: self.reply(content)
+                )
+                self.assertIsNone(verdict.clean, content)
+            with self.assertRaises(qa_epa.AccentVerificationError):
+                adjudicate_audio(
+                    "key", path, "it",
+                    requester=lambda *a, **k: make_judgment_response(500, {}),
+                )
+            with self.assertRaises(qa_epa.AccentVerificationError):
+                adjudicate_audio(
+                    "key", path, "it",
+                    requester=lambda *a, **k: make_judgment_response(200, {"choices": []}),
+                )
+        finally:
+            path.unlink(missing_ok=True)
+
+    def build_report(self, work_dir, snapshot):
+        make_generated_work_dir(snapshot, work_dir)
+        report = work_dir / "qa.json"
+        assets = []
+        for index, asset in enumerate(snapshot.assets):
+            assets.append(
+                {
+                    "assetId": asset_id(asset),
+                    "text": asset.text,
+                    "kind": asset.kind,
+                    "accentLocale": asset.accent_locale,
+                    "passed": index % 2 == 1,
+                    "attempts": 1,
+                    "firstReason": "" if index % 2 else "transcript mismatch",
+                    "lastReason": "" if index % 2 else "transcript mismatch",
+                    "lastTranscript": "x",
+                    "lastRmsDbfs": -20.0,
+                    "audioSha256": "sha",
+                }
+            )
+        report.write_text(json.dumps({"schemaVersion": 1, "summary": {}, "assets": assets}))
+        return report
+
+    def test_non_object_json_is_unresolved(self):
+        path = self.clip()
+        try:
+            for content in ("[]", "null", "42"):
+                with self.subTest(content=content):
+                    verdict = adjudicate_audio(
+                        "key", path, "it", requester=lambda *a: self.reply(content)
+                    )
+                    self.assertIsNone(verdict.clean)
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_network_failure_preserves_other_verdicts(self):
+        snapshot = load_snapshot(make_source_payload())
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            report = self.build_report(work_dir, snapshot)
+            failed_path = audio_path_for(work_dir, snapshot.assets[2])
+
+            def judge(api_key, path, *args, **kwargs):
+                if path == failed_path:
+                    raise TimeoutError("request timed out")
+                return Adjudication(True, "ok", "none")
+
+            summary = run_adjudication(
+                report, work_dir, snapshot, "key", workers=2, apply_verdicts=True,
+                adjudicator=judge, progress=lambda m: None,
+            )
+            self.assertEqual(summary["unresolved"], 1)
+            self.assertEqual(summary["geminiSaysClean"], summary["failedJudged"] - 1)
+            rows = json.loads(report.read_text())["assets"]
+            self.assertEqual(sum(not row["passed"] for row in rows), 1)
+
+    def test_apply_refreshes_report_summary(self):
+        snapshot = load_snapshot(make_source_payload())
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            report = self.build_report(work_dir, snapshot)
+            payload = json.loads(report.read_text())
+            payload["summary"] = {"failed": 6, "transcribeTimeouts": 2}
+            report.write_text(json.dumps(payload))
+            run_adjudication(
+                report, work_dir, snapshot, "key", workers=2, apply_verdicts=True,
+                adjudicator=lambda *a, **k: Adjudication(True, "ok", "none"),
+                progress=lambda m: None,
+            )
+            payload = json.loads(report.read_text())
+            self.assertTrue(all(row["passed"] for row in payload["assets"]))
+            self.assertEqual(payload["summary"]["failed"], 0)
+            self.assertEqual(payload["summary"]["failedByLocale"], {})
+            self.assertEqual(payload["summary"]["passedFirstTry"], len(snapshot.assets))
+            self.assertEqual(payload["summary"]["transcribeTimeouts"], 2)
+
+    def test_records_verdicts_without_flipping_unless_applied(self):
+        snapshot = load_snapshot(make_source_payload())
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            report = self.build_report(work_dir, snapshot)
+            summary = run_adjudication(
+                report, work_dir, snapshot, "key", workers=2,
+                adjudicator=lambda *a, **k: Adjudication(True, "ok", "none"),
+                progress=lambda m: None,
+            )
+            rows = {r["assetId"]: r for r in json.loads(report.read_text())["assets"]}
+            self.assertEqual(summary["geminiSaysClean"], summary["failedJudged"])
+            self.assertFalse(summary["applied"])
+            self.assertTrue(all(r.get("geminiClean") for r in rows.values() if not r["passed"]))
+            self.assertTrue(any(not r["passed"] for r in rows.values()))
+
+            run_adjudication(
+                report, work_dir, snapshot, "key", workers=2, apply_verdicts=True,
+                adjudicator=lambda *a, **k: Adjudication(True, "ok", "none"),
+                progress=lambda m: None,
+            )
+            rows = json.loads(report.read_text())["assets"]
+            self.assertTrue(all(r["passed"] for r in rows))
+            self.assertTrue(any(r["lastReason"].startswith("gemini-clean:") for r in rows))
+
+    def test_confirmed_defects_and_passed_sample_are_counted(self):
+        snapshot = load_snapshot(make_source_payload())
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            report = self.build_report(work_dir, snapshot)
+            summary = run_adjudication(
+                report, work_dir, snapshot, "key", workers=2, sample_passed=2,
+                adjudicator=lambda *a, **k: Adjudication(False, "hey", "noise"),
+                progress=lambda m: None,
+            )
+            self.assertEqual(summary["geminiSaysClean"], 0)
+            self.assertEqual(summary["geminiConfirmsDefect"], summary["failedJudged"])
+            self.assertEqual(summary["problemCounts"], {"noise": summary["failedJudged"]})
+            self.assertEqual(summary["passedSampleJudged"], 2)
+            self.assertEqual(summary["passedSampleDefects"], 2)
+
+    def test_request_failure_is_unresolved_not_clean(self):
+        snapshot = load_snapshot(make_source_payload())
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            report = self.build_report(work_dir, snapshot)
+
+            def boom(*a, **k):
+                raise qa_epa.AccentVerificationError("openrouter down")
+
+            summary = run_adjudication(
+                report, work_dir, snapshot, "key", workers=2, apply_verdicts=True,
+                adjudicator=boom, progress=lambda m: None,
+            )
+            self.assertEqual(summary["unresolved"], summary["failedJudged"])
+            self.assertEqual(summary["geminiSaysClean"], 0)
+            rows = json.loads(report.read_text())["assets"]
+            self.assertTrue(any(not r["passed"] for r in rows))
+
+
+class InterruptedRunTests(unittest.TestCase):
+    def test_interrupted_filtered_run_never_drops_assets_from_report(self):
+        """재검사를 도중에 멈춰도 아직 검사 안 한 자산이 보고서에서 사라지면 안 된다 (LAN-471)."""
+        snapshot = load_snapshot(make_source_payload())
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            make_generated_work_dir(snapshot, work_dir)
+            report = work_dir / "qa.json"
+            loud = lambda path: array.array("h", [8000, -8000] * 8000)
+            text_of = {audio_path_for(work_dir, a): a.text for a in snapshot.assets}
+            # 1차: 전체를 정상 검사해 완전한 보고서를 만든다
+            run_check(
+                snapshot, work_dir, report, transcribe=lambda p: text_of[p], client=None,
+                max_resynth=0, workers=1, decoder=loud, progress=lambda m: None,
+            )
+            everyone = {asset_id(a) for a in snapshot.assets}
+            self.assertEqual({r["assetId"] for r in json.loads(report.read_text())["assets"]}, everyone)
+
+            # 2차: 불합격으로 남은 일부만 재검사하다가 두 번째 자산에서 강제로 멈춘다
+            # (실제로도 불합격분만 재검사한다 — 합격+sha 일치는 건너뛰므로 불합격으로 만들어 둔다)
+            targets = [a for a in snapshot.assets if a.kind == "word"][:3]
+            target_ids = {asset_id(a) for a in targets}
+            payload = json.loads(report.read_text())
+            for row in payload["assets"]:
+                if row["assetId"] in target_ids:
+                    row["passed"] = False
+            report.write_text(json.dumps(payload))
+            seen = {"n": 0}
+
+            def interrupt_on_second(path):
+                seen["n"] += 1
+                if seen["n"] == 2:
+                    raise KeyboardInterrupt
+                return text_of[path]
+
+            with self.assertRaises(KeyboardInterrupt):
+                run_check(
+                    snapshot, work_dir, report, transcribe=interrupt_on_second, client=None,
+                    max_resynth=0, workers=1, asset_ids=target_ids,
+                    decoder=loud, progress=lambda m: None,
+                )
+            kept = {r["assetId"] for r in json.loads(report.read_text())["assets"]}
+            self.assertEqual(kept, everyone)
+
+
+class WordRetryTests(unittest.TestCase):
+    def run_one_mismatch(self, word_text):
+        """해당 단어 클립만 첫 전사를 틀리게 만들고, 재합성 요청에 쓰인 입력을 돌려준다."""
+        snapshot = load_snapshot(make_source_payload())
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            make_generated_work_dir(snapshot, work_dir)
+            word = next(a for a in snapshot.assets if a.kind == "word" and a.text == word_text)
+            word_path = audio_path_for(work_dir, word)
+            calls = {"n": 0}
+
+            def transcribe(path):
+                if path == word_path and calls["n"] == 0:
+                    calls["n"] += 1
+                    return "completely different"  # 무음은 아니고 오인식
+                return next(a.text for a in snapshot.assets if audio_path_for(work_dir, a) == path)
+
+            client = Mock()
+            client.synthesize = Mock(
+                side_effect=lambda asset: Mock(body=f"r:{asset.text}".encode(), generation_id="g")
+            )
+            run_check(
+                snapshot, work_dir, work_dir / "qa.json",
+                transcribe=transcribe, client=client, max_resynth=3, workers=1,
+                asset_ids={asset_id(word)},
+                decoder=lambda path: array.array("h", [8000, -8000] * 8000),
+                probe_runner=fake_probe_runner, probe_name="ffprobe",
+                progress=lambda m: None,
+            )
+            return client.synthesize.call_args.args[0].text
+
+    def test_function_word_mismatch_is_resynthesized_with_comma(self):
+        self.assertEqual(self.run_one_mismatch("it"), "it,")
+
+    def test_content_word_keeps_the_original_variant_cycle(self):
+        # 일반 단어는 쉼표 효과를 재지 않았으므로 기존 순환을 그대로 쓴다 — 첫 재합성은 원문
+        self.assertEqual(self.run_one_mismatch("nothing"), "nothing")
 
 
 class SampleTests(unittest.TestCase):

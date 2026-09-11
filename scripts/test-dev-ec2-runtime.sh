@@ -148,6 +148,9 @@ LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS LANDIT_GRAFANA_CLOUD_OTLP_HEADERS LLM_PR
 OPENROUTER_BASE_URL OPENROUTER_MODEL MESSAGE_FEEDBACK_MODEL MESSAGE_FEEDBACK_REVIEW_ENABLED
 OPENROUTER_API_KEY LANDIT_AI_SENTRY_DSN""".split()
 values = dict.fromkeys(names, "test-value")
+values.update(LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS="7200000",
+              LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT="1000",
+              LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT="20")
 values.update(LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION="Bearer lan477-test$secret",
               LANDIT_SUBSCRIPTION_LAUNCHED_AT="2026-09-11T14:44:00+09:00")
 (directory / "ssm.json").write_text(json.dumps({"Parameters": [
@@ -166,12 +169,15 @@ import json, pathlib, stat, sys
 directory = pathlib.Path(sys.argv[1])
 api = directory / "runtime/api.env"
 expected = {
+    'LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS="7200000"',
+    'LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT="1000"',
+    'LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT="20"',
     'LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION="Bearer lan477-test$$secret"',
     'LANDIT_SUBSCRIPTION_LAUNCHED_AT="2026-09-11T14:44:00+09:00"',
 }
-assert expected <= set(api.read_text().splitlines()), "API must receive subscription SSM values"
+assert expected <= set(api.read_text().splitlines()), "API must receive subscription and free-talk SSM values"
 assert stat.S_IMODE(api.stat().st_mode) == 0o600, "API secrets must remain owner-only"
-assert not any("LANDIT_REVENUECAT" in line or "LANDIT_SUBSCRIPTION" in line
+assert not any("LANDIT_REVENUECAT" in line or "LANDIT_SUBSCRIPTION" in line or "LANDIT_FREE_TALK" in line
                for line in (directory / "runtime/ai.env").read_text().splitlines())
 (directory / "api-before.env").write_bytes(api.read_bytes())
 response = json.loads((directory / "ssm.json").read_text())

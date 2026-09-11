@@ -29,6 +29,7 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_SECRET` | `SecureString` | backend 자체 token signing secret |
 | `/landit/{environment}/LANDIT_AI_CLIENT_MODE` | `String` | backend AI client mode |
 | `/landit/{environment}/LANDIT_AI_BASE_URL` | `String` | backend에서 호출하는 AI service base URL |
+| `/landit/{environment}/LANDIT_AI_INTERNAL_TOKEN` | `SecureString` | BE 전용 AI 호출 토큰. 개발 optional 주입, 운영 BE→AI 순차 주입은 [배포 절차](deployment-safety.md)를 따른다. |
 | `/landit/{environment}/LANDIT_MEMORY_WRITE_ENABLED` | `String` | backend 장기기억 저장 기능 사용 여부, 기본값 `false` |
 | `/landit/{environment}/LANDIT_MEMORY_USE_ENABLED` | `String` | backend 프리톡 장기기억 검색 기능 사용 여부, 기본값 `false` |
 | `/landit/{environment}/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION` | `SecureString` | API의 RevenueCat 웹훅 Authorization 검증값, develop EC2 env와 prod ECS secrets로 주입 |
@@ -84,6 +85,10 @@ AWS_PROFILE=landit AWS_REGION=ap-northeast-2 \
   --query 'Parameters[].{Name:Name,Type:Type,Version:Version}' \
   --output table
 ```
+
+## 배포 보호 설정.
+
+AI 토큰은 기본 공존 단계에서는 생략한다. BE가 먼저 헤더를 보내는지 확인한 뒤 AI 검증을 활성화한다. 운영 토큰 주입과 샌드박스 반영 입력, 구 캐시 전환, 고정 이미지 plan·롤백 절차는 [배포 중 학습 보존](deployment-safety.md)을 따른다. 샌드박스 반영은 비밀 값이 아니므로 SSM을 새로 만들지 않고 Terraform environment로 전달한다.
 
 ## 새 parameter 추가 절차
 
@@ -142,7 +147,7 @@ SSM parameter를 생성해도 ECS container environment에 자동으로 들어�
 ## 운영 규칙
 
 - SSM 값은 shell history, CI log, git diff에 남지 않는 방식으로 갱신합니다.
-- `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `LANDIT_AUTH_TOKEN_SECRET`, `LANDIT_BE_SENTRY_DSN`, `LANDIT_AI_SENTRY_DSN`, `LANDIT_GRAFANA_CLOUD_OTLP_HEADERS`, `LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`, `LANDIT_SENTRY_RELAY_AUTH_TOKEN`, `LANDIT_SENTRY_DISCORD_WEBHOOK_URL`, `OPENROUTER_API_KEY`는 `SecureString`으로만 관리합니다.
+- `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `LANDIT_AUTH_TOKEN_SECRET`, `LANDIT_BE_SENTRY_DSN`, `LANDIT_AI_SENTRY_DSN`, `LANDIT_GRAFANA_CLOUD_OTLP_HEADERS`, `LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`, `LANDIT_AI_INTERNAL_TOKEN`, `LANDIT_SENTRY_RELAY_AUTH_TOKEN`, `LANDIT_SENTRY_DISCORD_WEBHOOK_URL`, `OPENROUTER_API_KEY`는 `SecureString`으로만 관리합니다.
 - `LANDIT_CORS_ALLOWED_ORIGINS`, `LANDIT_AI_CLIENT_MODE`, `LANDIT_AI_BASE_URL`, `LANDIT_MEMORY_WRITE_ENABLED`, `LANDIT_MEMORY_USE_ENABLED`, `LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES`, `LANDIT_AUTH_OIDC_KAKAO_AUDIENCES`, `LANDIT_AUTH_OIDC_APPLE_AUDIENCES`, `LLM_PROVIDER`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`, `MESSAGE_FEEDBACK_MODEL`, `MESSAGE_FEEDBACK_REVIEW_ENABLED`은 secret이 아니므로 `String`으로 관리합니다.
 - Terraform에서 secret 값을 직접 생성하거나 import하지 않습니다.
 - 값 변경 후에는 값 자체가 아니라 parameter name, type, version만 검증 기록에 남깁니다.

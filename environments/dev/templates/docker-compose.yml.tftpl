@@ -1,10 +1,11 @@
 services:
   api:
-    image: $${API_IMAGE}:$${API_TAG}
+    image: $${API_IMAGE_REF}
     env_file:
       - /run/landit/api.env
     ports:
       - "127.0.0.1:8080:8080"
+    stop_grace_period: 120s
     mem_limit: 768m
     restart: unless-stopped
     networks:
@@ -17,11 +18,12 @@ services:
         awslogs-stream: ec2-api
 
   ai:
-    image: $${AI_IMAGE}:$${AI_TAG}
+    image: $${AI_IMAGE_REF}
     env_file:
       - /run/landit/ai.env
     ports:
       - "127.0.0.1:8000:8000"
+    stop_grace_period: 120s
     mem_limit: 1024m
     restart: unless-stopped
     networks:

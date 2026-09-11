@@ -239,3 +239,43 @@ variable "grafana_logs_secret_arn" {
     error_message = "grafana_logs_secret_arn must be empty or a valid AWS Secrets Manager ARN."
   }
 }
+
+variable "api_image_ref" {
+  description = "Reviewed image digest to preserve during infrastructure deployments."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.api_image_ref == null || can(regex("@sha256:[0-9a-f]{64}$", var.api_image_ref))
+    error_message = "Use a repository@sha256 digest, never a mutable tag."
+  }
+}
+
+variable "worker_image_ref" {
+  description = "Reviewed image digest to preserve during infrastructure deployments."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.worker_image_ref == null || can(regex("@sha256:[0-9a-f]{64}$", var.worker_image_ref))
+    error_message = "Use a repository@sha256 digest, never a mutable tag."
+  }
+}
+
+variable "ai_internal_token_enabled" {
+  description = "Inject the existing AI internal token into BE before enforcing AI authentication."
+  type        = bool
+  default     = false
+}
+
+variable "ai_internal_auth_enabled" {
+  description = "Inject the AI token only after every BE caller sends it."
+  type        = bool
+  default     = false
+}
+
+variable "revenuecat_apply_sandbox_events" {
+  description = "Preserve BE sandbox processing by default; disable explicitly after store review."
+  type        = bool
+  default     = true
+}

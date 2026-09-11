@@ -117,6 +117,8 @@ locals {
       "ssm:ListTagsForResource"
     ])
     production = concat(local.platform_read_actions, [
+      "ecs:DescribeTasks",
+      "ecs:ListTasks",
       "apigateway:GET",
       "lambda:GetFunction",
       "lambda:GetFunctionCodeSigningConfig",

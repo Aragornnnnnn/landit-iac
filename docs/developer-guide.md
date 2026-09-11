@@ -40,6 +40,8 @@ terraform -chdir=environments/dev validate
 AWS_PROFILE=landit terraform -chdir=environments/dev plan
 ```
 
+운영 이미지 고정, 인증 순차 적용, 진행 중 학습 확인은 [배포 중 학습 보존](deployment-safety.md)을 따른다.
+
 ## 개발 EC2 배포와 제거 검증
 
 개발 BE·AI는 단일 EC2에서 실행한다. ECS·ALB 제거 전에는 saved plan을 만든 뒤 주소별 변경을 감사하고 plan 파일과 JSON은 `/tmp`에만 둔다.

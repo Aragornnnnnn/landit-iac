@@ -105,6 +105,7 @@ data "aws_iam_policy_document" "ec2_app" {
     actions = [
       "ecr:BatchCheckLayerAvailability",
       "ecr:BatchGetImage",
+      "ecr:DescribeImages",
       "ecr:GetDownloadUrlForLayer"
     ]
     resources = [
@@ -331,7 +332,7 @@ resource "aws_ssm_document" "ec2_deploy" {
       }
       imageSha = {
         type              = "String"
-        allowedPattern    = "^[0-9a-f]{40}$"
+        allowedPattern    = "^[0-9a-f]{40}$|^sha256:[0-9a-f]{64}$"
         interpolationType = "ENV_VAR"
       }
     }

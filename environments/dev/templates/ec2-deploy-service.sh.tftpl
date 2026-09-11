@@ -2,8 +2,8 @@
 # 지정한 서비스 이미지를 직렬 배포하고 loopback health를 확인한다.
 set -euo pipefail
 
-if [[ "$${#}" -ne 2 || ! "$${1}" =~ ^(api|ai)$ || ! "$${2}" =~ ^[0-9a-f]{40}$ ]]; then
-  echo 'usage: deploy-service api|ai <40-character-git-sha>' >&2
+if [[ "$${#}" -ne 2 || ! "$${1}" =~ ^(api|ai)$ || ! "$${2}" =~ ^([0-9a-f]{40}|sha256:[0-9a-f]{64})$ ]]; then
+  echo 'usage: deploy-service api|ai <git-sha|sha256:digest>' >&2
   exit 64
 fi
 
@@ -27,16 +27,26 @@ fi
 
 write_images_env() {
   local destination="$1"
-  local api_tag="$2"
-  local ai_tag="$3"
+  local api_ref="$2"
+  local ai_ref="$3"
 
   cat > "$${destination}" <<EOF
 API_IMAGE=${api_image}
 AI_IMAGE=${ai_image}
-API_TAG=$${api_tag}
-AI_TAG=$${ai_tag}
+API_IMAGE_REF=$${api_ref}
+AI_IMAGE_REF=$${ai_ref}
 EOF
   chmod 0644 "$${destination}"
+}
+
+running_reference() {
+  local target="$1" repository="$2" container image_id
+  container="$(docker ps -aq --filter label=com.docker.compose.project=landit \
+    --filter "label=com.docker.compose.service=$${target}")"
+  [[ "$${container}" =~ ^[0-9a-f]{12,64}$ ]] || return 1
+  image_id="$(docker inspect --format '{{.Image}}' "$${container}")"
+  docker image inspect --format '{{json .RepoDigests}}' "$${image_id}" |
+    jq -er --arg repository "$${repository}" '[.[] | select(startswith($repository + "@sha256:"))] | first'
 }
 
 wait_for_health() {
@@ -58,8 +68,12 @@ wait_for_health() {
 
 rollback() {
   printf '%s\n' "$${previous_tag}" > "$${LANDIT_DIR}/$${service}.tag"
-  write_images_env "$${LANDIT_DIR}/images.env" \
-    "$(cat "$${LANDIT_DIR}/api.tag")" "$(cat "$${LANDIT_DIR}/ai.tag")"
+  printf '%s\n' "$${previous_ref}" > "$${LANDIT_DIR}/$${service}.ref"
+  write_images_env "$${LANDIT_DIR}/images.env" "$${api_ref}" "$${ai_ref}"
+  if ! docker image inspect "$${previous_ref}" >/dev/null 2>&1; then
+    docker compose --project-directory "$${LANDIT_DIR}" --env-file "$${LANDIT_DIR}/images.env" \
+      -f "$${LANDIT_DIR}/compose.yml" pull "$${service}" || return 1
+  fi
   if ! docker compose --project-directory "$${LANDIT_DIR}" --env-file "$${LANDIT_DIR}/images.env" \
     -f "$${LANDIT_DIR}/compose.yml" up -d --no-deps "$${service}"; then
     echo "rollback container start failed for $${service}" >&2
@@ -76,15 +90,37 @@ rollback() {
 aws ecr get-login-password --region "$${AWS_REGION}" |
   docker login --username AWS --password-stdin "$${ECR_REGISTRY}"
 previous_tag="$(cat "$${LANDIT_DIR}/$${service}.tag")"
+api_ref="$(running_reference api '${api_image}')"
+ai_ref="$(running_reference ai '${ai_image}')"
+if [[ "$${service}" == api ]]; then
+  repository='${api_image}'
+  previous_ref="$${api_ref}"
+else
+  repository='${ai_image}'
+  previous_ref="$${ai_ref}"
+fi
+if [[ "$${image_tag}" == sha256:* ]]; then
+  digest="$${image_tag}"
+else
+  digest="$(aws ecr describe-images --region "$${AWS_REGION}" --repository-name "$${repository##*/}" \
+    --image-ids "imageTag=$${image_tag}" --query 'imageDetails[0].imageDigest' --output text)"
+fi
+[[ "$${digest}" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 65
+candidate_ref="$${repository}@$${digest}"
 candidate_images_env="$(mktemp "$${LANDIT_DIR}/images.env.XXXXXX")"
 trap 'rm -f "$${candidate_images_env}"' EXIT
 if [[ "$${service}" == api ]]; then
-  write_images_env "$${candidate_images_env}" "$${image_tag}" "$(cat "$${LANDIT_DIR}/ai.tag")"
+  write_images_env "$${candidate_images_env}" "$${candidate_ref}" "$${ai_ref}"
 else
-  write_images_env "$${candidate_images_env}" "$(cat "$${LANDIT_DIR}/api.tag")" "$${image_tag}"
+  write_images_env "$${candidate_images_env}" "$${api_ref}" "$${candidate_ref}"
 fi
 docker compose --project-directory "$${LANDIT_DIR}" --env-file "$${candidate_images_env}" \
   -f "$${LANDIT_DIR}/compose.yml" pull "$${service}"
+printf '%s\n' "$${previous_tag}" > "$${LANDIT_DIR}/$${service}.previous.tag"
+printf '%s\n' "$${previous_ref}" > "$${LANDIT_DIR}/$${service}.previous.ref"
+printf '%s\n' "$${api_ref}" > "$${LANDIT_DIR}/api.ref"
+printf '%s\n' "$${ai_ref}" > "$${LANDIT_DIR}/ai.ref"
+printf '%s\n' "$${candidate_ref}" > "$${LANDIT_DIR}/$${service}.ref"
 printf '%s\n' "$${image_tag}" > "$${LANDIT_DIR}/$${service}.tag"
 mv "$${candidate_images_env}" "$${LANDIT_DIR}/images.env"
 if ! docker compose --project-directory "$${LANDIT_DIR}" --env-file "$${LANDIT_DIR}/images.env" \
@@ -93,6 +129,8 @@ if ! docker compose --project-directory "$${LANDIT_DIR}" --env-file "$${LANDIT_D
   exit 1
 fi
 if wait_for_health; then
+  printf '%s %s %s %s %s %s\n' "$(date -u +%FT%TZ)" "$${service}" "$${previous_tag}" "$${image_tag}" "$${previous_ref}" "$${candidate_ref}" \
+    >> "$${LANDIT_DIR}/deployments.log"
   exit 0
 fi
 if rollback; then

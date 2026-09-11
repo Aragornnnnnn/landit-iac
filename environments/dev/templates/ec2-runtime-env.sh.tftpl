@@ -68,6 +68,11 @@ printf '%s\n' 'LANDIT_PUSH_SCHEDULER_GROUP=${push_scheduler_group}' >> "$${RUNTI
 printf '%s\n' 'LANDIT_PUSH_SCHEDULER_ROLE_ARN=${push_scheduler_role}' >> "$${RUNTIME_DIR}/api.env"
 printf '%s\n' 'LANDIT_NOTIFICATION_CONSUMER_ENABLED=true' >> "$${RUNTIME_DIR}/api.env"
 printf '%s\n' 'LANDIT_NOTIFICATION_TEST_API_ENABLED=true' >> "$${RUNTIME_DIR}/api.env"
+printf '%s\n' 'LANDIT_REVENUECAT_APPLY_SANDBOX_EVENTS=true' >> "$${RUNTIME_DIR}/api.env"
+printf '%s\n' 'SERVER_SHUTDOWN=graceful' >> "$${RUNTIME_DIR}/api.env"
+printf '%s\n' 'SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE=50s' >> "$${RUNTIME_DIR}/api.env"
+printf '%s\n' 'SPRING_TASK_EXECUTION_SHUTDOWN_AWAIT_TERMINATION=true' >> "$${RUNTIME_DIR}/api.env"
+printf '%s\n' 'SPRING_TASK_EXECUTION_SHUTDOWN_AWAIT_TERMINATION_PERIOD=50s' >> "$${RUNTIME_DIR}/api.env"
 printf '%s\n' 'LANDIT_AI_BASE_URL=http://ai:8000' >> "$${RUNTIME_DIR}/api.env"
 if [[ "$${GRAFANA_OTLP_ENABLED}" == true ]]; then
   printf '%s\n' "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=$${GRAFANA_OTLP_ENDPOINT%/}/v1/metrics" >> "$${RUNTIME_DIR}/api.env"
@@ -101,3 +106,13 @@ if [[ "$${GRAFANA_OTLP_ENABLED}" == true ]]; then
   printf '%s\n' "OTEL_RESOURCE_ATTRIBUTES=service.namespace=landit,deployment.environment.name=$${ENVIRONMENT}" >> "$${RUNTIME_DIR}/ai.env"
 fi
 chmod 0600 "$${RUNTIME_DIR}/ai.env"
+
+# 토큰은 구버전 공존 중에는 생략하며 API 배포 후 AI 배포 순서로 활성화한다.
+internal_token_env="$(aws ssm get-parameters --region "$${AWS_REGION}" \
+  --names "$${SSM_PATH}/LANDIT_AI_INTERNAL_TOKEN" --with-decryption --output json |
+  jq -r '.Parameters[] | select(.Name | endswith("/LANDIT_AI_INTERNAL_TOKEN"))
+    | "LANDIT_AI_INTERNAL_TOKEN=\(.Value | gsub("\\$"; "$$") | @json)"')"
+if [[ -n "$${internal_token_env}" ]]; then
+  printf '%s\n' "$${internal_token_env}" >> "$${RUNTIME_DIR}/api.env"
+  printf '%s\n' "$${internal_token_env}" >> "$${RUNTIME_DIR}/ai.env"
+fi

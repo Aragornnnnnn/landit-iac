@@ -138,6 +138,24 @@ jobs:
       - name: Terraform validate
         run: terraform -chdir="${{ steps.target.outputs.root }}" validate
 
+      - name: Resolve production runtime switches
+        if: ${{ inputs.target == 'production' }}
+        env:
+          TOKEN_ENABLED: ${{ vars.AI_INTERNAL_TOKEN_ENABLED || 'false' }}
+          AUTH_ENABLED: ${{ vars.AI_INTERNAL_AUTH_ENABLED || 'false' }}
+          SANDBOX_ENABLED: ${{ vars.REVENUECAT_APPLY_SANDBOX_EVENTS || 'false' }}
+        run: |
+          for value in "$TOKEN_ENABLED" "$AUTH_ENABLED" "$SANDBOX_ENABLED"; do
+            [[ "$value" = true || "$value" = false ]] || exit 1
+          done
+          echo "TF_VAR_ai_internal_token_enabled=$TOKEN_ENABLED" >> "$GITHUB_ENV"
+          echo "TF_VAR_ai_internal_auth_enabled=$AUTH_ENABLED" >> "$GITHUB_ENV"
+          echo "TF_VAR_revenuecat_apply_sandbox_events=$SANDBOX_ENABLED" >> "$GITHUB_ENV"
+
+      - name: Preserve current production images
+        if: ${{ inputs.target == 'production' }}
+        run: python3 scripts/capture-prod-images.py --output environments/prod/release.auto.tfvars.json
+
       - name: Terraform speculative plan
         if: ${{ inputs.operation == 'plan-only' }}
         run: terraform -chdir="${{ steps.target.outputs.root }}" plan -input=false
@@ -219,4 +237,9 @@ jobs:
       - name: Terraform apply
         env:
           PLAN_FILE: ${{ needs.plan.outputs.plan-file }}
-        run: terraform -chdir="${{ needs.plan.outputs.root }}" apply -input=false "$RUNNER_TEMP/terraform-plan/${PLAN_FILE}"
+        run: |
+          if [ "${{ inputs.target }}" = production ]; then
+            terraform -chdir="${{ needs.plan.outputs.root }}" show -json "$RUNNER_TEMP/terraform-plan/${PLAN_FILE}" |
+              python3 scripts/capture-prod-images.py --check
+          fi
+          terraform -chdir="${{ needs.plan.outputs.root }}" apply -input=false "$RUNNER_TEMP/terraform-plan/${PLAN_FILE}"

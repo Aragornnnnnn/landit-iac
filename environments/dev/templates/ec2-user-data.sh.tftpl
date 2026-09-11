@@ -61,17 +61,37 @@ cat > "$${LANDIT_DIR}/Caddyfile" <<'CADDY'
 ${caddyfile}
 CADDY
 
+resolve_initial_sha() {
+  aws ecr describe-images --region "$${AWS_REGION}" --repository-name "$${1##*/}" \
+    --image-ids imageTag=latest --query 'imageDetails[0].imageTags' --output json |
+    jq -er '[.[] | select(test("^[0-9a-f]{40}$"))]
+      | if length == 1 then .[0] else error("latest must identify one Git SHA") end'
+}
+
 if [[ ! -s "$${LANDIT_DIR}/api.tag" ]]; then
-  printf '%s\n' latest > "$${LANDIT_DIR}/api.tag"
+  resolve_initial_sha "$${API_IMAGE}" > "$${LANDIT_DIR}/api.tag"
 fi
 if [[ ! -s "$${LANDIT_DIR}/ai.tag" ]]; then
-  printf '%s\n' latest > "$${LANDIT_DIR}/ai.tag"
+  resolve_initial_sha "$${AI_IMAGE}" > "$${LANDIT_DIR}/ai.tag"
 fi
+resolve_initial_ref() {
+  local digest
+  digest="$(aws ecr describe-images --region "$${AWS_REGION}" --repository-name "$${1##*/}" \
+    --image-ids "imageTag=$${2}" --query 'imageDetails[0].imageDigest' --output text)"
+  [[ "$${digest}" =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+  printf '%s@%s\n' "$${1}" "$${digest}"
+}
+for service in api ai; do
+  if [[ ! -s "$${LANDIT_DIR}/$${service}.ref" ]]; then
+    if [[ "$${service}" == api ]]; then repository="$${API_IMAGE}"; else repository="$${AI_IMAGE}"; fi
+    resolve_initial_ref "$${repository}" "$(cat "$${LANDIT_DIR}/$${service}.tag")" > "$${LANDIT_DIR}/$${service}.ref"
+  fi
+done
 cat > "$${LANDIT_DIR}/images.env" <<EOF
 API_IMAGE=$${API_IMAGE}
 AI_IMAGE=$${AI_IMAGE}
-API_TAG=$(cat "$${LANDIT_DIR}/api.tag")
-AI_TAG=$(cat "$${LANDIT_DIR}/ai.tag")
+API_IMAGE_REF=$(cat "$${LANDIT_DIR}/api.ref")
+AI_IMAGE_REF=$(cat "$${LANDIT_DIR}/ai.ref")
 EOF
 chmod 0644 "$${LANDIT_DIR}/images.env"
 

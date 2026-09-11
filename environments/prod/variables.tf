@@ -176,3 +176,54 @@ variable "grafana_logs_secret_arn" {
   type        = string
   default     = "arn:aws:secretsmanager:ap-northeast-2:982529430654:secret:landit/grafana-cloud/logs-R3yL8N"
 }
+
+variable "api_image_ref" {
+  description = "Reviewed image digest to preserve during infrastructure deployments."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.api_image_ref == null || can(regex("@sha256:[0-9a-f]{64}$", var.api_image_ref))
+    error_message = "Use a repository@sha256 digest, never a mutable tag."
+  }
+}
+
+variable "worker_image_ref" {
+  description = "Reviewed image digest to preserve during infrastructure deployments."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.worker_image_ref == null || can(regex("@sha256:[0-9a-f]{64}$", var.worker_image_ref))
+    error_message = "Use a repository@sha256 digest, never a mutable tag."
+  }
+}
+
+variable "release_baseline" {
+  description = "Read-only deployment snapshot embedded in a saved plan for apply verification."
+  type = map(object({
+    image_ref       = string
+    task_definition = string
+    deployment_id   = string
+    task_arns       = list(string)
+  }))
+  default = null
+}
+
+variable "ai_internal_token_enabled" {
+  description = "Inject the existing AI internal token into BE before enforcing AI authentication."
+  type        = bool
+  default     = false
+}
+
+variable "ai_internal_auth_enabled" {
+  description = "Inject the AI token only after every BE caller sends it."
+  type        = bool
+  default     = false
+}
+
+variable "revenuecat_apply_sandbox_events" {
+  description = "Reflect store sandbox purchases during a scheduled review window."
+  type        = bool
+  default     = false
+}

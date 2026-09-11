@@ -32,12 +32,17 @@ module "app_platform" {
   api_health_check_grace_period_seconds = var.api_health_check_grace_period_seconds
   ai_health_check_grace_period_seconds  = var.ai_health_check_grace_period_seconds
 
-  api_cpu              = var.api_cpu
-  api_memory           = var.api_memory
-  worker_cpu           = var.worker_cpu
-  worker_memory        = var.worker_memory
-  api_desired_count    = var.api_desired_count
-  worker_desired_count = var.worker_desired_count
+  revenuecat_apply_sandbox_events = var.revenuecat_apply_sandbox_events
+  ai_internal_token_enabled       = var.ai_internal_token_enabled
+  ai_internal_auth_enabled        = var.ai_internal_auth_enabled
+  api_image_ref                   = var.api_image_ref
+  worker_image_ref                = var.worker_image_ref
+  api_cpu                         = var.api_cpu
+  api_memory                      = var.api_memory
+  worker_cpu                      = var.worker_cpu
+  worker_memory                   = var.worker_memory
+  api_desired_count               = var.api_desired_count
+  worker_desired_count            = var.worker_desired_count
 
   review_reminder_schedule_expression = var.review_reminder_schedule_expression
   review_reminder_schedule_enabled    = var.review_reminder_schedule_enabled

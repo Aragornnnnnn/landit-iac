@@ -151,6 +151,7 @@ values = dict.fromkeys(names, "test-value")
 values.update(LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS="7200000",
               LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT="1000",
               LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT="20")
+values.update(LANDIT_AI_INTERNAL_TOKEN="lan474-token$secret")
 values.update(LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION="Bearer lan477-test$secret",
               LANDIT_SUBSCRIPTION_LAUNCHED_AT="2026-09-11T14:44:00+09:00")
 (directory / "ssm.json").write_text(json.dumps({"Parameters": [
@@ -174,11 +175,16 @@ expected = {
     'LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT="20"',
     'LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION="Bearer lan477-test$$secret"',
     'LANDIT_SUBSCRIPTION_LAUNCHED_AT="2026-09-11T14:44:00+09:00"',
+    'LANDIT_AI_INTERNAL_TOKEN="lan474-token$$secret"',
+    'LANDIT_REVENUECAT_APPLY_SANDBOX_EVENTS=true',
+    'SERVER_SHUTDOWN=graceful',
+    'SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE=50s',
 }
 assert expected <= set(api.read_text().splitlines()), "API must receive subscription and free-talk SSM values"
 assert stat.S_IMODE(api.stat().st_mode) == 0o600, "API secrets must remain owner-only"
 assert not any("LANDIT_REVENUECAT" in line or "LANDIT_SUBSCRIPTION" in line or "LANDIT_FREE_TALK" in line
                for line in (directory / "runtime/ai.env").read_text().splitlines())
+assert 'LANDIT_AI_INTERNAL_TOKEN="lan474-token$$secret"' in (directory / "runtime/ai.env").read_text()
 (directory / "api-before.env").write_bytes(api.read_bytes())
 response = json.loads((directory / "ssm.json").read_text())
 response["Parameters"] = [p for p in response["Parameters"]
@@ -224,17 +230,37 @@ prepare_case() {
   mkdir -p "${case_dir}/bin" "${case_dir}/landit/bin"
   printf '%s\n' "${OLD_SHA}" > "${case_dir}/landit/api.tag"
   printf '%s\n' "${OLD_SHA}" > "${case_dir}/landit/ai.tag"
+  if [[ "${name}" == same-sha ]]; then printf '%s\n' "${NEW_SHA}" > "${case_dir}/landit/api.tag"; fi
   : > "${case_dir}/landit/compose.yml"
   printf '#!/usr/bin/env bash\nexit 0\n' > "${case_dir}/landit/bin/runtime-env"
   chmod 0755 "${case_dir}/landit/bin/runtime-env"
 
   cat > "${case_dir}/bin/aws" <<'EOF'
 #!/usr/bin/env bash
-printf 'token\n'
+case "$*" in
+  *get-login-password*) printf 'token\n' ;;
+  *describe-images*) printf 'sha256:%064d\n' 2 ;;
+  *) exit 1 ;;
+esac
 EOF
   cat > "${case_dir}/bin/docker" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${TEST_LOG}"
+case "$*" in
+  *' ps '*) exit 1 ;;
+  'ps -aq'*service=api) printf 'aaaaaaaaaaaa\n'; exit 0 ;;
+  'ps -aq'*service=ai) printf 'bbbbbbbbbbbb\n'; exit 0 ;;
+  'inspect '*) printf 'sha256:%064d\n' 1; exit 0 ;;
+  'image inspect '*)
+    printf '["123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/develop-landit-api@sha256:%064d","123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/develop-landit-worker@sha256:%064d"]\n' 1 1
+    exit 0 ;;
+esac
+if [[ "$*" == *' up -d '* || "$*" == *' pull '* ]]; then
+  while [[ "$#" -gt 0 ]]; do
+    if [[ "$1" == --env-file ]]; then cat "$2" >> "${TEST_LOG}.images"; break; fi
+    shift
+  done
+fi
 if [[ "${TEST_MODE}" == pull-fail && "$*" == *' pull api'* ]]; then
   exit 1
 fi
@@ -295,6 +321,8 @@ run_case() {
 
 success_dir="$(run_case success success 0)"
 assert_file_value "${success_dir}/landit/api.tag" "${NEW_SHA}"
+assert_file_value "${success_dir}/landit/api.previous.tag" "${OLD_SHA}"
+rg -q "api ${OLD_SHA} ${NEW_SHA} " "${success_dir}/landit/deployments.log"
 
 pull_failure_dir="$(run_case pull-failure pull-fail 1)"
 assert_file_value "${pull_failure_dir}/landit/api.tag" "${OLD_SHA}"
@@ -312,3 +340,28 @@ fi
 
 rollback_failure_dir="$(run_case rollback-failure rollback-fail 1)"
 assert_file_value "${rollback_failure_dir}/landit/api.tag" "${OLD_SHA}"
+
+# 토큰이 아직 준비되지 않은 공존 단계에서도 기존 환경 생성은 성공한다.
+python3 - "${TEST_DIR}" <<'PYTEST'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+response = json.loads((p / "ssm.json").read_text())
+response["Parameters"] = [v for v in response["Parameters"] if not v["Name"].endswith("/LANDIT_AI_INTERNAL_TOKEN")]
+(p / "ssm-no-token.json").write_text(json.dumps(response))
+PYTEST
+PATH="${TEST_DIR}/runtime-bin:${PATH}" TEST_SSM_RESPONSE="${TEST_DIR}/ssm-no-token.json" \
+  bash "${TEST_DIR}/runtime-env"
+if rg -q '^LANDIT_AI_INTERNAL_TOKEN=' "${TEST_DIR}/runtime/api.env" "${TEST_DIR}/runtime/ai.env"; then
+  echo 'optional token must be absent while compatibility mode is active.' >&2
+  exit 1
+fi
+
+# 같은 SHA의 태그가 새 이미지로 덮여도 이전 실행 digest로 돌아간다.
+same_sha_dir="$(run_case same-sha health-fail 1)"
+old_ref="123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/develop-landit-api@$(printf 'sha256:%064d' 1)"
+new_ref="123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/develop-landit-api@$(printf 'sha256:%064d' 2)"
+assert_file_value "${same_sha_dir}/landit/api.tag" "${NEW_SHA}"
+assert_file_value "${same_sha_dir}/landit/api.previous.ref" "${old_ref}"
+assert_file_value "${same_sha_dir}/landit/api.ref" "${old_ref}"
+rg -Fxq "API_IMAGE_REF=${new_ref}" "${same_sha_dir}/docker.log.images"
+rg -Fxq "API_IMAGE_REF=${old_ref}" "${same_sha_dir}/landit/images.env"

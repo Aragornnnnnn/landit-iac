@@ -733,7 +733,7 @@ resource "aws_lb" "api" {
 
   name               = "${local.name_prefix}-alb"
   load_balancer_type = "application"
-  idle_timeout       = 70
+  idle_timeout       = 130
   security_groups    = [aws_security_group.alb[0].id]
   subnets            = values(aws_subnet.public)[*].id
 
@@ -936,11 +936,12 @@ resource "aws_wafv2_web_acl_logging_configuration" "alb" {
 resource "aws_lb_target_group" "api" {
   count = var.ecs_platform_enabled ? 1 : 0
 
-  name        = "${local.name_prefix}-api"
-  port        = var.container_port
-  protocol    = "HTTP"
-  target_type = "ip"
-  vpc_id      = aws_vpc.this.id
+  name                 = "${local.name_prefix}-api"
+  port                 = var.container_port
+  protocol             = "HTTP"
+  target_type          = "ip"
+  vpc_id               = aws_vpc.this.id
+  deregistration_delay = 150
 
   health_check {
     enabled             = true
@@ -956,11 +957,12 @@ resource "aws_lb_target_group" "api" {
 resource "aws_lb_target_group" "ai" {
   count = var.ecs_platform_enabled ? 1 : 0
 
-  name        = "${local.name_prefix}-ai"
-  port        = var.ai_container_port
-  protocol    = "HTTP"
-  target_type = "ip"
-  vpc_id      = aws_vpc.this.id
+  name                 = "${local.name_prefix}-ai"
+  port                 = var.ai_container_port
+  protocol             = "HTTP"
+  target_type          = "ip"
+  vpc_id               = aws_vpc.this.id
+  deregistration_delay = 150
 
   health_check {
     enabled             = true
@@ -1467,9 +1469,10 @@ resource "aws_ecs_task_definition" "api" {
 
   container_definitions = jsonencode([
     {
-      name      = "api"
-      image     = "${aws_ecr_repository.api.repository_url}:latest"
-      essential = true
+      name        = "api"
+      image       = var.api_image_ref
+      essential   = true
+      stopTimeout = 120
 
       portMappings = [
         {
@@ -1484,6 +1487,11 @@ resource "aws_ecs_task_definition" "api" {
         { name = "SENTRY_ENVIRONMENT", value = var.environment },
         { name = "SPRING_FLYWAY_BASELINE_ON_MIGRATE", value = "true" },
         { name = "SPRING_PROFILES_ACTIVE", value = var.environment },
+        { name = "SERVER_SHUTDOWN", value = "graceful" },
+        { name = "SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE", value = "50s" },
+        { name = "SPRING_TASK_EXECUTION_SHUTDOWN_AWAIT_TERMINATION", value = "true" },
+        { name = "SPRING_TASK_EXECUTION_SHUTDOWN_AWAIT_TERMINATION_PERIOD", value = "50s" },
+        { name = "LANDIT_REVENUECAT_APPLY_SANDBOX_EVENTS", value = tostring(var.revenuecat_apply_sandbox_events) },
         { name = "S3_BUCKET_NAME", value = aws_s3_bucket.app.bucket },
         { name = "CONTENT_BUCKET_NAME", value = var.content_bucket_name },
         { name = "CONTENT_CLOUDFRONT_URL", value = var.content_cloudfront_url },
@@ -1529,7 +1537,9 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT", valueFrom = "${local.ssm_path}/LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT" },
         { name = "LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION", valueFrom = "${local.ssm_path}/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_BE_SENTRY_DSN" }
-        ], var.grafana_otlp_enabled ? [
+        ], var.ai_internal_token_enabled ? [
+        { name = "LANDIT_AI_INTERNAL_TOKEN", valueFrom = "${local.ssm_path}/LANDIT_AI_INTERNAL_TOKEN" }
+        ] : [], var.grafana_otlp_enabled ? [
         { name = "OTEL_EXPORTER_OTLP_HEADERS", valueFrom = "${local.ssm_path}/LANDIT_GRAFANA_CLOUD_OTLP_HEADERS" }
       ] : [])
 
@@ -1545,6 +1555,14 @@ resource "aws_ecs_task_definition" "api" {
   ])
 
   lifecycle {
+    precondition {
+      condition     = !var.ai_internal_auth_enabled || var.ai_internal_token_enabled
+      error_message = "Inject the BE token before requiring AI internal authentication."
+    }
+    precondition {
+      condition     = try(split("@", var.api_image_ref)[0] == aws_ecr_repository.api.repository_url, false) && can(regex("@sha256:[0-9a-f]{64}$", var.api_image_ref))
+      error_message = "api_image_ref must pin an image digest from the matching ECR repository."
+    }
     precondition {
       condition     = !var.grafana_otlp_enabled || length(trimspace(var.grafana_otlp_endpoint)) > 0
       error_message = "grafana_otlp_endpoint is required when grafana_otlp_enabled is true."
@@ -1562,12 +1580,14 @@ resource "aws_ecs_task_definition" "worker" {
   memory                   = var.worker_memory
   execution_role_arn       = aws_iam_role.execution[0].arn
   task_role_arn            = aws_iam_role.worker_task[0].arn
+  skip_destroy             = true
 
   container_definitions = jsonencode([
     {
-      name      = "worker"
-      image     = "${aws_ecr_repository.worker.repository_url}:latest"
-      essential = true
+      name        = "worker"
+      image       = var.worker_image_ref
+      essential   = true
+      stopTimeout = 120
 
       portMappings = [
         {
@@ -1603,7 +1623,9 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "MESSAGE_FEEDBACK_REVIEW_ENABLED", valueFrom = "${local.ssm_path}/MESSAGE_FEEDBACK_REVIEW_ENABLED" },
         { name = "OPENROUTER_API_KEY", valueFrom = "${local.ssm_path}/OPENROUTER_API_KEY" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_AI_SENTRY_DSN" }
-        ], var.grafana_otlp_enabled ? [
+        ], var.ai_internal_auth_enabled ? [
+        { name = "LANDIT_AI_INTERNAL_TOKEN", valueFrom = "${local.ssm_path}/LANDIT_AI_INTERNAL_TOKEN" }
+        ] : [], var.grafana_otlp_enabled ? [
         { name = "OTEL_EXPORTER_OTLP_HEADERS", valueFrom = "${local.ssm_path}/LANDIT_GRAFANA_CLOUD_OTLP_HEADERS" }
       ] : [])
 
@@ -1619,6 +1641,14 @@ resource "aws_ecs_task_definition" "worker" {
   ])
 
   lifecycle {
+    precondition {
+      condition     = !var.ai_internal_auth_enabled || var.ai_internal_token_enabled
+      error_message = "Inject the BE token before requiring AI internal authentication."
+    }
+    precondition {
+      condition     = try(split("@", var.worker_image_ref)[0] == aws_ecr_repository.worker.repository_url, false) && can(regex("@sha256:[0-9a-f]{64}$", var.worker_image_ref))
+      error_message = "worker_image_ref must pin an image digest from the matching ECR repository."
+    }
     precondition {
       condition     = !var.grafana_otlp_enabled || length(trimspace(var.grafana_otlp_endpoint)) > 0
       error_message = "grafana_otlp_endpoint is required when grafana_otlp_enabled is true."

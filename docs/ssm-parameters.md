@@ -52,6 +52,16 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 
 `{environment}`는 `develop` 또는 `prod`만 사용합니다.
 
+## 프리톡 한도
+
+| Path pattern | Type | 계정별 한도 |
+| --- | --- | --- |
+| `/landit/{environment}/LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS` | `String` | KST 하루 발화 시간 `7200000`ms, 120분 |
+| `/landit/{environment}/LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT` | `String` | KST 하루 생성 요청 `1000`회 |
+| `/landit/{environment}/LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT` | `String` | 고정 1분 구간 생성 요청 `20`회 |
+
+두 환경에 세 parameter를 먼저 등록한 뒤 개발 EC2 runtime env와 운영 ECS API `secrets`에 연결합니다. 값은 Terraform 밖에서 관리하며, AI 컨테이너에는 주입하지 않습니다. 개발은 `aws_ssm_document.ec2_deploy` 반영 후 API 배포가 필요하고, 운영은 task definition과 service 반영으로 새 API task가 시작되어야 합니다. 기존 값만 변경해도 API 재배포가 필요합니다.
+
 ## DB URL 형식
 
 `DB_URL`은 아래 형식을 사용합니다. username과 password는 포함하지 않습니다.

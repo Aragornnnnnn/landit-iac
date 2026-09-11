@@ -1,6 +1,6 @@
 # 배포 중 학습 보존.
 
-공개 순서는 dev 테스트 → 심사 → 출시 → 오픈이다. 코드 배포와 결제 공개는 분리한다. 기존 학습의 24시간 재개 권한과 작업 복구는 BE가 관리한다.
+공개 순서는 dev 테스트 → 심사 → 출시 → 오픈이다. 코드 배포와 결제 공개는 분리한다. 결제 공개는 기존 SSM `LANDIT_SUBSCRIPTION_LAUNCHED_AT`과 FE `NEXT_PUBLIC_PAYMENT_ENABLED`를 유지한다. DB 공개 정책으로 대체하지 않는다. 기존 학습의 24시간 재개 권한과 작업 복구는 BE가 관리한다.
 
 ## 이미지와 되돌리기.
 
@@ -31,12 +31,19 @@ AI 컨테이너 포트는 운영에서는 ALB 보안 그룹에서만, 개발에�
 
 운영 두 입력은 Terraform workflow의 `AI_INTERNAL_TOKEN_ENABLED`, `AI_INTERNAL_AUTH_ENABLED` 환경 변수로 설정한다. 모두 기본 `false`이며, 준비되지 않은 SSM 때문에 기존 task 배포가 실패하지 않는다.
 
-`LANDIT_REVENUECAT_APPLY_SANDBOX_EVENTS`는 개발 `true`, 운영 기본 `false`다. 운영 스토어 심사 기간에만 Terraform 입력 `revenuecat_apply_sandbox_events`를 `true`로 검토·반영하고, 심사 뒤 다시 `false`로 돌린다. workflow 변수는 `REVENUECAT_APPLY_SANDBOX_EVENTS`다. 설정은 새 API task에서 적용되며, 심사 계정의 접근 정책과 실결제 구독은 BE에서 별도로 관리한다.
+`LANDIT_REVENUECAT_APPLY_SANDBOX_EVENTS`는 개발·운영 기본 `true`로 기존 BE 기본값을 유지한다. 스토어 심사 뒤 Terraform 입력 `revenuecat_apply_sandbox_events`를 명시적으로 `false`로 변경한다. workflow 변수는 `REVENUECAT_APPLY_SANDBOX_EVENTS`다. 설정은 새 API task에서 적용되며, 결제 공개 시점이나 실결제 구독 상태를 변경하는 스위치는 아니다.
 
 ## 최초 전환과 확인.
 
-- 구 AI 응답을 읽을 수 있는 BE와 구 BE 요청을 받을 수 있는 AI를 먼저 배포한다. 기존 AI 메모리 피드백이 DB로 옮겨지기 전에는 AI를 교체하지 않는다. 옮길 수 없는 세션은 신규 시작만 잠시 제한하고 기존 결과 수거를 완료한 뒤 교체한다. 대화 진행 권한 24시간과 AI 메모리 TTL은 다르므로 시간만 기다려서 안전해졌다고 판단하지 않는다.
+- 구 AI 응답을 읽을 수 있는 BE와 구 BE 요청을 받을 수 있는 AI를 먼저 배포한다. 기존 AI 메모리 피드백이 DB로 옮겨지기 전에는 AI를 교체하지 않는다. 옮길 수 없는 세션은 별도로 신규 진입을 제한할 운영 수단을 준비해 기존 결과 수거를 완료한 뒤 교체한다. 이번 범위에는 DB 신규 시작 중지 스위치가 없다. 대화 진행 권한 24시간과 AI 메모리 TTL은 다르므로 시간만 기다려서 안전해졌다고 판단하지 않는다.
 - ECS·Compose 종료 유예는 120초다. BE는 HTTP graceful 50초와 executor 대기 50초, AI는 graceful 110초 계약을 사용한다. ALB idle 130초·drain 150초로 120초 피드백 응답을 수용한다. 종료 제한을 넘거나 강제 종료된 작업은 BE DB에서 재시도해야 한다. [AWS 종료 유예 문서](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_ContainerDefinition.html).
 - dev에서 피드백 생성 중 AI 교체, BE 저장 직전 재시작, 같은 메시지 재요청을 실행한다. 다음 질문 지연, 중복 결과, 영구 PREPARING이 없어야 한다. 이전 BE+새 AI와 새 BE+이전 AI 조합도 확인한다.
 - 결제 오픈 전 시작한 학습이 같은 ID로 마무리되는지, 무료 대화 한 번 뒤 새 유료 학습이 막히는지, 구매·취소·복원이 실제 구독과 맞는지 확인한다. 실기기/구매 결과와 서버별 image digest를 함께 기록한다. health 성공만으로 완료하지 않는다.
-- 기능 롤백은 BE 공개 정책과 FE 페이월을 함께 되돌린다. DB에 저장한 학습·피드백·실결제 권한은 유지한다. 코드 롤백 시 이전 BE·AI가 새 저장 데이터와 인증 계약을 읽을 수 있는지 먼저 확인한다.
+- 기능 롤백은 BE 오픈 시각을 비우고 재기동하는 절차와 FE 플래그 false 재배포를 함께 수행한다. DB에 저장한 학습·피드백·실결제 권한은 유지한다. 코드 롤백 시 이전 BE·AI가 새 저장 데이터와 인증 계약을 읽을 수 있는지 먼저 확인한다.
+
+## 결제 비활성 선배포 조건.
+
+- BE 오픈 시각은 미설정으로 유지한다. FE 공개는 기존 플래그를 따른다. 학습·피드백의 DB 보존은 유료 잠금을 켜지 않는다.
+- 2026-09-11 운영 API revision 12에는 오픈 시각의 SSM 주입이 없었다. 현 IaC의 API secrets 목록에도 없으므로 SSM 값만 추가해도 활성화되지 않는다. 오픈 전에 파라미터 준비와 task definition 연결을 별도로 완료해야 한다. 존재하지 않는 SSM을 무조건 연결하면 새 task가 시작하지 못하므로 이번 선배포 수정에서 강제로 추가하지 않았다.
+- ECS에 주입한 환경변수는 새 task 시작 때 읽는다. SSM 값 변경만으로 실행 중 BE가 즉시 전환되는 구조가 아니다. 오픈·롤백 때 새 task의 실제 설정을 확인한다.
+- 오픈 후 24시간 기존 학습 재개까지 보장하려면 FE의 재개 화면·페이월도 BE 학습 권한을 반영해야 한다. 결제 비활성 선배포에는 이 FE 변경이 필요하지 않다.

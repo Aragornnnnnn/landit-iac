@@ -223,7 +223,7 @@ variable "ai_internal_auth_enabled" {
 }
 
 variable "revenuecat_apply_sandbox_events" {
-  description = "Reflect store sandbox purchases during a scheduled review window."
+  description = "Preserve BE sandbox processing by default; disable explicitly after store review."
   type        = bool
-  default     = false
+  default     = true
 }

@@ -3,7 +3,7 @@
 기준: origin/main 0c1fca9. 이 저장소에는 develop 브랜치와 열린 PR이 없다. 사용자 확정 정책은 시작 후 24시간 같은 학습 재개, 첫 무료 기회는 해당 대화에 고정이다. 공개 순서는 dev 테스트 → 심사 → 출시 → 오픈을 유지한다.
 
 - [x] BE·AI 배포 소유권과 이미지·환경변수 계약을 확인했다. prod 코드 workflow의 새 digest task revision 배포는 각 코드 저장소에서 변경한다.
-- [x] 개발 optional 토큰과 운영 BE→AI 단계별 토큰 주입, sandbox 기본 dev 반영/prod 무시, 종료 유예를 연결했다. 실제 비밀값은 변경하지 않았다.
+- [x] 개발 optional 토큰과 운영 BE→AI 단계별 토큰 주입, sandbox 기본 dev·prod 반영으로 기존 BE 기본값 유지, 종료 유예를 연결했다. 실제 비밀값은 변경하지 않았다.
 - [x] 운영 Terraform plan에 현재 실행 digest와 deployment snapshot을 고정하고 apply 직전 변경을 검사한다. 개발은 실제 실행 digest와 SHA를 기록하고 해당 digest로 rollback한다. 같은 SHA 재빌드 실패 회귀 테스트도 통과했다.
 - [x] 구 AI 캐시 수거, 교차 버전·재시작 복구 스모크와 운영 적용 절차를 [배포 중 학습 보존](../../deployment-safety.md)에 기록했다. 블루그린은 필수 구현이 아니다.
 - [x] `terraform fmt -recursive -check`, dev/prod `validate`, dev/prod 저장 `plan`, 실행 snapshot 캡처·saved plan 비교를 통과했다.
@@ -24,3 +24,7 @@
 - plan 직전·apply 직전 검사는 원자적 배포 잠금이 아니다. 인프라 승인·apply 동안 다른 코드 배포를 멈추는 운영 규칙을 유지한다.
 
 최종 개발 plan도 landit 프로필로 재실행해 `0 to add, 3 to change, 0 to destroy`를 확인했다. 세 환경 validate, fmt check와 배포 스크립트 테스트를 직접 다시 통과했다.
+
+2026-09-11 선배포 호환 점검: 운영 sandbox 기본값을 BE와 같은 true로 맞춰 IaC 적용만으로 심사 결제 처리가 꺼지지 않게 한다. 결제 공개는 기존 SSM과 FE 플래그가 담당하며, DB 공개 정책은 사용하지 않는다. 운영 실행 revision prod-landit-api:12의 결제 오픈 시각·sandbox 환경변수 및 secrets 주입이 모두 없음을 읽기 전용으로 확인했다. SSM 오픈 설정을 사용하기 전 task definition에 해당 파라미터 연결을 준비하고, 실제 주입 여부를 확인해야 한다. 이번 점검에서 SSM 값과 운영 task는 변경하지 않는다.
+
+후속 검증: `terraform fmt -recursive -check`, dev/prod `terraform validate`, `bash scripts/test-terraform-workflow-contract.sh`를 통과했다. 새 운영 저장 plan은 기존과 같은 ECS/ALB 7개 리소스 범위이며, 결제 오픈 시각 주입은 추가하지 않고 sandbox만 BE 기본값과 같은 true로 명시한다. plan의 task revision 교체는 skip_destroy로 이전 revision을 보존한다. apply는 하지 않았다.

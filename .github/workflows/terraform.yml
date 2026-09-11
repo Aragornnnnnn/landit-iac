@@ -143,7 +143,7 @@ jobs:
         env:
           TOKEN_ENABLED: ${{ vars.AI_INTERNAL_TOKEN_ENABLED || 'false' }}
           AUTH_ENABLED: ${{ vars.AI_INTERNAL_AUTH_ENABLED || 'false' }}
-          SANDBOX_ENABLED: ${{ vars.REVENUECAT_APPLY_SANDBOX_EVENTS || 'false' }}
+          SANDBOX_ENABLED: ${{ vars.REVENUECAT_APPLY_SANDBOX_EVENTS || 'true' }}
         run: |
           for value in "$TOKEN_ENABLED" "$AUTH_ENABLED" "$SANDBOX_ENABLED"; do
             [[ "$value" = true || "$value" = false ]] || exit 1

@@ -35,6 +35,7 @@ import array
 import dataclasses
 import hashlib
 import html
+import http.client
 import json
 import math
 import os
@@ -715,7 +716,7 @@ def adjudicate_audio(
     try:
         body = json.loads(result.body.decode("utf-8"))
         raw = (body["choices"][0]["message"]["content"] or "").strip()
-    except (json.JSONDecodeError, KeyError, IndexError, TypeError) as error:
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError, AttributeError, UnicodeDecodeError) as error:
         raise epa.AccentVerificationError(
             f"adjudication response body is malformed: {type(error).__name__}"
         ) from error
@@ -724,6 +725,8 @@ def adjudicate_audio(
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
+        return Adjudication(None, None, None)
+    if not isinstance(parsed, dict):
         return Adjudication(None, None, None)
     heard = parsed.get("heard") if isinstance(parsed.get("heard"), str) else None
     defect = parsed.get("defect") if isinstance(parsed.get("defect"), str) else None
@@ -787,7 +790,7 @@ def run_adjudication(
                 accent_locale=asset.accent_locale,
                 single_word_lenient=asset.kind == epa.KIND_WORD,
             )
-        except epa.AccentVerificationError:
+        except (epa.AccentVerificationError, OSError, http.client.HTTPException):
             return item, None
         return item, verdict
 
@@ -834,7 +837,20 @@ def run_adjudication(
         "passedSampleDefects": len(false_negatives),
         "applied": apply_verdicts,
     }
-    payload.setdefault("summary", {})["adjudication"] = summary
+    report_summary = payload.setdefault("summary", {})
+    if apply_verdicts:
+        report_summary.update(summarize({
+            key: AssetOutcome(
+                asset_id=key, text=row["text"], kind=row["kind"],
+                accent_locale=row["accentLocale"], passed=row["passed"],
+                attempts=row["attempts"], first_reason=row["firstReason"],
+                last_reason=row.get("lastReason", ""),
+                last_transcript=row["lastTranscript"], last_rms_dbfs=row["lastRmsDbfs"],
+                audio_sha256=row["audioSha256"],
+            )
+            for key, row in assets.items()
+        }))
+    report_summary["adjudication"] = summary
     payload["assets"] = sorted(assets.values(), key=lambda r: r["assetId"])
     temporary = report_path.with_suffix(".json.part")
     temporary.write_text(

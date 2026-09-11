@@ -570,6 +570,59 @@ class AdjudicationTests(unittest.TestCase):
         report.write_text(json.dumps({"schemaVersion": 1, "summary": {}, "assets": assets}))
         return report
 
+    def test_non_object_json_is_unresolved(self):
+        path = self.clip()
+        try:
+            for content in ("[]", "null", "42"):
+                with self.subTest(content=content):
+                    verdict = adjudicate_audio(
+                        "key", path, "it", requester=lambda *a: self.reply(content)
+                    )
+                    self.assertIsNone(verdict.clean)
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_network_failure_preserves_other_verdicts(self):
+        snapshot = load_snapshot(make_source_payload())
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            report = self.build_report(work_dir, snapshot)
+            failed_path = audio_path_for(work_dir, snapshot.assets[2])
+
+            def judge(api_key, path, *args, **kwargs):
+                if path == failed_path:
+                    raise TimeoutError("request timed out")
+                return Adjudication(True, "ok", "none")
+
+            summary = run_adjudication(
+                report, work_dir, snapshot, "key", workers=2, apply_verdicts=True,
+                adjudicator=judge, progress=lambda m: None,
+            )
+            self.assertEqual(summary["unresolved"], 1)
+            self.assertEqual(summary["geminiSaysClean"], summary["failedJudged"] - 1)
+            rows = json.loads(report.read_text())["assets"]
+            self.assertEqual(sum(not row["passed"] for row in rows), 1)
+
+    def test_apply_refreshes_report_summary(self):
+        snapshot = load_snapshot(make_source_payload())
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            report = self.build_report(work_dir, snapshot)
+            payload = json.loads(report.read_text())
+            payload["summary"] = {"failed": 6, "transcribeTimeouts": 2}
+            report.write_text(json.dumps(payload))
+            run_adjudication(
+                report, work_dir, snapshot, "key", workers=2, apply_verdicts=True,
+                adjudicator=lambda *a, **k: Adjudication(True, "ok", "none"),
+                progress=lambda m: None,
+            )
+            payload = json.loads(report.read_text())
+            self.assertTrue(all(row["passed"] for row in payload["assets"]))
+            self.assertEqual(payload["summary"]["failed"], 0)
+            self.assertEqual(payload["summary"]["failedByLocale"], {})
+            self.assertEqual(payload["summary"]["passedFirstTry"], len(snapshot.assets))
+            self.assertEqual(payload["summary"]["transcribeTimeouts"], 2)
+
     def test_records_verdicts_without_flipping_unless_applied(self):
         snapshot = load_snapshot(make_source_payload())
         with tempfile.TemporaryDirectory() as tmp:

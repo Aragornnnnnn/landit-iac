@@ -16,7 +16,13 @@ AWS_PROFILE=landit python3 scripts/capture-prod-images.py --output /tmp/landit-r
 AWS_PROFILE=landit terraform -chdir=environments/prod plan -var-file=/tmp/landit-release.tfvars.json -out=/tmp/landit-production.tfplan
 ```
 
-운영 BE·AI 코드 배포 역할 `landit-github-actions-prod-deploy`에는 새 revision 등록을 위한 `ecs:RegisterTaskDefinition`, 해당 task definition의 `ecs:TagResource`, 기존 ECS 실행·task 역할에 한정한 `iam:PassRole`이 필요하다. 이 IAM 추가 코드 작성은 자동 승인 검토가 거절해 포함하지 않았다. 역할 추가 권한의 코드 작성 승인·plan 검토·apply를 마치기 전 새 운영 코드 workflow를 실행하지 않는다.
+운영 BE·AI 코드 배포 역할 `landit-github-actions-prod-deploy`의 추가 권한은 `bootstrap/terraform-actions/production-code-deploy.tf`가 별도 인라인 정책으로 관리한다. 기존 정책과 trust는 유지한다.
+
+- 등록·태그 조회·등록 중 태깅은 `prod-landit-api:*`, `prod-landit-worker:*` task definition에 한정한다. 등록에는 `Project=landit`, `Environment=prod` 요청 태그가 필요하고 직접 재태깅은 추가로 허용하지 않는다.
+- PassRole은 기존 ECS 실행 역할·API task 역할·worker task 역할을 `ecs-tasks.amazonaws.com`에 전달할 때만 허용한다.
+- ECR digest 조회는 운영 저장소 두 개로 제한한다. task definition 조회는 [AWS 권한 규칙](https://docs.aws.amazon.com/service-authorization/latest/reference/list_ecs.html)에 따라 리소스 `*`가 필요하므로 서울 리전으로 제한한다. 등록 중 태깅 조건은 [AWS 태깅 문서](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/supported-iam-actions-tagging.html)를 따른다.
+
+로컬 `landit` 프로필로 bootstrap 저장 plan을 검토하고 **별도 승인 후 적용**해야 운영 배포 역할에 반영된다. 일반 Terraform Actions에 자기 권한을 수정할 권한은 추가하지 않는다. 적용 전 새 운영 코드 workflow를 실행하지 않는다. 저장 plan의 JSON을 만든 뒤 `python3 scripts/test-prod-code-deploy-policy.py <plan.json>`으로 허용·거부 경계를 재검증할 수 있다. 이 검증은 권한을 적용하지 않는다.
 
 승인된 plan을 적용하기 직전 `terraform show -json`을 `capture-prod-images.py --check`에 전달한다. 일반 운영 apply workflow에 이 검사가 포함되어 있다. 새 조회에 필요한 `ecs:ListTasks`, `ecs:DescribeTasks`는 별도 bootstrap plan·승인·apply 후 Terraform Actions 역할에 반영한다.
 

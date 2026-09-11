@@ -10,7 +10,7 @@
 - [x] `python3 -m unittest discover -s scripts/tests -p 'test_capture_prod_images.py'` 4개와 `test-dev-ec2-{runtime,contract,cleanup}.sh`, `test-terraform-{workflow,actions-oidc}-contract.sh`를 통과했다.
 - [x] bootstrap `validate`와 저장 `plan`을 통과했다. 운영 plan/apply 역할 두 개에 `ecs:ListTasks`, `ecs:DescribeTasks`만 추가한다.
 - [x] 앞선 독립 검토 지적을 수정하고 이후 검토와 최종 검증은 사용자의 요청대로 주 에이전트가 직접 수행했다.
-- [ ] 운영 코드 배포 역할의 revision 등록·태깅·PassRole 추가 코드 작성 승인이 필요하다. 자동 승인 검토가 이 권한 확대를 거절해 파일을 생성하지 않았다. apply·운영 배포는 별도다.
+- [x] 2026-09-12 추가 승인 후 운영 코드 배포 역할의 revision 등록·태깅·PassRole 및 필요한 조회 권한 코드를 후속 PR로 준비했다. 실제 apply·운영 배포는 별도다.
 
 ## 검증 결과.
 
@@ -30,3 +30,9 @@
 후속 검증: `terraform fmt -recursive -check`, dev/prod `terraform validate`, `bash scripts/test-terraform-workflow-contract.sh`를 통과했다. 새 운영 저장 plan은 기존과 같은 ECS/ALB 7개 리소스 범위이며, 결제 오픈 시각 주입은 추가하지 않고 sandbox만 BE 기본값과 같은 true로 명시한다. plan의 task revision 교체는 skip_destroy로 이전 revision을 보존한다. apply는 하지 않았다.
 
 2026-09-12 PR 준비 검증: 사용자 운영 hotfix 배포 후 현재 실행 digest로 prod 저장 plan을 새로 만들었다. ECS service 2개·task definition 2개·ALB/target group 3개 범위이며 task definition은 `skip_destroy=true`로 이전 revision을 보존한다. saved plan과 현재 실행 revision·digest 비교를 통과했다. fmt, dev·prod·bootstrap validate, 이미지 snapshot Python 4개, dev runtime·contract·cleanup 및 Terraform workflow·OIDC 계약 테스트도 다시 통과했다. AWS apply·SSM 변경은 수행하지 않았다. 운영 코드 배포 역할의 revision 등록·태깅·PassRole 권한 준비는 기존 미해결 항목으로 남긴다.
+
+## 운영 배포 IAM 후속 작업.
+
+2026-09-12 사용자가 앞서 누락한 운영 배포 IAM 권한 추가를 승인했다. #43이 이미 main에 병합되어 최신 main 9437c50에서 후속 PR을 만든다. 기존 수동 관리 배포 역할의 정책을 교체하지 않고 bootstrap root에 추가 인라인 정책 하나만 관리한다. 등록·태깅은 운영 API/worker task family와 Landit prod 요청 태그로 제한하고, PassRole은 실제 실행 역할·API task·worker task 역할에 한정한다. 실제 정책에 없는 ECR digest 조회·task definition 조회·태그 조회도 필요한 범위에 추가한다. fmt·validate·저장 plan·AWS IAM 정책 검증과 허용/거부 시뮬레이션 후 PR을 올린다. AWS 적용·2차 PR 병합·배포·SSM 변경은 이번 승인 범위로 간주하지 않는다.
+
+후속 검증 완료: `terraform fmt -recursive -check`, bootstrap `terraform validate`, OIDC·workflow 계약 shell 테스트를 통과했다. 저장 plan은 새 배포 추가 정책 1개 생성과 #43의 기존 plan/apply 운영 역할 조회 권한 2개 수정이며 삭제는 없다. 수정 두 개의 실제 차이는 `ecs:ListTasks`·`ecs:DescribeTasks` 추가뿐이다. AWS Access Analyzer 지적 0개, `python3 scripts/test-prod-code-deploy-policy.py <plan.json>`의 15개 시나리오·28개 허용/거부 판정을 통과했다. 승인된 범위는 코드·PR 준비까지이며 실제 권한 적용은 하지 않았다. 사용자 요청대로 직접 검토했으며 독립 에이전트 리뷰는 수행하지 않았다.

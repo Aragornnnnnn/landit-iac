@@ -62,6 +62,8 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 
 두 환경에 세 parameter를 먼저 등록한 뒤 개발 EC2 runtime env와 운영 ECS API `secrets`에 연결합니다. 값은 Terraform 밖에서 관리하며, AI 컨테이너에는 주입하지 않습니다. 개발은 `aws_ssm_document.ec2_deploy` 반영 후 API 배포가 필요하고, 운영은 task definition과 service 반영으로 새 API task가 시작되어야 합니다. 기존 값만 변경해도 API 재배포가 필요합니다.
 
+운영 발화 시간 SSM 경로는 유지하되 컨테이너에는 `LANDIT_FREE_TALK_DAILY_SPEAKING_TIME_LIMIT_MS`라는 새 이름으로 주입합니다. 기존 운영 코드가 읽는 `LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS`는 운영 ECS에 주입하지 않습니다. 따라서 설정을 먼저 연결해도 구버전은 기본 1분을 유지하고, 새 이름을 읽는 BE LAN-478 배포 후 120분으로 전환됩니다. LAN-478은 개발 호환을 위해 기존 이름도 fallback으로 읽습니다. 일일·분당 요청 수 제한 역시 LAN-478 코드 배포 후 적용됩니다.
+
 ## DB URL 형식
 
 `DB_URL`은 아래 형식을 사용합니다. username과 password는 포함하지 않습니다.

@@ -25,8 +25,8 @@ Vercel의 `landit.im` DNS에 다음 CNAME 3개를 등록했다. Host는 도메�
 | `xm2fiaszxaakbdkjqmwgstlqegqibbbv._domainkey` | `xm2fiaszxaakbdkjqmwgstlqegqibbbv.dkim.amazonses.com` |
 
 - CNAME 3개는 `ns1.vercel-dns.com`과 공용 DNS `1.1.1.1`에서 모두 기대값과 일치한다.
-- 등록 후 재조회 시 `VerificationStatus=PENDING`, `VerifiedForSendingStatus=false`, `DkimAttributes.Status=PENDING`이며 AWS 자동 인증을 기다리는 상태다.
-- DNS 인증 후 SES simulator로 기본 접수를 확인하고, 실제 팀원 주소 수신은 해당 주소 인증 또는 SES 샌드박스 해제 후 검증한다.
+- 후속 조회에서 `VerificationStatus=SUCCESS`, `VerifiedForSendingStatus=true`, `DkimAttributes.Status=SUCCESS`를 확인했다.
+- 샌드박스에서 테스트 수신 주소를 인증한 뒤 실제 메일을 발송했다. 임의의 미인증 수신 주소로 보내려면 SES 샌드박스 해제가 필요하다.
 - Apple 비공개 릴레이 주소의 수신은 Apple Developer에서 발신 도메인 등록도 필요하다.
 - SES 샌드박스 해제 신청은 아직 제출하지 않았다. 도메인 인증 및 실제 반송 처리 검증 후 정확한 발송 용도와 함께 신청한다.
 
@@ -38,4 +38,4 @@ Vercel의 `landit.im` DNS에 다음 CNAME 3개를 등록했다. Host는 도메�
 - SES identity, configuration set, event destination, EC2 이메일 정책만 target 계획으로 제한했다. 해당 계획은 4개 추가·0개 변경·0개 삭제였으며 saved plan apply에 성공했다.
 - AWS 읽기 검증으로 configuration set의 BOUNCE/COMPLAINT 차단 및 SEND/DELIVERY/BOUNCE/COMPLAINT/REJECT/DELIVERY_DELAY 지표 활성화를 확인했다.
 - runtime-env 템플릿과 SSM 배포 문서 변경은 아직 서버에 적용하지 않았다. BE 코드 배포와 함께 반영해야 한다. 기존 개발 API 이미지나 프로세스는 바꾸지 않았다.
-- 실제 테스트 이메일 발송은 아직 하지 않았다.
+- SES API 직접 호출로 테스트 메일 1통의 접수를 확인했고, 사용자가 네이버 메일함의 실제 수신 화면을 제공했다. 발신 주소·제목·본문 표시가 정상이다. 이 결과는 관리자 API나 개발 서버의 종단 발송 검증을 포함하지 않는다.

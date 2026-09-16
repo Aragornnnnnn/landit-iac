@@ -68,11 +68,9 @@ printf '%s\n' 'LANDIT_PUSH_SCHEDULER_GROUP=${push_scheduler_group}' >> "$${RUNTI
 printf '%s\n' 'LANDIT_PUSH_SCHEDULER_ROLE_ARN=${push_scheduler_role}' >> "$${RUNTIME_DIR}/api.env"
 printf '%s\n' 'LANDIT_NOTIFICATION_CONSUMER_ENABLED=true' >> "$${RUNTIME_DIR}/api.env"
 printf '%s\n' 'LANDIT_NOTIFICATION_TEST_API_ENABLED=true' >> "$${RUNTIME_DIR}/api.env"
-# 메일 테스트는 관리자 API로 요청하며 자동 체험 발송은 별도로 활성화한다.
-printf '%s\n' 'LANDIT_EMAIL_ENABLED=true' >> "$${RUNTIME_DIR}/api.env"
+# 메일 테스트는 관리자 API로 요청하고 자동 체험 알림 ON/OFF는 DB 채널 설정으로 관리한다.
 printf '%s\n' 'LANDIT_EMAIL_FROM=Landit <no-reply@landit.im>' >> "$${RUNTIME_DIR}/api.env"
 printf '%s\n' 'LANDIT_EMAIL_CONFIGURATION_SET=${ses_configuration_set}' >> "$${RUNTIME_DIR}/api.env"
-printf '%s\n' 'LANDIT_TRIAL_REMINDER_SCHEDULING_ENABLED=false' >> "$${RUNTIME_DIR}/api.env"
 printf '%s\n' 'LANDIT_TRIAL_REMINDER_SANDBOX_ENABLED=true' >> "$${RUNTIME_DIR}/api.env"
 printf '%s\n' 'LANDIT_REVENUECAT_APPLY_SANDBOX_EVENTS=true' >> "$${RUNTIME_DIR}/api.env"
 printf '%s\n' 'SERVER_SHUTDOWN=graceful' >> "$${RUNTIME_DIR}/api.env"

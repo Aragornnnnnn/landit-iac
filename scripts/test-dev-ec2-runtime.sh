@@ -31,6 +31,7 @@ locals {
     push_queue_url         = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/develop-landit-push-notifications"
     push_queue_arn         = "arn:aws:sqs:ap-northeast-2:123456789012:develop-landit-push-notifications"
     push_dlq_arn           = "arn:aws:sqs:ap-northeast-2:123456789012:develop-landit-push-notifications-dlq"
+    ses_configuration_set  = "develop-landit-transactional"
     push_scheduler_group   = "develop-landit-admin-push"
     push_scheduler_role    = "arn:aws:iam::123456789012:role/develop-landit-admin-push-scheduler"
     grafana_otlp_enabled   = "true"
@@ -153,7 +154,8 @@ values.update(LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS="7200000",
               LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT="20")
 values.update(LANDIT_AI_INTERNAL_TOKEN="lan474-token$secret")
 values.update(LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION="Bearer lan477-test$secret",
-              LANDIT_SUBSCRIPTION_LAUNCHED_AT="2026-09-11T14:44:00+09:00")
+              LANDIT_SUBSCRIPTION_LAUNCHED_AT="2026-09-11T14:44:00+09:00",
+              LANDIT_TRIAL_REMINDER_ANNUAL_PRODUCT_IDS="com.saynow.app.premium.yearly,com.saynow.app.premium.yearly:yearly")
 (directory / "ssm.json").write_text(json.dumps({"Parameters": [
     {"Name": "/landit/develop/" + name, "Value": value} for name, value in values.items()
 ]}))
@@ -177,10 +179,15 @@ expected = {
     'LANDIT_SUBSCRIPTION_LAUNCHED_AT="2026-09-11T14:44:00+09:00"',
     'LANDIT_AI_INTERNAL_TOKEN="lan474-token$$secret"',
     'LANDIT_REVENUECAT_APPLY_SANDBOX_EVENTS=true',
+    'LANDIT_TRIAL_REMINDER_ANNUAL_PRODUCT_IDS="com.saynow.app.premium.yearly,com.saynow.app.premium.yearly:yearly"',
+    'LANDIT_EMAIL_CONFIGURATION_SET=develop-landit-transactional',
+    'LANDIT_EMAIL_FROM=Landit <no-reply@landit.im>',
     'SERVER_SHUTDOWN=graceful',
     'SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE=50s',
 }
 assert expected <= set(api.read_text().splitlines()), "API must receive subscription and free-talk SSM values"
+assert "LANDIT_EMAIL_ENABLED=" not in api.read_text()
+assert "LANDIT_TRIAL_REMINDER_SCHEDULING_ENABLED=" not in api.read_text()
 assert stat.S_IMODE(api.stat().st_mode) == 0o600, "API secrets must remain owner-only"
 assert not any("LANDIT_REVENUECAT" in line or "LANDIT_SUBSCRIPTION" in line or "LANDIT_FREE_TALK" in line
                for line in (directory / "runtime/ai.env").read_text().splitlines())

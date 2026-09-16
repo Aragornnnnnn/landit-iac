@@ -1501,6 +1501,9 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_PUSH_SCHEDULER_DLQ_ARN", value = aws_sqs_queue.push_notifications_dlq.arn },
         { name = "LANDIT_PUSH_SCHEDULER_GROUP", value = aws_scheduler_schedule_group.admin_push.name },
         { name = "LANDIT_PUSH_SCHEDULER_ROLE_ARN", value = aws_iam_role.admin_push_scheduler.arn },
+        { name = "LANDIT_EMAIL_FROM", value = "Landit <no-reply@landit.im>" },
+        { name = "LANDIT_EMAIL_CONFIGURATION_SET", value = aws_sesv2_configuration_set.transactional[0].configuration_set_name },
+        { name = "LANDIT_TRIAL_REMINDER_SANDBOX_ENABLED", value = "false" },
         { name = "LANDIT_NOTIFICATION_CONSUMER_ENABLED", value = "true" }
         ], var.notification_test_api_enabled ? [
         { name = "LANDIT_NOTIFICATION_TEST_API_ENABLED", value = "true" }
@@ -1536,6 +1539,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT", valueFrom = "${local.ssm_path}/LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT" },
         { name = "LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT", valueFrom = "${local.ssm_path}/LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT" },
         { name = "LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION", valueFrom = "${local.ssm_path}/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION" },
+        { name = "LANDIT_TRIAL_REMINDER_ANNUAL_PRODUCT_IDS", valueFrom = "${local.ssm_path}/LANDIT_TRIAL_REMINDER_ANNUAL_PRODUCT_IDS" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_BE_SENTRY_DSN" }
         ], var.ai_internal_token_enabled ? [
         { name = "LANDIT_AI_INTERNAL_TOKEN", valueFrom = "${local.ssm_path}/LANDIT_AI_INTERNAL_TOKEN" }

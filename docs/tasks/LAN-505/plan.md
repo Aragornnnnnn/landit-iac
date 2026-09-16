@@ -57,3 +57,16 @@ Vercel의 `landit.im` DNS에 다음 CNAME 3개를 등록했다. Host는 도메�
 - `scripts/test-dev-ec2-runtime.sh` 성공. SES 템플릿 입력 및 상품 목록 SSM fixture를 보완하고 API 환경 전달과 폐기한 중복 스위치의 부재를 검증했다. 실제 개발 runtime-env/SSM 배포 문서 반영은 BE 개발 배포 때 필요하다.
 - 적용 후 IAM 시뮬레이션에서 지정 발신자의 SES SendEmail, 알림 Scheduler CreateSchedule/GetSchedule, 기존 Scheduler 역할의 PassRole이 모두 allowed임을 확인했다. 운영 SES suppression·지표 설정을 재조회했다.
 - 최종 운영 ECS 확인: API revision 15, desired/running 1/1, pending 0, rollout COMPLETED. 새 태스크의 image digest는 기존과 같고 ALB healthy 및 `/actuator/health` UP을 확인했다. 이번 작업은 환경 설정 반영이며 새 BE 알림 코드나 마이그레이션 배포는 아니다.
+
+
+## 운영 타임아웃 후속 적용
+
+- 사용자 승인으로 IaC main에 있던 ALB idle timeout 130초, API·AI target group deregistration delay 150초, 두 컨테이너 stopTimeout 120초를 운영에 적용했다.
+- 실행 이미지 태그로 확인한 BE `0e8dd221`과 AI `0376cf0` 소스에서 피드백 DB 저장·복구와 저장 결과 전달, AI graceful shutdown 110초를 확인했다. API graceful shutdown 50초와 executor 대기 50초 및 RevenueCat sandbox events true는 기존 코드 기본값과 동일하게 환경 변수로 명시된다.
+- 현재 API revision 15·AI revision 7과 saved plan의 전체 컨테이너 설정을 비교해 SES 설정·상품 SSM 연결·이미지 유지와 종료 설정 변경을 확인했다. CPU·메모리·역할·네트워크 설정도 동일하다.
+- `capture-prod-images.py --check`로 적용 직전 revision·digest 일치를 확인한 뒤 saved plan apply에 성공했다. Terraform 결과는 2개 추가·5개 변경·2개 교체 삭제다. 실행 중이던 API revision 15·AI revision 7은 ACTIVE로 보존됐다.
+- 적용 후 API revision 16·AI revision 8 모두 rollout COMPLETED, desired/running 1/1, pending 0을 확인했다. 두 실행 컨테이너의 image digest는 적용 전과 동일하다.
+- AWS 재조회에서 ALB 130초, 두 target group 150초, 두 컨테이너 120초와 target healthy를 확인했다. API `/actuator/health`는 HTTP 200·UP, AI `/health`는 HTTP 200·ok다. SES 발신 주소·configuration set·체험 sandbox 제외·상품 SSM 연결도 유지됐다.
+- ECS waiter는 일시적인 endpoint 연결 오류로 종료됐으나 이후 describe-services, describe-tasks, target health와 실행 이미지 캡처로 두 서비스의 안정화를 직접 확인했다.
+- 새 실행 revision으로 이미지를 다시 캡처해 전체 운영 `terraform plan -detailed-exitcode`를 실행했고 exit 0·No changes를 확인했다.
+- 이번 적용은 기존 코드 이미지의 인프라 설정 반영이다. 새 체험 알림 BE 코드·V105/V106 마이그레이션 배포와 실제 자동 알림 종단 검증은 포함하지 않는다. 애플리케이션 소스를 변경하지 않아 Java 테스트는 재실행하지 않았다.

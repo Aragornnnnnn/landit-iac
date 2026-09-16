@@ -58,6 +58,7 @@ locals {
     push_dlq_arn           = module.app_platform.push_notifications_dlq_arn
     push_scheduler_group   = module.app_platform.admin_push_scheduler_group
     push_scheduler_role    = module.app_platform.admin_push_scheduler_role_arn
+    ses_configuration_set  = aws_sesv2_configuration_set.transactional.configuration_set_name
     grafana_otlp_enabled   = tostring(var.grafana_otlp_enabled)
     grafana_otlp_endpoint  = var.grafana_otlp_endpoint
   })

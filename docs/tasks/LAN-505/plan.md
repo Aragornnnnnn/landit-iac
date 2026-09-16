@@ -16,7 +16,7 @@
 
 ## DNS 인증
 
-Vercel의 `landit.im` DNS에 다음 CNAME 3개가 필요하다. Host는 도메인을 뺀 값이며, 기존 레코드는 유지한다.
+Vercel의 `landit.im` DNS에 다음 CNAME 3개를 등록했다. Host는 도메인을 뺀 값이며, 기존 레코드는 유지했다. TTL은 60초다.
 
 | Host | Value |
 | --- | --- |
@@ -24,7 +24,8 @@ Vercel의 `landit.im` DNS에 다음 CNAME 3개가 필요하다. Host는 도메�
 | `eeqvbxb4l3cosghzvet32oledzefgpsk._domainkey` | `eeqvbxb4l3cosghzvet32oledzefgpsk.dkim.amazonses.com` |
 | `xm2fiaszxaakbdkjqmwgstlqegqibbbv._domainkey` | `xm2fiaszxaakbdkjqmwgstlqegqibbbv.dkim.amazonses.com` |
 
-- 현재 `VerificationStatus=PENDING`, `VerifiedForSendingStatus=false`, `DkimAttributes.Status=PENDING`이다.
+- CNAME 3개는 `ns1.vercel-dns.com`과 공용 DNS `1.1.1.1`에서 모두 기대값과 일치한다.
+- 등록 후 재조회 시 `VerificationStatus=PENDING`, `VerifiedForSendingStatus=false`, `DkimAttributes.Status=PENDING`이며 AWS 자동 인증을 기다리는 상태다.
 - DNS 인증 후 SES simulator로 기본 접수를 확인하고, 실제 팀원 주소 수신은 해당 주소 인증 또는 SES 샌드박스 해제 후 검증한다.
 - Apple 비공개 릴레이 주소의 수신은 Apple Developer에서 발신 도메인 등록도 필요하다.
 - SES 샌드박스 해제 신청은 아직 제출하지 않았다. 도메인 인증 및 실제 반송 처리 검증 후 정확한 발송 용도와 함께 신청한다.

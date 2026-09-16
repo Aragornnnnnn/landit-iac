@@ -11,7 +11,7 @@
 - 서울 리전 `landit.im` 발신 도메인은 개발 Terraform root에서 한 번만 소유한다. 향후 운영도 동일 identity를 참조하며 중복 생성하지 않는다.
 - `develop-landit-transactional` 설정은 반송·불만 주소 차단과 CloudWatch `AWS/SES`, `Environment=develop` 전달 지표를 사용한다.
 - 개발 EC2 역할은 `no-reply@landit.im` 발신만 허용하고, 기존 Scheduler 그룹의 `notification-job-*` 생성·조회를 허용한다. 기존 PassRole 정책을 재사용한다.
-- 개발 runtime-env 템플릿은 발신 주소와 SES configuration set을 전달한다. 이메일 발송·자동 체험 예약의 중복 환경 변수 스위치는 제거하고 BE DB의 채널 설정으로 ON/OFF를 통일했다. DB 기본값은 모두 OFF다. SANDBOX 체험 허용은 ON이며 실제 연간 상품 ID 설정과 관리자 채널 ON이 추가로 필요하다.
+- 개발 runtime-env 템플릿은 발신 주소와 SES configuration set을 전달한다. 이메일 발송·자동 체험 예약의 중복 환경 변수 스위치는 제거하고 BE DB의 채널 설정으로 ON/OFF를 통일했다. DB 기본값은 BE V106부터 모두 ON이다. SANDBOX 체험 허용은 ON이며 실제 연간 상품 ID 설정이 필요하다. 관리자가 OFF로 변경한 경우에만 채널을 다시 켠다.
 - CloudWatch는 집계 전달 지표다. BE의 ACCEPTED는 SES 접수이며 개별 메일의 최종 수신 상태를 뜻하지 않는다. 별도 이벤트 소비자나 경보 수신처는 이번 변경에 추가하지 않는다.
 
 ## DNS 인증

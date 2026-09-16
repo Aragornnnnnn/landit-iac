@@ -1,0 +1,40 @@
+# LAN-505 개발 이메일 발송 기반
+
+## 확정 범위
+
+- AWS SES, `Landit <no-reply@landit.im>` 발신 주소, 개발 서버 관리자 임의 주소 테스트를 준비한다.
+- 별도 수신 허용 목록을 두지 않는다. AWS SES 샌드박스의 인증된 수신자 제한은 해제 승인 전까지 적용된다.
+- 운영 서버 배포 및 자동 체험 알림 활성화는 포함하지 않는다.
+
+## 구성
+
+- 서울 리전 `landit.im` 발신 도메인은 개발 Terraform root에서 한 번만 소유한다. 향후 운영도 동일 identity를 참조하며 중복 생성하지 않는다.
+- `develop-landit-transactional` 설정은 반송·불만 주소 차단과 CloudWatch `AWS/SES`, `Environment=develop` 전달 지표를 사용한다.
+- 개발 EC2 역할은 `no-reply@landit.im` 발신만 허용하고, 기존 Scheduler 그룹의 `notification-job-*` 생성·조회를 허용한다. 기존 PassRole 정책을 재사용한다.
+- 개발 runtime-env 템플릿은 이메일 테스트를 허용한다. 자동 체험 예약은 OFF, SANDBOX 체험 허용은 ON이며 연간 상품 ID 설정과 관리자 채널 ON이 추가로 필요하다.
+- CloudWatch는 집계 전달 지표다. BE의 ACCEPTED는 SES 접수이며 개별 메일의 최종 수신 상태를 뜻하지 않는다. 별도 이벤트 소비자나 경보 수신처는 이번 변경에 추가하지 않는다.
+
+## DNS 인증
+
+Vercel의 `landit.im` DNS에 다음 CNAME 3개가 필요하다. Host는 도메인을 뺀 값이며, 기존 레코드는 유지한다.
+
+| Host | Value |
+| --- | --- |
+| `swpudjxbjxpdsuhzqa7v56qna2ahzzwk._domainkey` | `swpudjxbjxpdsuhzqa7v56qna2ahzzwk.dkim.amazonses.com` |
+| `eeqvbxb4l3cosghzvet32oledzefgpsk._domainkey` | `eeqvbxb4l3cosghzvet32oledzefgpsk.dkim.amazonses.com` |
+| `xm2fiaszxaakbdkjqmwgstlqegqibbbv._domainkey` | `xm2fiaszxaakbdkjqmwgstlqegqibbbv.dkim.amazonses.com` |
+
+- 현재 `VerificationStatus=PENDING`, `VerifiedForSendingStatus=false`, `DkimAttributes.Status=PENDING`이다.
+- DNS 인증 후 SES simulator로 기본 접수를 확인하고, 실제 팀원 주소 수신은 해당 주소 인증 또는 SES 샌드박스 해제 후 검증한다.
+- Apple 비공개 릴레이 주소의 수신은 Apple Developer에서 발신 도메인 등록도 필요하다.
+- SES 샌드박스 해제 신청은 아직 제출하지 않았다. 도메인 인증 및 실제 반송 처리 검증 후 정확한 발송 용도와 함께 신청한다.
+
+## 2026-09-16 검증과 적용
+
+- 원본 저장소의 기존 작업을 보존하고 `origin/main`에 해당하는 `aaea650`에서 `feat/LAN-505`를 만들었다.
+- `terraform fmt -recursive`, 개발 root `terraform init`, `terraform validate` 성공.
+- 전체 개발 plan은 4개 추가·3개 변경·0개 삭제였다. 기존 ECR 배포 권한 등 선행 미적용 변경이 포함되어 전체 계획을 적용하지 않았다.
+- SES identity, configuration set, event destination, EC2 이메일 정책만 target 계획으로 제한했다. 해당 계획은 4개 추가·0개 변경·0개 삭제였으며 saved plan apply에 성공했다.
+- AWS 읽기 검증으로 configuration set의 BOUNCE/COMPLAINT 차단 및 SEND/DELIVERY/BOUNCE/COMPLAINT/REJECT/DELIVERY_DELAY 지표 활성화를 확인했다.
+- runtime-env 템플릿과 SSM 배포 문서 변경은 아직 서버에 적용하지 않았다. BE 코드 배포와 함께 반영해야 한다. 기존 개발 API 이미지나 프로세스는 바꾸지 않았다.
+- 실제 테스트 이메일 발송은 아직 하지 않았다.

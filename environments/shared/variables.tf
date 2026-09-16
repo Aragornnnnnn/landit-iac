@@ -16,6 +16,7 @@ variable "content_upload_allowed_origins" {
   type        = list(string)
   default = [
     "https://landit.im",
+    "https://admin.landit.im",
     "https://develop.landit.im",
     "http://localhost:3000",
     "http://127.0.0.1:3000",

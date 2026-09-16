@@ -37,6 +37,35 @@ resource "aws_sesv2_configuration_set_event_destination" "metrics" {
   }
 }
 
+data "aws_iam_policy_document" "ec2_email" {
+  statement {
+    actions = ["ses:SendEmail"]
+    resources = [
+      aws_sesv2_email_identity.landit.arn,
+      aws_sesv2_configuration_set.transactional.arn
+    ]
+    condition {
+      test     = "StringEquals"
+      variable = "ses:FromAddress"
+      values   = ["no-reply@landit.im"]
+    }
+  }
+
+  statement {
+    actions = ["scheduler:CreateSchedule", "scheduler:GetSchedule"]
+    resources = [
+      "arn:aws:scheduler:${var.aws_region}:${data.aws_caller_identity.current.account_id}:schedule/${module.app_platform.admin_push_scheduler_group}/notification-job-*"
+    ]
+  }
+  # 기존 admin-push-manage 정책이 같은 Scheduler 역할의 iam:PassRole을 제공한다.
+}
+
+resource "aws_iam_role_policy" "ec2_email" {
+  name   = "${local.name_prefix}-email"
+  role   = aws_iam_role.ec2_app.id
+  policy = data.aws_iam_policy_document.ec2_email.json
+}
+
 output "ses_dkim_records" {
   description = "Vercel DNS에 추가할 SES 도메인 인증 CNAME. 발신 도메인은 이 root에서 한 번만 소유한다."
   value = [for token in aws_sesv2_email_identity.landit.dkim_signing_attributes[0].tokens : {

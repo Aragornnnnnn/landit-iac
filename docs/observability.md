@@ -150,7 +150,9 @@ BE의 HTTP 응답시간은 자동 percentile histogram 대신 50ms부터 120초�
 
 ### 공용 metrics tenant 수집 거절 알림
 
-`grafana/alerts/telemetry-health.json`은 **별도 적용이 필요한** Alerting Provisioning HTTP API의 rule group 요청 본문입니다. 파일 provisioning export 형식이 아닙니다. `telemetry-health-1m` 그룹에 한도 초과 알림 하나를 정의하며, 기존 `prod-incidents-1m`의 여섯 규칙은 유지합니다.
+`grafana/alerts/telemetry-health.json`은 활성 알림을 기록한 Alerting Provisioning HTTP API의 rule group 요청 본문입니다. 파일 provisioning export 형식이 아닙니다. `telemetry-health-1m` 그룹에 한도 초과 알림 하나를 정의하며, 기존 `prod-incidents-1m`의 여섯 규칙은 유지합니다.
+
+2026-09-17 16:47 KST에 Grafana UI에서 [수집 거절 알림](https://scarletmyrtle3008.grafana.net/alerting/grafana/cfyia8wdsh7gga/view)을 활성화했습니다. 저장 후 상태는 `Normal`이며, routing preview에서 `discord-prod-incidents`로 연결되는 것을 확인했습니다. 실제 Discord 발송 테스트는 하지 않았습니다. UI export의 UID·쿼리·threshold와 이 파일을 동기화했습니다.
 
 ```logql
 sum(count_over_time({instance_type="metrics"} |= "err-mimir-max-series-per-user" [5m]))
@@ -160,13 +162,13 @@ sum(count_over_time({instance_type="metrics"} |= "err-mimir-max-series-per-user"
 
 tenant는 develop/prod가 공유하므로 `environment=shared`, `service=grafana`, `severity=monitoring`을 사용합니다. `alert_scope=landit_incident`로 기존 notification policy에 연결하되, 적용 전 현재 policy가 환경 조건 없이 해당 scope를 라우팅하는지 확인합니다.
 
-적용 순서는 다음과 같습니다.
+API로 재적용할 때 순서는 다음과 같습니다.
 
 1. 현재 rule group과 notification policy를 조회·백업하고, Explore에서 위 LogQL과 datasource UID를 확인합니다.
 2. 검토된 `telemetry-health.json`을 `PUT /api/v1/provisioning/folder/landit-observability/rule-groups/telemetry-health-1m`에 전송합니다. 같은 이름의 그룹이 이미 있으면 먼저 비교합니다. 이 API는 그룹 전체를 교체하므로 다른 규칙을 덮어쓰지 않습니다.
 3. 다시 GET하여 interval 60초, rule UID, query, 상태 정책과 labels를 대조합니다. 실제 alert 평가와 notification policy 경로를 별도로 확인합니다.
 
-적용에는 Grafana service account 권한이 필요하며, 인증정보는 저장소에 기록하지 않습니다. 기존 dashboard 동기화 스크립트는 이 알림 파일을 적용하지 않습니다.
+API 적용에는 Grafana service account 권한이 필요하며, 인증정보는 저장소에 기록하지 않습니다. 기존 dashboard 동기화 스크립트는 이 알림 파일을 적용하지 않습니다.
 
 ### 전송 설정
 

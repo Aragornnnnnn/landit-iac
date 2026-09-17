@@ -33,7 +33,7 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_MEMORY_WRITE_ENABLED` | `String` | backend 장기기억 저장 기능 사용 여부, 기본값 `false` |
 | `/landit/{environment}/LANDIT_MEMORY_USE_ENABLED` | `String` | backend 프리톡 장기기억 검색 기능 사용 여부, 기본값 `false` |
 | `/landit/{environment}/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION` | `SecureString` | API의 RevenueCat 웹훅 Authorization 검증값, develop EC2 env와 prod ECS secrets로 주입 |
-| `/landit/develop/LANDIT_SUBSCRIPTION_LAUNCHED_AT` | `String` | 개발 API의 유료 기능 제한 도입 시각, 오프셋을 포함한 ISO 8601 형식 |
+| `/landit/{environment}/LANDIT_SUBSCRIPTION_LAUNCHED_AT` | `String` | API의 유료 기능 제한 도입 시각, 오프셋을 포함한 ISO 8601 형식. develop EC2 env와 prod ECS secrets로 주입 |
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS` | `String` | backend access token 만료시간, 초 단위 |
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS` | `String` | backend refresh token 만료시간, 초 단위 |
 | `/landit/{environment}/LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES` | `String` | Google OIDC audience allowlist |
@@ -61,6 +61,8 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/prod/LANDIT_SENTRY_DISCORD_WEBHOOK_URL` | `SecureString` | `#alerts-sentry-prod` 전용 Discord webhook URL |
 
 `{environment}`는 `develop` 또는 `prod`만 사용합니다.
+
+`LANDIT_SUBSCRIPTION_LAUNCHED_AT`은 SSM에 먼저 등록한 뒤 API에 연결합니다. 운영은 ECS task definition 반영 후 해당 리비전으로 API를 배포해야 하며, 이후 SSM 값만 변경해도 새 API task가 시작되어야 반영됩니다.
 
 ## 프리톡 한도
 

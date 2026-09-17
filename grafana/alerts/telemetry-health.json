@@ -1,0 +1,72 @@
+{
+  "title": "telemetry-health-1m",
+  "folderUid": "landit-observability",
+  "interval": 60,
+  "rules": [
+    {
+      "uid": "cfyia8wdsh7gga",
+      "orgId": 1,
+      "folderUID": "landit-observability",
+      "ruleGroup": "telemetry-health-1m",
+      "title": "cloud-metrics-series-limit-reached",
+      "condition": "C",
+      "for": "1m",
+      "keepFiringFor": "5m",
+      "noDataState": "OK",
+      "execErrState": "Alerting",
+      "isPaused": false,
+      "labels": {
+        "environment": "shared",
+        "service": "grafana",
+        "severity": "monitoring",
+        "alert_scope": "landit_incident"
+      },
+      "annotations": {
+        "summary": "Grafana Cloud metrics 시계열 한도로 수집 거절 발생",
+        "description": "최근 5분 동안 공용 metrics tenant의 시계열 한도 초과 로그가 발견됐고 상태가 1분 지속됐습니다. develop과 prod 모두 영향을 받을 수 있습니다. 로그는 샘플링되므로 건수를 실제 유실량으로 해석하지 않습니다.",
+        "runbook_url": "https://grafana.com/docs/mimir/latest/manage/mimir-runbooks/#err-mimir-max-series-per-user"
+      },
+      "data": [
+        {
+          "refId": "A",
+          "queryType": "instant",
+          "relativeTimeRange": {"from": 300, "to": 0},
+          "datasourceUid": "grafanacloud-usage-insights",
+          "model": {
+            "refId": "A",
+            "datasource": {"type": "loki", "uid": "grafanacloud-usage-insights"},
+            "editorMode": "code",
+            "instant": true,
+            "queryType": "instant",
+            "expr": "sum(count_over_time({instance_type=\"metrics\"} |= \"err-mimir-max-series-per-user\" [5m]))",
+            "intervalMs": 1000,
+            "maxDataPoints": 43200
+          }
+        },
+        {
+          "refId": "C",
+          "queryType": "expression",
+          "relativeTimeRange": {"from": 0, "to": 0},
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "datasource": {"type": "__expr__", "uid": "__expr__"},
+            "type": "threshold",
+            "expression": "A",
+            "intervalMs": 1000,
+            "maxDataPoints": 43200,
+            "conditions": [
+              {
+                "evaluator": {"params": [0], "type": "gt"},
+                "operator": {"type": "and"},
+                "query": {"params": ["C"]},
+                "reducer": {"params": [], "type": "last"},
+                "type": "query"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

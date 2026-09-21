@@ -152,6 +152,11 @@ values = dict.fromkeys(names, "test-value")
 values.update(LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS="7200000",
               LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT="1000",
               LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT="20")
+values.update(JEV_ENABLED="false", JEV_ENABLED_WORKFLOWS='["E1","E2","E3","E4","E7","E10","E13"]',
+              JEV_MODEL="typesafe/jev-1.13", JEV_DECISIONS_URL="https://openrouter.ai/api/alpha/decisions",
+              JEV_TIMEOUT_SECONDS="5", JEV_REQUEST_BUDGET_SECONDS="30",
+              JEV_FALLBACK_MODEL="openai/gpt-5.4-mini", JEV_ADJUDICATOR_MODEL="openai/gpt-5.4",
+              CODE_SESSION_SUMMARY_ENABLED="false")
 values.update(LANDIT_AI_INTERNAL_TOKEN="lan474-token$secret")
 values.update(LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION="Bearer lan477-test$secret",
               LANDIT_SUBSCRIPTION_LAUNCHED_AT="2026-09-11T14:44:00+09:00",
@@ -192,6 +197,14 @@ assert stat.S_IMODE(api.stat().st_mode) == 0o600, "API secrets must remain owner
 assert not any("LANDIT_REVENUECAT" in line or "LANDIT_SUBSCRIPTION" in line or "LANDIT_FREE_TALK" in line
                for line in (directory / "runtime/ai.env").read_text().splitlines())
 assert 'LANDIT_AI_INTERNAL_TOKEN="lan474-token$$secret"' in (directory / "runtime/ai.env").read_text()
+# Compose env_file의 JSON 인용을 해제해도 작업 목록이 JSON 배열이어야 한다.
+ai_values = dict(line.split("=", 1) for line in (directory / "runtime/ai.env").read_text().splitlines())
+for parameter in json.loads((directory / "ssm.json").read_text())["Parameters"]:
+    key = parameter["Name"].rsplit("/", 1)[-1]
+    if key.startswith("JEV_") or key == "CODE_SESSION_SUMMARY_ENABLED":
+        assert json.loads(ai_values[key]) == parameter["Value"], key
+        assert key + "=" not in api.read_text(), "Jev settings belong only to AI"
+assert json.loads(json.loads(ai_values["JEV_ENABLED_WORKFLOWS"])) == ["E1", "E2", "E3", "E4", "E7", "E10", "E13"]
 (directory / "api-before.env").write_bytes(api.read_bytes())
 response = json.loads((directory / "ssm.json").read_text())
 response["Parameters"] = [p for p in response["Parameters"]

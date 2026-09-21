@@ -1625,6 +1625,15 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "OPENROUTER_MODEL", valueFrom = "${local.ssm_path}/OPENROUTER_MODEL" },
         { name = "MESSAGE_FEEDBACK_MODEL", valueFrom = "${local.ssm_path}/MESSAGE_FEEDBACK_MODEL" },
         { name = "MESSAGE_FEEDBACK_REVIEW_ENABLED", valueFrom = "${local.ssm_path}/MESSAGE_FEEDBACK_REVIEW_ENABLED" },
+        { name = "JEV_ENABLED", valueFrom = "${local.ssm_path}/JEV_ENABLED" },
+        { name = "JEV_ENABLED_WORKFLOWS", valueFrom = "${local.ssm_path}/JEV_ENABLED_WORKFLOWS" },
+        { name = "JEV_MODEL", valueFrom = "${local.ssm_path}/JEV_MODEL" },
+        { name = "JEV_DECISIONS_URL", valueFrom = "${local.ssm_path}/JEV_DECISIONS_URL" },
+        { name = "JEV_TIMEOUT_SECONDS", valueFrom = "${local.ssm_path}/JEV_TIMEOUT_SECONDS" },
+        { name = "JEV_REQUEST_BUDGET_SECONDS", valueFrom = "${local.ssm_path}/JEV_REQUEST_BUDGET_SECONDS" },
+        { name = "JEV_FALLBACK_MODEL", valueFrom = "${local.ssm_path}/JEV_FALLBACK_MODEL" },
+        { name = "JEV_ADJUDICATOR_MODEL", valueFrom = "${local.ssm_path}/JEV_ADJUDICATOR_MODEL" },
+        { name = "CODE_SESSION_SUMMARY_ENABLED", valueFrom = "${local.ssm_path}/CODE_SESSION_SUMMARY_ENABLED" },
         { name = "OPENROUTER_API_KEY", valueFrom = "${local.ssm_path}/OPENROUTER_API_KEY" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_AI_SENTRY_DSN" }
         ], var.ai_internal_auth_enabled ? [

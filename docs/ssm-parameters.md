@@ -48,6 +48,15 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/OPENROUTER_MODEL` | `String` | 기본 OpenRouter model |
 | `/landit/{environment}/MESSAGE_FEEDBACK_MODEL` | `String` | 메시지 피드백 생성 전용 OpenRouter model |
 | `/landit/{environment}/MESSAGE_FEEDBACK_REVIEW_ENABLED` | `String` | 메시지 피드백 문구 검수 사용 여부, `true` 또는 `false` |
+| `/landit/{environment}/JEV_ENABLED` | `String` | Jev 사용 여부. develop·prod 모두 `false`. |
+| `/landit/{environment}/JEV_ENABLED_WORKFLOWS` | `String` | JSON 배열 문자열. 양쪽 `["E1","E2","E3","E4","E7","E10","E13"]`. |
+| `/landit/{environment}/JEV_MODEL` | `String` | `typesafe/jev-1.13`. |
+| `/landit/{environment}/JEV_DECISIONS_URL` | `String` | `https://openrouter.ai/api/alpha/decisions`. |
+| `/landit/{environment}/JEV_TIMEOUT_SECONDS` | `String` | `5`. |
+| `/landit/{environment}/JEV_REQUEST_BUDGET_SECONDS` | `String` | `30`. |
+| `/landit/{environment}/JEV_FALLBACK_MODEL` | `String` | 판단 보완 모델 `openai/gpt-5.4-mini`. |
+| `/landit/{environment}/JEV_ADJUDICATOR_MODEL` | `String` | E2 보완 모델 `openai/gpt-5.4`. |
+| `/landit/{environment}/CODE_SESSION_SUMMARY_ENABLED` | `String` | 양쪽 `false`. E14 세션 요약은 기존 LLM을 유지. |
 | `/landit/prod/LANDIT_SENTRY_RELAY_AUTH_TOKEN` | `SecureString` | legacy 이름을 유지한 Sentry App webhook HMAC signing secret |
 | `/landit/prod/LANDIT_SENTRY_DISCORD_WEBHOOK_URL` | `SecureString` | `#alerts-sentry-prod` 전용 Discord webhook URL |
 
@@ -154,3 +163,16 @@ SSM parameter를 생성해도 ECS container environment에 자동으로 들어�
 - ECS task definition에 연결된 SSM 값은 task 재시작 또는 새 deployment 후에만 container environment에 반영됩니다.
 
 LAN-462 예약 실패 보관용 `LANDIT_PUSH_SCHEDULER_DLQ_ARN`은 Terraform이 기존 환경별 Push DLQ ARN으로 직접 주입한다. 추가 SSM 비밀 값은 필요 없다.
+
+## Jev 설정 주입 (LAN-530)
+
+위 9개 String parameter를 Terraform 밖에서 먼저 등록한 뒤 AI에만 주입합니다. API 키는 기존 `OPENROUTER_API_KEY`를 재사용합니다. 두 보완 모델은 AI가 별도로 읽으므로 둘 다 등록합니다. E14는 양쪽 모두 끄고 기존 LLM 세션 요약을 유지합니다.
+
+- develop: 사용자 결정에 따라 E1을 포함한 7개 작업 목록을 저장하되 `JEV_ENABLED=false`로 둡니다. 이후 켜기 전에 BE가 `NO_MATCH`와 빈 추천 목록을 정상 완료로 처리하는 배포와 LAN-530 AI 이미지 배포를 확인합니다.
+- prod: 7개 작업 목록을 저장하되 `JEV_ENABLED=false`로 유지합니다.
+- 개발 EC2는 user-data 변경을 무시하므로 템플릿 수정만으로 기존 인스턴스가 갱신되지 않습니다. `aws_ssm_document.ec2_deploy`를 apply하고 해당 버전으로 현재 AI 이미지를 재배포하면 `/opt/landit/bin/runtime-env`와 `/run/landit/ai.env`가 갱신됩니다.
+- 운영 ECS는 AI task definition `secrets`와 service를 apply해 현재 이미지 digest로 새 task를 시작합니다. 기존 BE task와 다른 설정은 보존합니다.
+- 개발 instance role의 `ssm:GetParametersByPath`와 운영 execution role의 `ssm:GetParameters`는 이미 각 환경의 `/landit/{environment}/*`를 허용합니다. 새 API 키나 IAM 권한 확대는 필요하지 않습니다.
+- SSM 값, 배포 매핑, 실행 중 환경변수의 JSON 배열, 서비스 health를 각각 확인합니다. LAN-530 이미지 포함 여부와 실제 `decision_call` 실행 증거는 설정 주입 검증과 별개입니다.
+
+환경별 적용 기록은 [LAN-530 계획과 검증 결과](tasks/LAN-530/plan.md)에 남깁니다.

@@ -74,6 +74,18 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 
 운영 발화 시간 SSM 경로는 유지하되 컨테이너에는 `LANDIT_FREE_TALK_DAILY_SPEAKING_TIME_LIMIT_MS`라는 새 이름으로 주입합니다. 기존 운영 코드가 읽는 `LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS`는 운영 ECS에 주입하지 않습니다. 따라서 설정을 먼저 연결해도 구버전은 기본 1분을 유지하고, 새 이름을 읽는 BE LAN-478 배포 후 120분으로 전환됩니다. LAN-478은 개발 호환을 위해 기존 이름도 fallback으로 읽습니다. 일일·분당 요청 수 제한 역시 LAN-478 코드 배포 후 적용됩니다.
 
+## 프리톡 컨텍스트 요약
+
+| Path pattern | Type | 값 |
+| --- | --- | --- |
+| `/landit/{environment}/LANDIT_FREE_TALK_CONTEXT_ENABLED` | `String` | `true`이면 새 세션에 요약 정책 적용, `false`이면 전체 원문 경로 유지. |
+
+`{environment}`는 `develop` 또는 `prod`입니다. 사용자 허용 목록 없이 BE의 단일 활성화 설정으로 제어합니다. 값은 Terraform 밖에서 사용자가 등록·변경하며 이 연결 변경은 기존 ON/OFF 값을 변경하지 않습니다.
+
+SSM 파라미터는 IaC 반영과 다음 배포 전에 등록해야 합니다. 개발은 EC2 배포 SSM 문서 반영 후 컨테이너 재배포, 운영은 ECS task definition 반영 후 새 task 기동이 필요합니다. SSM 값 변경만으로 실행 중인 서버 설정은 바뀌지 않습니다. 연결 후에는 파라미터가 없으면 개발 env 갱신 또는 운영 task 시작이 실패합니다.
+
+활성화 전 AI 요약 계약과 사용자 허용 목록을 제거한 BE 코드가 배포되어 있어야 합니다. 이미 시작된 세션에 요약 정책을 소급 생성하지 않습니다.
+
 ## DB URL 형식
 
 `DB_URL`은 아래 형식을 사용합니다. username과 password는 포함하지 않습니다.

@@ -1538,6 +1538,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_FREE_TALK_DAILY_SPEAKING_TIME_LIMIT_MS", valueFrom = "${local.ssm_path}/LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS" },
         { name = "LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT", valueFrom = "${local.ssm_path}/LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT" },
         { name = "LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT", valueFrom = "${local.ssm_path}/LANDIT_FREE_TALK_REQUESTS_PER_MINUTE_LIMIT" },
+        { name = "LANDIT_FREE_TALK_CONTEXT_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_FREE_TALK_CONTEXT_ENABLED" },
         { name = "LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION", valueFrom = "${local.ssm_path}/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION" },
         { name = "LANDIT_TRIAL_REMINDER_ANNUAL_PRODUCT_IDS", valueFrom = "${local.ssm_path}/LANDIT_TRIAL_REMINDER_ANNUAL_PRODUCT_IDS" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_BE_SENTRY_DSN" }

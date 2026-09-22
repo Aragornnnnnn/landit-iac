@@ -50,7 +50,17 @@ Scheduler는 매일 `Asia/Seoul` 20시에 main queue로 `SCHEDULED_NOTIFICATION_
 
 `<aws.scheduler.execution-id>`와 `<aws.scheduler.scheduled-time>`은 EventBridge Scheduler가 target input에서 실제 값으로 치환하는 context attribute다. Terraform `jsonencode`는 꺾쇠 문자를 Unicode escape하므로, Scheduler input은 raw JSON heredoc으로 작성해 context token을 문자 그대로 전달한다. Standard Queue의 중복 전달과 순서 변경은 정상 동작으로 취급한다. BE는 예정 시각의 한국 날짜, 사용자, 기기, 알림 유형을 기준으로 `push_delivery` 멱등성을 보장한다.
 
-BE가 SQS에서 소비하는 메시지 유형은 `SCHEDULED_NOTIFICATION_BATCH`와 `PUSH_RECEIPT_CHECK`뿐이다. `SCHEDULED_NOTIFICATION_BATCH`를 받으면 `occurredAt`을 기준으로 사용자 프로필을 500명씩 Keyset Pagination하여 최신 대상을 계산하고, Expo API에 최대 100건씩 직접 발송한다. `PUSH_SEND` 메시지와 `NOTIFICATION_TARGET_BATCH` 같은 중간 queue는 사용하지 않는다. `PUSH_RECEIPT_CHECK`는 같은 queue를 사용하며 요청별 `DelaySeconds=900`을 지정한다.
+`SCHEDULED_NOTIFICATION_BATCH`를 받으면 BE는 `occurredAt`을 기준으로 사용자 프로필을 500명씩 Keyset Pagination하여 최신 대상을 계산하고, Expo API에 최대 100건씩 직접 발송한다. `PUSH_SEND` 메시지와 `NOTIFICATION_TARGET_BATCH` 같은 중간 queue는 사용하지 않는다. `PUSH_RECEIPT_CHECK`는 같은 queue를 사용하며 요청별 `DelaySeconds=900`을 지정한다.
+
+### 매일 오전 8시 표현 복습 (LAN-494)
+
+dev와 prod의 `${prefix}-expression-review` Scheduler는 매일 `Asia/Seoul` 오전 8시에 기존 Push main queue로 `REVIEW_NOTIFICATION_BATCH` 한 건을 발행하도록 설정한다. 일정은 `cron(0 8 * * ? *)`, flexible window는 `OFF`다. 기존 20시 학습 알림과 같은 실행 역할을 사용하며 별도 Queue나 서버는 추가하지 않는다.
+
+`expression_review_schedule_enabled`의 기본값은 dev `true`, prod `false`다. 운영은 `REVIEW_NOTIFICATION_BATCH`를 처리하는 BE와 복습 화면이 배포된 뒤 prod 기본값을 `true`로 변경하고 해당 Scheduler plan을 확인해 적용한다. 코드와 AWS 상태를 함께 변경해 이후 apply에서 다시 비활성화되지 않도록 한다.
+
+메시지는 위 학습 알림과 같은 `version`, context token, 빈 `payload`를 사용하고 `messageType`만 `REVIEW_NOTIFICATION_BATCH`다. Terraform 리소스는 `module.app_platform.aws_scheduler_schedule.expression_review`다.
+
+오전 8시는 배치 시작 시각이다. BE가 사용자별 기본 3일 간격, 복습할 표현, 활성 기기, 유료화 이후 구독 권한을 확인해 발송한다. 기존 학습 알림과 최소 3시간 간격을 적용하므로 모든 사용자에게 매일 보내지는 않는다. 실제 기기 표시 시각은 배치 처리와 푸시 전달 상황에 따라 달라진다.
 
 ## Visibility Timeout과 런타임 설정
 

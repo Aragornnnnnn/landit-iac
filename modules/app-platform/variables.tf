@@ -134,6 +134,12 @@ variable "worker_desired_count" {
   default     = 1
 }
 
+variable "expression_review_schedule_enabled" {
+  description = "Whether the 08:00 expression review quiz scheduler is enabled after backend deployment."
+  type        = bool
+  default     = false
+}
+
 variable "review_reminder_schedule_expression" {
   description = "EventBridge Scheduler expression for review reminders."
   type        = string

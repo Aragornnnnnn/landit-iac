@@ -69,6 +69,31 @@ resource "aws_scheduler_schedule" "review_reminder" {
   }
 }
 
+resource "aws_scheduler_schedule" "expression_review" {
+  name                         = "${local.name_prefix}-expression-review"
+  schedule_expression          = "cron(0 8 * * ? *)"
+  schedule_expression_timezone = "Asia/Seoul"
+  state                        = var.expression_review_schedule_enabled ? "ENABLED" : "DISABLED"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_sqs_queue.push_notifications.arn
+    role_arn = aws_iam_role.review_reminder_scheduler.arn
+    input    = <<-JSON
+      {
+        "version": 1,
+        "messageId": "<aws.scheduler.execution-id>",
+        "messageType": "REVIEW_NOTIFICATION_BATCH",
+        "occurredAt": "<aws.scheduler.scheduled-time>",
+        "payload": {}
+      }
+    JSON
+  }
+}
+
 resource "aws_cloudwatch_metric_alarm" "push_notifications_backlog" {
   alarm_name          = "${local.name_prefix}-push-notifications-backlog"
   comparison_operator = "GreaterThanOrEqualToThreshold"

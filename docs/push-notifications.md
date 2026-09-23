@@ -56,7 +56,7 @@ Scheduler는 매일 `Asia/Seoul` 20시에 main queue로 `SCHEDULED_NOTIFICATION_
 
 dev와 prod의 `${prefix}-expression-review` Scheduler는 매일 `Asia/Seoul` 오전 8시에 기존 Push main queue로 `REVIEW_NOTIFICATION_BATCH` 한 건을 발행하도록 설정한다. 일정은 `cron(0 8 * * ? *)`, flexible window는 `OFF`다. 기존 20시 학습 알림과 같은 실행 역할을 사용하며 별도 Queue나 서버는 추가하지 않는다.
 
-`expression_review_schedule_enabled`의 기본값은 dev `true`, prod `false`다. 운영은 `REVIEW_NOTIFICATION_BATCH`를 처리하는 BE와 복습 화면이 배포된 뒤 prod 기본값을 `true`로 변경하고 해당 Scheduler plan을 확인해 적용한다. 코드와 AWS 상태를 함께 변경해 이후 apply에서 다시 비활성화되지 않도록 한다.
+`expression_review_schedule_enabled`의 기본값은 dev와 prod 모두 `true`다. 운영 BE의 `REVIEW_NOTIFICATION_BATCH` 지원 배포를 확인한 뒤 활성화한다. 일시 중단이나 재활성화 시에도 코드와 AWS 상태를 함께 변경해 이후 apply에서 설정이 되돌아가지 않도록 한다.
 
 메시지는 위 학습 알림과 같은 `version`, context token, 빈 `payload`를 사용하고 `messageType`만 `REVIEW_NOTIFICATION_BATCH`다. Terraform 리소스는 `module.app_platform.aws_scheduler_schedule.expression_review`다.
 

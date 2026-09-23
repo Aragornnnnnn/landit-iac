@@ -132,7 +132,7 @@ variable "worker_desired_count" {
 variable "expression_review_schedule_enabled" {
   description = "Enable 08:00 production expression reviews after deploying REVIEW_NOTIFICATION_BATCH support."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "review_reminder_schedule_expression" {

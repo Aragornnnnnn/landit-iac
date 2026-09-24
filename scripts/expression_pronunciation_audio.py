@@ -26,8 +26,9 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
-from typing import Callable, Iterable, Mapping
+from typing import Callable, Iterable, Mapping, Sequence
 
 
 MODEL = "deepgram/aura-2"
@@ -70,6 +71,14 @@ class InvalidMp3Error(RuntimeError):
 
 class AccentVerificationError(RuntimeError):
     pass
+
+
+class WordPoolReplacementUnverified(RuntimeError):
+    """put은 성공했지만 게시 결과 검증이 어긋났다.
+
+    이 경우 S3 객체는 **이미 바뀌어 있다.** 일반 실패(아무것도 쓰지 않음)와 뭉뚱그리면
+    교체 키 목록에서 빠져 CloudFront 무효화 대상에서도 빠지고, 옛 소리가 계속 나간다.
+    """
 
 
 @dataclass(frozen=True)
@@ -1145,7 +1154,7 @@ class _CompletedCall:
 
 
 class Boto3AwsRunner:
-    """aws CLI 호출 3종(list-objects-v2·head-object·put-object)을 boto3로 대신한다.
+    """aws CLI 호출(list-objects-v2·head-object·get-object·copy-object·put-object)을 boto3로 대신한다.
 
     CLI는 호출마다 파이썬 프로세스를 새로 띄워 객체당 1초 이상 걸리므로 수만 개 게시에
     한 시간이 넘는다. 같은 인자 계약을 받아 프로세스 안에서 처리하면 스레드 32개로
@@ -1186,6 +1195,14 @@ class Boto3AwsRunner:
                     "Metadata": head.get("Metadata", {}),
                 }
                 return _CompletedCall(0, json.dumps(payload))
+            if operation == "head-bucket":
+                self._client.head_bucket(Bucket=bucket)
+                return _CompletedCall(0, "{}")
+            if operation == "get-object":
+                # CLI는 마지막 위치 인자를 내려받을 파일 경로로 받는다.
+                self._client.download_file(bucket, self._option(command, "--key"),
+                                           command[-1])
+                return _CompletedCall(0, "{}")
             if operation == "copy-object":
                 self._client.copy_object(
                     Bucket=bucket,
@@ -1219,6 +1236,27 @@ class Boto3AwsRunner:
         raise ValueError(f"unsupported aws command: {command[:3]}")
 
 
+def require_bucket(bucket: str, aws_runner: Callable = subprocess.run) -> None:
+    """버킷이 있는지 작업 시작 전에 한 번 확인한다.
+
+    head-object는 버킷이 없을 때도 키가 없을 때와 같은 404를 주므로, 개별 키 조회로는
+    `--bucket` 오타를 알아낼 수 없다. 그대로 두면 전 항목이 "object is missing"으로
+    나와 원인을 키에서 찾게 된다.
+
+    :raises RuntimeError: 버킷이 없거나 접근할 수 없을 때
+    """
+    completed = aws_runner(
+        ["aws", "s3api", "head-bucket", "--bucket", bucket],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"S3 bucket is missing or not accessible: {bucket} ({completed.stderr.strip()})"
+        )
+
+
 def _head_key(bucket: str, key: str, aws_runner: Callable) -> dict | None:
     """키 하나의 head 응답을 돌려준다. 객체가 없으면 None, 그 밖의 실패는 예외."""
     completed = aws_runner(
@@ -1239,6 +1277,11 @@ def _head_key(bucket: str, key: str, aws_runner: Callable) -> dict | None:
     )
     if completed.returncode == 0:
         return json.loads(completed.stdout)
+    # head-object는 버킷이 없을 때도 키가 없을 때와 똑같이 맨 404를 준다(실측). 그래서
+    # 여기서는 구분할 수 없고, 버킷은 작업 시작 전에 require_bucket으로 한 번 확인한다.
+    # aws CLI 경로는 NoSuchBucket을 실어 주므로 그건 여기서 걸러 준다.
+    if "NoSuchBucket" in completed.stderr:
+        raise RuntimeError(f"S3 bucket does not exist: {bucket}")
     if any(
         marker in completed.stderr for marker in ("404", "Not Found", "NoSuchKey")
     ):
@@ -1264,6 +1307,10 @@ def _head_matches(upload_object: UploadObject, head: dict) -> bool:
     # 증분 게시에서는 배치가 달라지므로 비교에서 제외한다.
     expected_metadata.pop("source-sha256", None)
     remote_metadata.pop("source-sha256", None)
+    # 풀 QA 교체 표시도 내력일 뿐이다. 남겨 두면 교체본을 다른 경로에서 검증할 때
+    # 기대 메타데이터에 이 키가 없어 불일치로 잡힌다.
+    expected_metadata.pop(WORD_POOL_REPLACED_MARKER, None)
+    remote_metadata.pop(WORD_POOL_REPLACED_MARKER, None)
     return (
         head.get("ContentLength") == upload_object.content_length
         and head.get("ContentType") == upload_object.content_type
@@ -1720,9 +1767,15 @@ def publish_be_manifest(
 # 새 합성은 없고, 옛 키도 건드리지 않는다(삭제는 V126 prod 검증 뒤 별도 단계).
 # ---------------------------------------------------------------------------
 
-WORD_POOL_SCHEMA_VERSION = 1
+# 2: entry에 published(공용 자리 실물 확인 결과)가 생겼다. V126 허용 목록이 이 값을
+# 믿고 만들어지므로, 그 필드가 없는 옛 색인은 받지 않는다.
+WORD_POOL_SCHEMA_VERSION = 2
 WORD_POOL_ISSUE = "LAN-475"
 WORD_POOL_SEGMENT = "word"
+# 풀 QA가 재합성으로 교체한 객체에 남기는 표시. 교체본은 원본 옛 키와 내용이 달라지는 것이
+# 정상이므로, 백필의 원본 대조가 이걸 보고 불일치를 오탐으로 올리지 않는다.
+WORD_POOL_REPLACED_MARKER = "replaced-by"
+WORD_POOL_REPLACED_VALUE = "lan-475-pool-qa"
 
 LEGACY_WORD_KEY_PATTERN = re.compile(
     rf"^{re.escape(KEY_PREFIX)}/(?P<expression_id>\d+)/(?P<accent_locale>[A-Z]{{2}}_[A-Z]{{2}})"
@@ -1958,12 +2011,19 @@ def load_word_texts(path: Path) -> tuple[tuple[str, str], ...]:
 
 
 def build_word_pool_index(
-    plan: WordPoolPlan, preferred_expression_ranges: tuple[tuple[int, int], ...]
+    plan: WordPoolPlan,
+    preferred_expression_ranges: tuple[tuple[int, int], ...],
+    *,
+    published_target_keys: frozenset[str] = frozenset(),
 ) -> dict:
     """공용 풀의 내용을 2·3단계가 읽을 문서로 만든다.
 
     V126 마이그레이션의 허용 목록과, 다음 배치의 "이미 있으니 합성하지 않는다"
     판정이 이 문서를 입력으로 쓴다.
+
+    :param published_target_keys: 공용 자리에 실물이 있다고 확인된 키. 항목마다
+        `published`로 남긴다. dry-run으로 만든 색인을 허용 목록으로 잘못 쓰면
+        파일 없는 URL을 허용하게 되므로, 실물 확인 결과를 색인이 직접 들고 있게 한다
     """
     entries = [
         {
@@ -1975,6 +2035,7 @@ def build_word_pool_index(
             "sourceWordOrder": entry.source_word_order,
             "qaVerified": entry.qa_verified,
             "duplicateCount": entry.duplicate_count,
+            "published": entry.target_key in published_target_keys,
             **({"word": entry.word} if entry.word is not None else {}),
         }
         for entry in plan.entries
@@ -1990,6 +2051,9 @@ def build_word_pool_index(
         "summary": {
             "legacyWordKeys": plan.legacy_key_count,
             "entries": len(plan.entries),
+            "published": sum(
+                1 for entry in plan.entries if entry.target_key in published_target_keys
+            ),
             "qaVerified": sum(1 for entry in plan.entries if entry.qa_verified),
             "byAccentLocale": {
                 locale: sum(
@@ -2063,7 +2127,7 @@ def execute_word_pool_backfill(
     표현에 한꺼번에 퍼진다.
 
     :param plan: plan_word_pool이 만든 계획
-    :param execute: False면 아무것도 쓰지 않고 대상 수만 돌려준다
+    :param execute: False면 아무것도 쓰지 않고 0을 돌려준다 (대조도 하지 않는다)
     :param aws_runner: aws CLI 호출 대행 (Boto3AwsRunner 사용 가능)
     :param max_workers: 동시 복사 스레드 수
     :param progress: 진행 상황 출력 콜백
@@ -2075,21 +2139,62 @@ def execute_word_pool_backfill(
 
     copied = 0
     total = len(plan.copy_entries)
+    counter_lock = threading.Lock()
 
     def copy_one(entry: WordPoolEntry) -> None:
+        nonlocal copied
         source_head = _head_key(plan.bucket, entry.source_key, aws_runner)
         if source_head is None:
             raise ValueError(f"source object is missing: {entry.source_key}")
         _copy_object(plan.bucket, entry.source_key, entry.target_key, aws_runner)
+        # 취소 시점에 이미 S3에 도달한 작업도 세야 한다. 결과를 꺼낸 것만 세면
+        # "1건 복사됨"이라고 알리면서 실제로는 5개가 생겨 있을 수 있다.
+        with counter_lock:
+            copied += 1
         target_head = _head_key(plan.bucket, entry.target_key, aws_runner)
         if target_head is None or not _copied_head_matches(source_head, target_head):
             raise ValueError(f"copied object verification conflict: {entry.target_key}")
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        for _ in executor.map(copy_one, plan.copy_entries):
-            copied += 1
-            if copied % 500 == 0:
-                progress(f"copied {copied}/{total}")
+    # executor.map은 첫 예외 뒤에도 제출된 나머지를 끝까지 돌린다. 원본 하나가 빠진 걸로
+    # 멈춰야 할 실행이 수천 건을 더 복사하고 나서야 터지므로, run_check와 같이 명시적으로
+    # 취소한다. 진행분은 예외와 함께 사라지지 않도록 먼저 알린다.
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    try:
+        futures = [executor.submit(copy_one, entry) for entry in plan.copy_entries]
+        done = 0
+        for future in as_completed(futures):
+            future.result()
+            done += 1
+            if done % 500 == 0:
+                progress(f"copied {done}/{total}")
+    except BaseException:
+        executor.shutdown(wait=True, cancel_futures=True)
+        progress(f"copied {copied}/{total} before failing")
+        raise
+    executor.shutdown(wait=True)
+    if copied:
+        progress(f"copied {copied}/{total}")
+
+    # 이미 공용 자리에 있던 항목은 복사하지 않지만, 내용이 원본과 같은지는 확인한다.
+    # 여기서 넘기면 잘못된 소리가 모든 표현에 한꺼번에 퍼진 채로 아무도 다시 안 본다.
+    # 복사 진행분은 위에서 이미 알렸으므로 여기서 터져도 사라지지 않는다.
+    reused_problems, reused_replaced = verify_word_pool(
+        plan,
+        aws_runner=aws_runner,
+        max_workers=max_workers,
+        entries=plan.reused_entries,
+    )
+    if plan.reused_entries:
+        # 건너뛴 건수를 조용히 버리지 않는다 — "몇 개를 왜 대조하지 않았는지"가 보여야 한다.
+        progress(
+            f"reused {len(plan.reused_entries)} verified against source, "
+            f"{reused_replaced} skipped (QA replaced)"
+        )
+    if reused_problems:
+        raise ValueError(
+            "existing shared objects differ from their source: "
+            + ", ".join(reused_problems[:5])
+        )
     return copied
 
 
@@ -2098,29 +2203,49 @@ def verify_word_pool(
     *,
     aws_runner: Callable = subprocess.run,
     max_workers: int = 16,
-) -> tuple[str, ...]:
+    entries: Sequence[WordPoolEntry] | None = None,
+) -> tuple[tuple[str, ...], int]:
     """공용 자리의 모든 항목이 자기 원본과 같은 내용인지 전수 대조한다.
 
-    :return: 어긋난 대상 키 목록 (비어 있으면 통과)
+    풀 QA가 재합성으로 교체한 객체는 원본과 달라지는 것이 정상이므로 대조에서 빼고
+    따로 센다. 표시가 없는데 내용이 다르면 복사 사고이므로 문제로 올린다.
+
+    :param entries: 대조할 항목. 생략하면 계획 전체
+    :return: (어긋난 대상 키 목록, 교체 표시가 붙어 건너뛴 수)
     """
     problems: list[str] = []
+    replaced = 0
 
     def check_one(entry: WordPoolEntry) -> str | None:
         source_head = _head_key(plan.bucket, entry.source_key, aws_runner)
         target_head = _head_key(plan.bucket, entry.target_key, aws_runner)
-        if source_head is None:
-            return f"{entry.target_key} source missing {entry.source_key}"
         if target_head is None:
             return f"{entry.target_key} missing"
+        metadata = {
+            name.lower(): str(value)
+            for name, value in target_head.get("Metadata", {}).items()
+        }
+        if metadata.get(WORD_POOL_REPLACED_MARKER) == WORD_POOL_REPLACED_VALUE:
+            return "replaced"
+        if source_head is None:
+            return f"{entry.target_key} source missing {entry.source_key}"
         if not _copied_head_matches(source_head, target_head):
             return f"{entry.target_key} differs from {entry.source_key}"
         return None
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        for problem in executor.map(check_one, plan.entries):
-            if problem is not None:
+    targets = plan.entries if entries is None else tuple(entries)
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    try:
+        for problem in executor.map(check_one, targets):
+            if problem == "replaced":
+                replaced += 1
+            elif problem is not None:
                 problems.append(problem)
-    return tuple(problems)
+    except BaseException:
+        executor.shutdown(wait=True, cancel_futures=True)
+        raise
+    executor.shutdown(wait=True)
+    return tuple(problems), replaced
 
 
 def publish_word_pool_index(
@@ -2133,7 +2258,17 @@ def publish_word_pool_index(
     """풀 색인을 콘텐츠 해시 키로 게시하고 키를 반환한다.
 
     2단계 V126의 허용 목록을 이 키에서 받아 만든다.
+
+    :raises ValueError: 공용 자리에 실물이 없는 항목이 하나라도 있을 때. 이 색인을
+        허용 목록으로 쓰면 파일 없는 URL을 허용하게 된다
     """
+    summary = index.get("summary", {})
+    if summary.get("published") != summary.get("entries"):
+        raise ValueError(
+            f"word pool index is not fully published "
+            f"({summary.get('published')}/{summary.get('entries')}) — "
+            "--execute로 백필을 끝낸 뒤 게시할 것"
+        )
     body = canonical_manifest_bytes(index)
     digest = hashlib.sha256(body).hexdigest()
     key = f"{KEY_PREFIX}/word-pool/{digest}.json"
@@ -2181,6 +2316,325 @@ def publish_word_pool_index(
         raise ValueError(f"uploaded object verification conflict: {key}")
     print(f"uploaded {key}")
     return key
+
+
+def load_word_pool_index(path: Path) -> tuple[WordPoolEntry, ...]:
+    """백필이 남긴 풀 색인을 다시 항목으로 읽는다.
+
+    :param path: `backfill-word-pool --output`이 남긴 JSON
+    :return: 색인에 적힌 순서 그대로의 풀 항목
+    :raises ValueError: 스키마 버전이나 이슈 표시가 다를 때
+    """
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if (
+        payload.get("schemaVersion") != WORD_POOL_SCHEMA_VERSION
+        or payload.get("issue") != WORD_POOL_ISSUE
+    ):
+        raise ValueError(
+            f"word pool index must be a {WORD_POOL_ISSUE} schema version "
+            f"{WORD_POOL_SCHEMA_VERSION} document"
+        )
+    missing = [
+        item.get("fingerprint")
+        for item in payload["entries"]
+        if "published" not in item
+    ]
+    if missing:
+        raise ValueError(
+            f"word pool index entries are missing 'published' ({len(missing)}) — "
+            "backfill-word-pool로 색인을 다시 만들 것"
+        )
+    return tuple(
+        WordPoolEntry(
+            accent_locale=item["accentLocale"],
+            fingerprint=item["fingerprint"],
+            source_key=item["sourceKey"],
+            source_expression_id=item["sourceExpressionId"],
+            source_word_order=item["sourceWordOrder"],
+            qa_verified=item["qaVerified"],
+            duplicate_count=item["duplicateCount"],
+            word=item.get("word"),
+        )
+        for item in payload["entries"]
+    )
+
+
+def word_pool_asset(entry: WordPoolEntry) -> SourceAsset:
+    """풀 항목을 기존 자산 계약에 맞춘 SourceAsset으로 바꾼다.
+
+    표현 id·단어 순서는 대표를 뽑아온 원본 키의 값을 그대로 쓴다. 그래야 자산 id가
+    `{표현id}/{억양}/word-{순서}` 형식을 유지해 QA 도구와 landit-ai의 대조 정리
+    도구가 쓰는 문제 문자열 계약이 그대로 통한다.
+
+    :param entry: 단어 텍스트가 채워진 풀 항목
+    :return: 같은 해시를 내는 단어 자산
+    :raises ValueError: 단어 텍스트가 없거나, 텍스트로 계산한 해시가 색인과 다를 때
+    """
+    if entry.word is None:
+        raise ValueError(
+            f"word pool entry has no word text: {entry.accent_locale} {entry.fingerprint}"
+            " — backfill-word-pool을 --words와 --unmatched drop으로 다시 돌려 색인을"
+            " 새로 만들 것"
+        )
+    asset = SourceAsset(
+        expression_id=entry.source_expression_id,
+        accent_locale=entry.accent_locale,
+        kind=KIND_WORD,
+        word_order=entry.source_word_order,
+        text=entry.word,
+    )
+    recomputed = generation_fingerprint(asset)
+    if recomputed != entry.fingerprint:
+        raise ValueError(
+            f"word pool entry fingerprint does not match its word text: "
+            f"{entry.accent_locale} {entry.fingerprint} != {recomputed}"
+        )
+    return asset
+
+
+def _get_object(bucket: str, key: str, path: Path, aws_runner: Callable) -> None:
+    """S3 객체를 임시 파일로 받아 제자리 교체한다. 중간에 죽어도 반쪽 파일이 남지 않는다."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = Path(f"{path}.part")
+    completed = aws_runner(
+        ["aws", "s3api", "get-object", "--bucket", bucket, "--key", key,
+         str(temporary_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        temporary_path.unlink(missing_ok=True)
+        raise RuntimeError(f"S3 get-object failed for key {key}")
+    os.replace(temporary_path, path)
+
+
+@dataclass(frozen=True)
+class FetchedPoolObject:
+    """풀 항목 하나를 작업 폴더에 확보한 결과."""
+
+    generated: GeneratedAsset
+    # S3 객체의 audio-sha256 메타데이터. 없으면 None — 빈 문자열과 구분해야 한다
+    # (""로 뭉개면 "로컬이 원격과 다르다"가 영원히 참이 된다).
+    remote_sha256: str | None
+    # 로컬 파일이 S3와 다르고, 이 도구가 앞서 만든 것임이 state로 증명된 경우
+    local_fix: bool
+
+
+def fetch_word_pool_audio(
+    entries: Iterable[WordPoolEntry],
+    work_dir: Path,
+    bucket: str,
+    *,
+    prior_state: Mapping[str, GeneratedAsset] = {},
+    aws_runner: Callable = subprocess.run,
+    probe_runner: Callable = subprocess.run,
+    probe_name: str | None = None,
+    max_workers: int = 16,
+    progress: Callable[[str], None] = lambda message: None,
+) -> dict[str, FetchedPoolObject]:
+    """풀 항목의 음성을 작업 폴더로 확보해 QA가 읽을 기록을 만든다.
+
+    공용 자리에 이미 있으면 그쪽을, 아직 복사 전이면 원본 키를 받는다.
+
+    로컬 파일 처리 규칙은 네 갈래다. 파일이 있다는 것만으로는 그게 무엇인지 알 수 없고,
+    작업 폴더의 mp3 경로는 `generate`·`check` 명령과 형식이 같아 다른 배치의 파일이
+    놓여 있을 수 있기 때문이다. **어느 갈래든 로컬 파일을 쓰기로 할 때는 근거가 있어야 한다.**
+
+    | 상황 | 내용이 같은가 | 출처를 아는가 | 결정 |
+    | --- | --- | --- | --- |
+    | 1. 파일 없음 | - | - | 내려받고 sha 대조 |
+    | 2. S3에 sha 없음 | 알 수 없음 | prior_state로 확인 | 확인되면 쓰고, 아니면 거부 |
+    | 3. sha 일치 | 같다 | 물을 필요 없음 | 그대로 쓴다 |
+    | 4. sha 불일치 | 다르다 | prior_state로 확인 | 앞선 실행의 미게시 수정본이면 쓰고(`local_fix`), 아니면 원인별로 거부 |
+
+    출처 확인은 `prior_state`의 기록이 **같은 fingerprint·같은 sha**를 들고 있고
+    `generationId`가 `s3-recovered`가 아닌 것으로 한다(4번). 2번은 내용 대조가 불가능하므로
+    fingerprint·sha 일치만 본다.
+
+    :param entries: 단어 텍스트가 채워진 풀 항목
+    :param work_dir: mp3를 둘 작업 폴더
+    :param bucket: 콘텐츠 버킷
+    :param prior_state: 같은 작업 폴더의 이전 state. 2번 규칙의 증거로만 쓴다
+    :return: 자산 id → 확보 결과
+    :raises ValueError: 객체가 없거나, 내려받은 sha가 메타데이터와 다르거나,
+        정체를 증명할 수 없는 로컬 파일이 있을 때
+    """
+    probe = probe_name or resolve_probe()
+    entry_list = list(entries)
+    fetched: dict[str, FetchedPoolObject] = {}
+
+    def fetch_one(entry: WordPoolEntry) -> FetchedPoolObject:
+        asset = word_pool_asset(entry)
+        key_id = asset_id(asset)
+        path = audio_path_for(work_dir, asset)
+        head = _head_key(bucket, entry.target_key, aws_runner)
+        key = entry.target_key
+        if head is None:
+            head = _head_key(bucket, entry.source_key, aws_runner)
+            key = entry.source_key
+        if head is None:
+            raise ValueError(f"word pool object is missing: {entry.target_key}")
+        metadata = {
+            name.lower(): str(value)
+            for name, value in head.get("Metadata", {}).items()
+        }
+        remote_sha = metadata.get("audio-sha256")
+
+        # 파일은 한 번만 읽는다. sha·크기·검사를 각각 따로 읽으면 그 사이에 바뀐 내용이
+        # 서로 다른 값으로 기록될 수 있다.
+        body = path.read_bytes() if path.is_file() else None
+        local_sha = hashlib.sha256(body).hexdigest() if body is not None else None
+        local_fix = False
+        if local_sha is None:
+            _get_object(bucket, key, path, aws_runner)
+            body = path.read_bytes()
+            local_sha = hashlib.sha256(body).hexdigest()
+            if remote_sha is not None and remote_sha != local_sha:
+                raise ValueError(f"downloaded audio sha256 mismatch for key {key}")
+        elif remote_sha is None:
+            # S3에 audio-sha256이 없으면 로컬과 "같은지"는 알 수 없다. 그렇다고 출처까지
+            # 묻지 않으면, 기록 없는 남의 파일이 그대로 검사를 통과해 합격으로 보고된다.
+            # 같은지(판정 불가)와 어디서 왔는지(판정 가능)는 별개의 질문이다.
+            # 1회차에는 파일이 없어 내려받고 기록을 남기므로 2회차부터 여기를 통과한다.
+            previous = prior_state.get(key_id)
+            if (
+                previous is None
+                or previous.generation_fingerprint != entry.fingerprint
+                or previous.audio_sha256 != local_sha
+            ):
+                raise ValueError(
+                    f"S3 object has no audio-sha256 and this local clip's origin is "
+                    f"unknown: {path} — 내용을 대조할 수 없으니 출처라도 확실해야 한다. "
+                    f"이 파일을 지우고 다시 받을 것"
+                )
+        elif local_sha == remote_sha:
+            pass
+        else:
+            previous = prior_state.get(key_id)
+            # 거부 사유를 뭉뚱그리면 운영자가 할 일을 못 고른다. 원인별로 나눈다.
+            if previous is None:
+                raise ValueError(
+                    f"local clip differs from S3 and this tool has no record of it: "
+                    f"{path} — 다른 배치의 작업 폴더를 재사용했을 수 있다. "
+                    f"새 --work-dir을 쓰거나 이 파일을 지울 것"
+                )
+            if previous.generation_fingerprint != entry.fingerprint:
+                raise ValueError(
+                    f"local clip belongs to a different pool entry: {path} "
+                    f"(기록 {previous.generation_fingerprint} != 색인 {entry.fingerprint}) "
+                    f"— 한 작업 폴더에서 서로 다른 색인을 번갈아 돌렸을 수 있다. "
+                    f"색인마다 --work-dir을 나눌 것"
+                )
+            if previous.audio_sha256 != local_sha:
+                raise ValueError(
+                    f"local clip is newer than this tool's record: {path} "
+                    f"— 재합성 도중 중단됐을 수 있다. 이 파일은 지워도 안전하다"
+                    f"(다시 받아 검사부터 새로 한다)"
+                )
+            if previous.generation_id == "s3-recovered":
+                raise ValueError(
+                    f"local clip was downloaded from S3 but no longer matches it: {path} "
+                    f"— 파일이 바깥에서 바뀌었다. 지우고 다시 돌릴 것"
+                )
+            local_fix = True
+
+        duration = validate_mp3(
+            path, probe_runner=probe_runner, probe_name=probe
+        ).duration_seconds
+        return FetchedPoolObject(
+            generated=GeneratedAsset(
+                asset_id=key_id,
+                expression_id=asset.expression_id,
+                accent_locale=asset.accent_locale,
+                kind=asset.kind,
+                word_order=asset.word_order,
+                generation_fingerprint=entry.fingerprint,
+                path=path,
+                audio_byte_size=len(body),
+                audio_sha256=local_sha,
+                generation_id=(
+                    prior_state[key_id].generation_id
+                    if local_fix
+                    else metadata.get("generation-id") or "s3-recovered"
+                ),
+                duration_seconds=duration,
+            ),
+            remote_sha256=remote_sha,
+            local_fix=local_fix,
+        )
+
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    try:
+        futures = [executor.submit(fetch_one, entry) for entry in entry_list]
+        for future in as_completed(futures):
+            item = future.result()
+            fetched[item.generated.asset_id] = item
+            if len(fetched) % 500 == 0:
+                progress(f"fetched {len(fetched)}/{len(entry_list)}")
+    except BaseException:
+        executor.shutdown(wait=True, cancel_futures=True)
+        raise
+    executor.shutdown(wait=True)
+    return fetched
+
+
+def publish_word_pool_replacement(
+    bucket: str,
+    entry: WordPoolEntry,
+    generated: GeneratedAsset,
+    *,
+    execute: bool = False,
+    aws_runner: Callable = subprocess.run,
+) -> None:
+    """재합성으로 고친 단어 음성을 공용 키에 덮어쓴다.
+
+    키는 텍스트 해시라 내용이 바뀌어도 그대로다. 그래서 DB URL은 손대지 않아도 되지만
+    CloudFront 캐시(immutable)에는 옛 소리가 남으므로 게시 뒤 무효화해야 한다.
+
+    :raises WordPoolReplacementUnverified: put은 됐는데 게시 결과가 올린 내용과 다를 때
+        (객체는 이미 바뀌어 있으므로 호출자는 이 키를 교체 목록에 넣어야 한다)
+    :raises RuntimeError: put 자체가 실패했을 때 (객체는 그대로다)
+    """
+    upload_object = UploadObject(
+        key=entry.target_key,
+        body_path=generated.path,
+        body_bytes=None,
+        content_length=generated.audio_byte_size,
+        content_type="audio/mpeg",
+        cache_control=CACHE_CONTROL,
+        metadata={
+            "audio-sha256": generated.audio_sha256,
+            "model": MODEL,
+            "voice": VOICE_BY_LOCALE[entry.accent_locale],
+            "generation-id": generated.generation_id,
+            WORD_POOL_REPLACED_MARKER: WORD_POOL_REPLACED_VALUE,
+        },
+        manifest_object=False,
+    )
+    if not execute:
+        print(f"would replace {entry.target_key}")
+        return
+    _put_object(
+        UploadPlan(
+            bucket=bucket,
+            new_keys=(),
+            reused_keys=(),
+            conflict_keys=(),
+            objects=(upload_object,),
+            replace_keys=(entry.target_key,),
+        ),
+        upload_object,
+        generated.path,
+        aws_runner,
+        overwrite=True,
+    )
+    head = _head_key(bucket, entry.target_key, aws_runner)
+    if head is None or not _head_matches(upload_object, head):
+        raise WordPoolReplacementUnverified(
+            f"replaced object verification conflict: {entry.target_key}"
+        )
+    print(f"replaced {entry.target_key}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -2378,6 +2832,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"be_manifest_key={key}")
     elif args.command == "backfill-word-pool":
         aws_runner = Boto3AwsRunner() if args.boto3 else subprocess.run
+        require_bucket(args.bucket, aws_runner)
         preferred = parse_expression_ranges(args.prefer_expression_ranges)
         word_texts = load_word_texts(args.words) if args.words else None
         keys = _list_existing_keys(args.bucket, f"{KEY_PREFIX}/", aws_runner)
@@ -2413,15 +2868,32 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"copied={copied}")
         if args.verify_existing:
-            problems = verify_word_pool(
+            problems, replaced = verify_word_pool(
                 plan, aws_runner=aws_runner, max_workers=32 if args.boto3 else 8
             )
-            print(f"verify_problems={len(problems)}")
+            print(f"verify_problems={len(problems)}, qa_replaced={replaced}")
             for problem in problems:
                 print(problem)
             if problems:
                 return 1
-        index = build_word_pool_index(plan, preferred)
+        # 색인의 published는 추측이 아니라 S3 실물 목록에서 받는다. dry-run으로 만든
+        # 색인을 V126 허용 목록으로 잘못 쓰면 파일 없는 URL을 허용하게 된다.
+        published = frozenset(
+            _list_existing_keys(
+                args.bucket, f"{KEY_PREFIX}/{WORD_POOL_SEGMENT}/", aws_runner
+            )
+        )
+        index = build_word_pool_index(
+            plan, preferred, published_target_keys=published
+        )
+        if any("word" not in entry for entry in index["entries"]):
+            print(
+                "NOTE: 단어 텍스트가 없는 항목이 색인에 있다. 이 색인으로는 check-pool을 "
+                "돌릴 수 없다 — 풀 QA를 하려면 --words와 --unmatched drop으로 다시 만들 것"
+            )
+        print(
+            f"published={index['summary']['published']}/{index['summary']['entries']}"
+        )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         temporary_path = Path(f"{args.output}.part")
         temporary_path.write_bytes(canonical_manifest_bytes(index))

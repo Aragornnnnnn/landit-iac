@@ -1,6 +1,9 @@
 # LAN-373 발음 학습 오디오 배치 도구의 계약을 검증한다.
 
+import contextlib
 import hashlib
+import importlib.util
+import io
 import json
 import unittest
 import unittest.mock
@@ -13,6 +16,8 @@ from scripts.expression_pronunciation_audio import (
     Boto3AwsRunner,
     _CompletedCall,
     _copied_head_matches,
+    _head_key,
+    require_bucket,
     InvalidAudioResponse,
     OpenRouterSpeechClient,
     PermanentTtsError,
@@ -35,6 +40,7 @@ from scripts.expression_pronunciation_audio import (
     publish_reference,
     build_word_pool_index,
     execute_word_pool_backfill,
+    load_word_pool_index,
     load_word_texts,
     main,
     parse_expression_ranges,
@@ -44,6 +50,8 @@ from scripts.expression_pronunciation_audio import (
     s3_key,
     shared_word_key,
     validate_source,
+    WORD_POOL_REPLACED_MARKER,
+    WORD_POOL_REPLACED_VALUE,
     verify_word_pool,
     word_fingerprint,
     verify_accent_pronunciations,
@@ -1035,10 +1043,11 @@ class BeManifestTests(unittest.TestCase):
         self.assertEqual(stored, {})
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
+@unittest.skipUnless(
+    importlib.util.find_spec("botocore"), "botocore가 없는 환경에서는 건너뛴다"
+)
 class Boto3RunnerTests(unittest.TestCase):
     def make_runner(self, client):
         runner = Boto3AwsRunner.__new__(Boto3AwsRunner)
@@ -1324,7 +1333,7 @@ class WordPoolPlanTests(unittest.TestCase):
 
         index = build_word_pool_index(plan, ((982, 1938),))
 
-        self.assertEqual(index["schemaVersion"], 1)
+        self.assertEqual(index["schemaVersion"], 2)
         self.assertEqual(index["issue"], "LAN-475")
         self.assertEqual(index["bucket"], "bucket")
         self.assertEqual(index["preferredExpressionRanges"], [[982, 1938]])
@@ -1343,9 +1352,26 @@ class WordPoolPlanTests(unittest.TestCase):
                 "sourceWordOrder": 9,
                 "qaVerified": True,
                 "duplicateCount": 2,
+                "published": False,
                 "word": "the",
             },
         )
+        self.assertEqual(index["summary"]["published"], 0)
+
+    def test_index_marks_entries_that_really_exist_in_the_shared_place(self):
+        keys = [legacy_word_key(5, "EN_US", 1, self.the),
+                legacy_word_key(5, "EN_US", 2, self.take)]
+        plan = plan_word_pool(keys, "bucket")
+
+        index = build_word_pool_index(
+            plan, (), published_target_keys=frozenset({shared_word_key("EN_US", self.the)})
+        )
+
+        self.assertEqual(index["summary"]["published"], 1)
+        self.assertEqual(index["summary"]["entries"], 2)
+        published = {e["fingerprint"]: e["published"] for e in index["entries"]}
+        self.assertTrue(published[self.the])
+        self.assertFalse(published[self.take])
 
 
 class WordTextFileTests(unittest.TestCase):
@@ -1382,12 +1408,29 @@ class WordTextFileTests(unittest.TestCase):
             load_word_texts(self.write("EN_ZZ\tthe\n"))
 
 
+def audio_head(size: int, audio_sha: str) -> dict:
+    return {
+        "ContentLength": size,
+        "ContentType": "audio/mpeg",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "Metadata": {"audio-sha256": audio_sha, "model": "deepgram/aura-2"},
+    }
+
+
 class FakeS3:
-    """copy-object까지 다루는 최소 S3 흉내. 저장은 키 → head 응답 dict."""
+    """copy/get/put까지 다루는 최소 S3 흉내. 저장은 키 → head 응답 dict.
+
+    바이트가 필요한 검사(get-object)는 add_audio로 본문까지 넣어 둔다.
+    """
 
     def __init__(self, objects: dict[str, dict] | None = None):
         self.objects: dict[str, dict] = dict(objects or {})
+        self.bodies: dict[str, bytes] = {}
         self.copies: list[tuple[str, str]] = []
+
+    def add_audio(self, key: str, body: bytes) -> None:
+        self.objects[key] = audio_head(len(body), hashlib.sha256(body).hexdigest())
+        self.bodies[key] = body
 
     @staticmethod
     def _option(command, name):
@@ -1396,6 +1439,8 @@ class FakeS3:
     def __call__(self, command, **kwargs):
         operation = command[2]
         key = self._option(command, "--key")
+        if operation == "head-bucket":
+            return _CompletedCall(0, "{}")
         if operation == "list-objects-v2":
             prefix = self._option(command, "--prefix")
             keys = [item for item in self.objects if item.startswith(prefix)]
@@ -1408,9 +1453,17 @@ class FakeS3:
             source = self._option(command, "--copy-source").split("/", 1)[1]
             self.copies.append((source, key))
             self.objects[key] = dict(self.objects[source])
+            if source in self.bodies:
+                self.bodies[key] = self.bodies[source]
+            return _CompletedCall(0, "{}")
+        if operation == "get-object":
+            if key not in self.bodies:
+                return _CompletedCall(1, "", "404 Not Found")
+            Path(command[-1]).write_bytes(self.bodies[key])
             return _CompletedCall(0, "{}")
         if operation == "put-object":
             body = Path(self._option(command, "--body")).read_bytes()
+            self.bodies[key] = body
             self.objects[key] = {
                 "ContentLength": len(body),
                 "ContentType": self._option(command, "--content-type"),
@@ -1422,15 +1475,6 @@ class FakeS3:
             }
             return _CompletedCall(0)
         raise AssertionError(f"unexpected aws command: {command[:3]}")
-
-
-def audio_head(size: int, audio_sha: str) -> dict:
-    return {
-        "ContentLength": size,
-        "ContentType": "audio/mpeg",
-        "CacheControl": "public, max-age=31536000, immutable",
-        "Metadata": {"audio-sha256": audio_sha, "model": "deepgram/aura-2"},
-    }
 
 
 class WordPoolBackfillTests(unittest.TestCase):
@@ -1517,11 +1561,158 @@ class WordPoolBackfillTests(unittest.TestCase):
         s3.objects[shared_word_key("EN_US", self.the)]["ContentLength"] = 999
         del s3.objects[shared_word_key("EN_US", self.take)]
 
-        problems = verify_word_pool(plan, aws_runner=s3)
+        problems, replaced = verify_word_pool(plan, aws_runner=s3)
 
         self.assertEqual(len(problems), 2)
+        self.assertEqual(replaced, 0)
         self.assertTrue(any("differs from" in problem for problem in problems))
         self.assertTrue(any("missing" in problem for problem in problems))
+
+    def test_verify_does_not_flag_clips_the_pool_qa_replaced(self):
+        # 풀 QA가 고쳐 올린 객체는 옛 원본과 달라지는 것이 정상이다. 표시를 보고 넘겨야
+        # 백필의 대조가 교체본마다 가짜 경보를 내지 않는다.
+        s3, plan = self.build()
+        execute_word_pool_backfill(plan, execute=True, aws_runner=s3)
+        fixed = shared_word_key("EN_US", self.the)
+        s3.objects[fixed]["Metadata"]["audio-sha256"] = "fixed-sha"
+        s3.objects[fixed]["Metadata"][WORD_POOL_REPLACED_MARKER] = (
+            WORD_POOL_REPLACED_VALUE
+        )
+
+        problems, replaced = verify_word_pool(plan, aws_runner=s3)
+
+        self.assertEqual(problems, ())
+        self.assertEqual(replaced, 1)
+
+    def test_backfill_verifies_reused_targets_even_without_the_verify_flag(self):
+        # 이미 공용 자리에 있는 키는 복사하지 않는다. 그렇다고 아무도 안 보면,
+        # 잘못된 소리가 모든 표현에 퍼진 채 다음 실행도 "reused"로 넘어간다.
+        s3, _ = self.build()
+        tampered = shared_word_key("EN_US", self.the)
+        s3.objects[tampered] = audio_head(100, "sha-TAMPERED")
+        plan = plan_word_pool(list(s3.objects), "bucket")
+
+        with self.assertRaises(ValueError) as caught:
+            execute_word_pool_backfill(plan, execute=True, aws_runner=s3)
+
+        self.assertIn("differ from their source", str(caught.exception))
+
+    def test_backfill_stops_copying_after_the_first_missing_source(self):
+        # executor.map은 첫 예외 뒤에도 제출된 나머지를 끝까지 돈다. 10,494건을 돌릴 때
+        # 원본 하나가 빠진 걸로 나머지를 다 복사하고 나서 터지면 안 된다.
+        objects = {}
+        for index in range(8):
+            fingerprint = word_fingerprint("EN_US", f"word{index}")
+            objects[legacy_word_key(1000 + index, "EN_US", 1, fingerprint)] = audio_head(
+                10, f"sha-{index}"
+            )
+        s3 = FakeS3(objects)
+        plan = plan_word_pool(list(objects), "bucket")
+        del s3.objects[plan.entries[1].source_key]
+
+        with self.assertRaises(ValueError):
+            execute_word_pool_backfill(plan, execute=True, aws_runner=s3, max_workers=1)
+
+        self.assertLess(len(s3.copies), len(plan.entries))
+
+    def test_missing_bucket_is_caught_before_any_key_lookup(self):
+        # S3 head-object는 버킷이 없을 때도 키가 없을 때와 같은 맨 404를 준다(실측).
+        # 그래서 버킷은 작업 시작 전에 따로 확인해야 --bucket 오타를 알아챌 수 있다.
+        def missing_bucket(command, **kwargs):
+            assert command[2] == "head-bucket", command[2]
+            return _CompletedCall(1, "", "404 Not Found")
+
+        with self.assertRaises(RuntimeError) as caught:
+            require_bucket("typo-bucket", missing_bucket)
+
+        self.assertIn("bucket is missing", str(caught.exception))
+
+    def test_existing_bucket_passes_the_precheck(self):
+        require_bucket("bucket", lambda command, **kwargs: _CompletedCall(0, "{}"))
+
+    def test_progress_count_matches_the_copy_calls_actually_made(self):
+        # 결과를 꺼낸 것만 세면 "1건 복사됨"이라 알리면서 S3에는 5개가 생겨 있을 수 있다.
+        objects = {}
+        for index in range(8):
+            fingerprint = word_fingerprint("EN_US", f"word{index}")
+            objects[legacy_word_key(1000 + index, "EN_US", 1, fingerprint)] = audio_head(
+                10, f"sha-{index}"
+            )
+        s3 = FakeS3(objects)
+        plan = plan_word_pool(list(objects), "bucket")
+        del s3.objects[plan.entries[1].source_key]
+        lines: list[str] = []
+
+        with self.assertRaises(ValueError):
+            execute_word_pool_backfill(
+                plan, execute=True, aws_runner=s3, max_workers=4,
+                progress=lines.append,
+            )
+
+        reported = [line for line in lines if "before failing" in line]
+        self.assertEqual(len(reported), 1)
+        self.assertEqual(reported[0], f"copied {len(s3.copies)}/{len(plan.entries)} before failing")
+
+    def test_reused_verification_failure_still_reports_the_copied_count(self):
+        # reused 대조는 복사 루프 밖이다. 거기서 터질 때 복사 진행분이 사라지면 안 된다.
+        s3, _ = self.build()
+        tampered = shared_word_key("EN_US", self.the)
+        s3.objects[tampered] = audio_head(100, "sha-TAMPERED")
+        plan = plan_word_pool(list(s3.objects), "bucket")
+        lines: list[str] = []
+
+        with self.assertRaises(ValueError):
+            execute_word_pool_backfill(
+                plan, execute=True, aws_runner=s3, progress=lines.append
+            )
+
+        self.assertTrue(any(line.startswith("copied ") for line in lines), lines)
+
+    def test_backfill_reports_qa_replaced_skips_without_the_verify_flag(self):
+        # "N개는 QA가 고쳐 올린 것이라 대조하지 않았다"는 조용한 건너뜀이면 안 된다.
+        s3, plan = self.build()
+        execute_word_pool_backfill(plan, execute=True, aws_runner=s3)
+        fixed = shared_word_key("EN_US", self.the)
+        s3.objects[fixed]["Metadata"]["audio-sha256"] = "fixed-sha"
+        s3.objects[fixed]["Metadata"][WORD_POOL_REPLACED_MARKER] = WORD_POOL_REPLACED_VALUE
+        replan = plan_word_pool(list(s3.objects), "bucket")
+        lines: list[str] = []
+
+        execute_word_pool_backfill(
+            replan, execute=True, aws_runner=s3, progress=lines.append
+        )
+
+        self.assertTrue(
+            any("skipped (QA replaced)" in line and " 1 skipped" in line for line in lines),
+            lines,
+        )
+
+    def test_index_without_the_published_field_is_rejected(self):
+        payload = {
+            "schemaVersion": 2,
+            "issue": "LAN-475",
+            "entries": [
+                {
+                    "accentLocale": "EN_US",
+                    "fingerprint": "a" * 64,
+                    "sourceKey": "k",
+                    "sourceExpressionId": 5,
+                    "sourceWordOrder": 1,
+                    "qaVerified": False,
+                    "duplicateCount": 1,
+                }
+            ],
+        }
+        handle = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8"
+        )
+        json.dump(payload, handle)
+        handle.close()
+
+        with self.assertRaises(ValueError) as caught:
+            load_word_pool_index(Path(handle.name))
+
+        self.assertIn("missing 'published'", str(caught.exception))
 
     def test_object_without_audio_sha_is_not_accepted_as_verified(self):
         head = audio_head(100, "sha")
@@ -1530,9 +1721,30 @@ class WordPoolBackfillTests(unittest.TestCase):
 
 
 class WordPoolIndexPublishTests(unittest.TestCase):
+    def test_partially_published_index_is_refused(self):
+        # dry-run으로 만든 색인을 V126 허용 목록으로 쓰면 파일 없는 URL을 허용하게 된다.
+        s3 = FakeS3()
+        index = {
+            "schemaVersion": 2,
+            "issue": "LAN-475",
+            "summary": {"entries": 10, "published": 0},
+            "entries": [],
+        }
+
+        with self.assertRaises(ValueError) as caught:
+            publish_word_pool_index(index, "bucket", execute=True, aws_runner=s3)
+
+        self.assertIn("not fully published", str(caught.exception))
+        self.assertEqual(s3.objects, {})
+
     def test_index_is_published_under_a_content_hash_key(self):
         s3 = FakeS3()
-        index = {"schemaVersion": 1, "issue": "LAN-475", "entries": []}
+        index = {
+            "schemaVersion": 2,
+            "issue": "LAN-475",
+            "summary": {"entries": 0, "published": 0},
+            "entries": [],
+        }
 
         key = publish_word_pool_index(index, "bucket", execute=True, aws_runner=s3)
 
@@ -1545,7 +1757,10 @@ class WordPoolIndexPublishTests(unittest.TestCase):
     def test_dry_run_publish_writes_nothing(self):
         s3 = FakeS3()
 
-        publish_word_pool_index({"entries": []}, "bucket", execute=False, aws_runner=s3)
+        publish_word_pool_index(
+            {"entries": [], "summary": {"entries": 0, "published": 0}},
+            "bucket", execute=False, aws_runner=s3,
+        )
 
         self.assertEqual(s3.objects, {})
 
@@ -1555,8 +1770,8 @@ class WordPoolCliTests(unittest.TestCase):
         self.the = word_fingerprint("EN_US", "the")
         self.output = Path(tempfile.mkdtemp()) / "word-pool-index.json"
 
-    def run_cli(self, s3, *extra):
-        with unittest.mock.patch(
+    def run_cli(self, s3, *extra, printed=None):
+        with contextlib.redirect_stdout(printed or io.StringIO()), unittest.mock.patch(
             "scripts.expression_pronunciation_audio.subprocess.run", s3
         ):
             return main(
@@ -1586,8 +1801,10 @@ class WordPoolCliTests(unittest.TestCase):
         words.write_text("EN_US\ttake\n", encoding="utf-8")
         s3 = FakeS3({legacy_word_key(5, "EN_US", 1, self.the): audio_head(10, "sha")})
 
+        printed = io.StringIO()
         code = self.run_cli(
-            s3, "--words", str(words), "--unmatched", "keep", "--execute"
+            s3, "--words", str(words), "--unmatched", "keep", "--execute",
+            printed=printed,
         )
 
         self.assertEqual(code, 0)
@@ -1595,6 +1812,7 @@ class WordPoolCliTests(unittest.TestCase):
         index = json.loads(self.output.read_text(encoding="utf-8"))
         self.assertEqual(index["summary"]["entries"], 1)
         self.assertNotIn("word", index["entries"][0])
+        self.assertIn("check-pool을 돌릴 수 없다", printed.getvalue())
 
     def test_drop_leaves_unmatched_out_of_the_pool_entirely(self):
         words = Path(tempfile.mkdtemp()) / "words.tsv"
@@ -1620,11 +1838,30 @@ class WordPoolCliTests(unittest.TestCase):
         self.assertTrue(self.output.exists())
 
 
+@unittest.skipUnless(
+    importlib.util.find_spec("botocore"), "botocore가 없는 환경에서는 건너뛴다"
+)
 class Boto3CopyObjectTests(unittest.TestCase):
-    def test_copy_object_follows_the_cli_contract(self):
-        client = Mock()
+    def make_runner(self, client):
         runner = Boto3AwsRunner.__new__(Boto3AwsRunner)
         runner._client = client
+        return runner
+
+    def test_get_object_writes_to_the_trailing_path_argument(self):
+        client = Mock()
+        runner = self.make_runner(client)
+
+        result = runner(
+            ["aws", "s3api", "get-object", "--bucket", "b", "--key", "k", "/tmp/out.mp3"],
+            capture_output=True, text=True, check=False,
+        )
+
+        self.assertEqual(result.returncode, 0)
+        client.download_file.assert_called_once_with("b", "k", "/tmp/out.mp3")
+
+    def test_copy_object_follows_the_cli_contract(self):
+        client = Mock()
+        runner = self.make_runner(client)
 
         result = runner(
             ["aws", "s3api", "copy-object", "--bucket", "b", "--key", "target",
@@ -1637,3 +1874,7 @@ class Boto3CopyObjectTests(unittest.TestCase):
         client.copy_object.assert_called_once_with(
             Bucket="b", Key="target", CopySource="b/source", MetadataDirective="COPY"
         )
+
+
+if __name__ == "__main__":
+    unittest.main()

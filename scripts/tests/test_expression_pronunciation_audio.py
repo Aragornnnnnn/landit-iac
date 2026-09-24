@@ -3,6 +3,7 @@
 import hashlib
 import json
 import unittest
+import unittest.mock
 from pathlib import Path
 import tempfile
 from unittest.mock import Mock
@@ -10,6 +11,8 @@ from unittest.mock import Mock
 from scripts.expression_pronunciation_audio import (
     AccentContrast,
     Boto3AwsRunner,
+    _CompletedCall,
+    _copied_head_matches,
     InvalidAudioResponse,
     OpenRouterSpeechClient,
     PermanentTtsError,
@@ -30,8 +33,19 @@ from scripts.expression_pronunciation_audio import (
     execute_s3_upload,
     publish_be_manifest,
     publish_reference,
+    build_word_pool_index,
+    execute_word_pool_backfill,
+    load_word_texts,
+    main,
+    parse_expression_ranges,
+    parse_legacy_word_keys,
+    plan_word_pool,
+    publish_word_pool_index,
     s3_key,
+    shared_word_key,
     validate_source,
+    verify_word_pool,
+    word_fingerprint,
     verify_accent_pronunciations,
     verify_manifest,
 )
@@ -1100,3 +1114,526 @@ class Boto3RunnerTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("404", result.stderr)
+
+
+class WordPoolKeyTests(unittest.TestCase):
+    def test_shared_word_key_drops_expression_and_order(self):
+        fingerprint = "a" * 64
+        self.assertEqual(
+            shared_word_key("EN_AU", fingerprint),
+            f"content/expression-pronunciation-audio/word/EN_AU/{fingerprint}.mp3",
+        )
+
+    def test_shared_word_key_matches_word_fingerprint_of_the_same_text(self):
+        # 표현 id·단어 순서가 달라도 같은 (억양, 단어)면 같은 자리를 가리켜야 한다.
+        left = SourceAsset(
+            expression_id=7, accent_locale="EN_GB", kind="word", word_order=4, text="it"
+        )
+        right = SourceAsset(
+            expression_id=99, accent_locale="EN_GB", kind="word", word_order=1, text="it"
+        )
+        self.assertEqual(
+            generation_fingerprint(left), word_fingerprint("EN_GB", "it")
+        )
+        self.assertEqual(generation_fingerprint(left), generation_fingerprint(right))
+
+    def test_word_fingerprint_reproduces_published_production_hashes(self):
+        # 프로덕션 S3·V95에 실제로 올라가 있는 해시. 이 값이 달라지면 공용 풀이
+        # 기존 객체를 못 알아보고 전부 새로 합성하게 된다.
+        self.assertEqual(
+            word_fingerprint("EN_US", "the"),
+            "7bd05e2e00bec192601e48e14585277a5d4dd406ef2d7d82e0f5e5b15ee9f511",
+        )
+        self.assertEqual(
+            word_fingerprint("EN_US", "I"),
+            "27fff8268fc788326a47e4349bf855e8aba3cc137be9919a98f201015371af08",
+        )
+
+    def test_parse_keeps_only_legacy_word_keys(self):
+        fingerprint = "b" * 64
+        keys = [
+            f"content/expression-pronunciation-audio/12/EN_US/word/3/{fingerprint}.mp3",
+            f"content/expression-pronunciation-audio/12/EN_US/sentence/{fingerprint}.mp3",
+            f"content/expression-pronunciation-audio/12/EN_US/expression/{fingerprint}.mp3",
+            f"content/expression-pronunciation-audio/word/EN_US/{fingerprint}.mp3",
+            "content/expression-pronunciation-audio/manifests/be-abc.json",
+            "content/expression-pronunciation-audio/reference/EN_US-abc.json",
+        ]
+
+        parsed = parse_legacy_word_keys(keys)
+
+        self.assertEqual(len(parsed), 1)
+        self.assertEqual(parsed[0].expression_id, 12)
+        self.assertEqual(parsed[0].accent_locale, "EN_US")
+        self.assertEqual(parsed[0].word_order, 3)
+        self.assertEqual(parsed[0].fingerprint, fingerprint)
+
+    def test_expression_ranges_are_inclusive_and_validated(self):
+        self.assertEqual(
+            parse_expression_ranges("982-1938,2259-3000"),
+            ((982, 1938), (2259, 3000)),
+        )
+        self.assertEqual(parse_expression_ranges(""), ())
+        with self.assertRaises(ValueError):
+            parse_expression_ranges("982")
+        with self.assertRaises(ValueError):
+            parse_expression_ranges("3000-2259")
+
+
+def legacy_word_key(expression_id: int, locale: str, order: int, fingerprint: str) -> str:
+    return (
+        f"content/expression-pronunciation-audio/{expression_id}/{locale}"
+        f"/word/{order}/{fingerprint}.mp3"
+    )
+
+
+class WordPoolPlanTests(unittest.TestCase):
+    def setUp(self):
+        self.the = word_fingerprint("EN_US", "the")
+        self.take = word_fingerprint("EN_US", "take")
+
+    def test_duplicates_collapse_to_one_entry_per_locale_and_fingerprint(self):
+        keys = [
+            legacy_word_key(5, "EN_US", 1, self.the),
+            legacy_word_key(900, "EN_US", 4, self.the),
+            legacy_word_key(1200, "EN_US", 2, self.the),
+            legacy_word_key(5, "EN_US", 2, self.take),
+        ]
+
+        plan = plan_word_pool(keys, "bucket")
+
+        self.assertEqual(len(plan.entries), 2)
+        by_fingerprint = {entry.fingerprint: entry for entry in plan.entries}
+        self.assertEqual(by_fingerprint[self.the].duplicate_count, 3)
+        self.assertEqual(by_fingerprint[self.take].duplicate_count, 1)
+        self.assertEqual(plan.legacy_key_count, 4)
+
+    def test_same_word_repeated_inside_one_expression_collapses(self):
+        # 실데이터에 한 표현 안에서 같은 단어가 반복되는 경우가 있다 (LAN-471 기준 53건).
+        keys = [
+            legacy_word_key(5, "EN_US", 2, self.the),
+            legacy_word_key(5, "EN_US", 7, self.the),
+        ]
+
+        plan = plan_word_pool(keys, "bucket")
+
+        self.assertEqual(len(plan.entries), 1)
+        self.assertEqual(plan.entries[0].duplicate_count, 2)
+        self.assertEqual(plan.entries[0].source_word_order, 2)
+
+    def test_representative_prefers_qa_verified_batches(self):
+        keys = [
+            legacy_word_key(5, "EN_US", 1, self.the),
+            legacy_word_key(1200, "EN_US", 9, self.the),
+        ]
+
+        plan = plan_word_pool(
+            keys, "bucket", preferred_expression_ranges=((982, 1938),)
+        )
+
+        self.assertEqual(plan.entries[0].source_expression_id, 1200)
+        self.assertTrue(plan.entries[0].qa_verified)
+
+    def test_representative_is_deterministic_without_a_preferred_batch(self):
+        keys = [
+            legacy_word_key(1200, "EN_US", 9, self.the),
+            legacy_word_key(5, "EN_US", 3, self.the),
+            legacy_word_key(5, "EN_US", 1, self.the),
+        ]
+
+        plan = plan_word_pool(keys, "bucket", preferred_expression_ranges=((9000, 9999),))
+
+        self.assertEqual(plan.entries[0].source_expression_id, 5)
+        self.assertEqual(plan.entries[0].source_word_order, 1)
+        self.assertFalse(plan.entries[0].qa_verified)
+
+    def test_each_locale_keeps_its_own_entry(self):
+        keys = [
+            legacy_word_key(5, locale, 1, word_fingerprint(locale, "take"))
+            for locale in ("EN_US", "EN_GB", "EN_AU")
+        ]
+
+        plan = plan_word_pool(keys, "bucket")
+
+        self.assertEqual(len(plan.entries), 3)
+        self.assertEqual(
+            sorted(entry.accent_locale for entry in plan.entries),
+            ["EN_AU", "EN_GB", "EN_US"],
+        )
+        self.assertEqual(len({entry.fingerprint for entry in plan.entries}), 3)
+
+    def test_already_shared_keys_are_reused_not_copied(self):
+        keys = [
+            legacy_word_key(5, "EN_US", 1, self.the),
+            legacy_word_key(5, "EN_US", 2, self.take),
+            shared_word_key("EN_US", self.the),
+        ]
+
+        plan = plan_word_pool(keys, "bucket")
+
+        self.assertEqual(
+            [entry.fingerprint for entry in plan.copy_entries], [self.take]
+        )
+        self.assertEqual(
+            [entry.fingerprint for entry in plan.reused_entries], [self.the]
+        )
+
+    def test_word_texts_join_back_onto_fingerprints(self):
+        keys = [legacy_word_key(5, "EN_US", 1, self.the)]
+
+        plan = plan_word_pool(keys, "bucket", word_texts=[("EN_US", "the")])
+
+        self.assertEqual(plan.entries[0].word, "the")
+        self.assertEqual(plan.unmatched, ())
+
+    def test_fingerprints_without_a_known_word_are_reported(self):
+        keys = [legacy_word_key(5, "EN_US", 1, self.the)]
+
+        plan = plan_word_pool(keys, "bucket", word_texts=[("EN_US", "take")])
+
+        self.assertIsNone(plan.entries[0].word)
+        self.assertEqual(plan.unmatched, (("EN_US", self.the),))
+
+    def test_dropping_unmatched_keeps_them_out_of_the_pool_but_still_reports(self):
+        # 예문이 수정되면서 버려진 옛 단어 음성이 실제로 있다(표현 1942·1945·1946,
+        # 같은 단어 순서에 키가 둘). 풀에 넣으면 아무도 안 쓰는 항목이 생긴다.
+        keys = [
+            legacy_word_key(5, "EN_US", 1, self.the),
+            legacy_word_key(5, "EN_US", 1, self.take),
+        ]
+
+        plan = plan_word_pool(
+            keys, "bucket", word_texts=[("EN_US", "take")], drop_unmatched=True
+        )
+
+        self.assertEqual([entry.fingerprint for entry in plan.entries], [self.take])
+        self.assertEqual(plan.unmatched, (("EN_US", self.the),))
+        self.assertEqual(plan.copy_entries, plan.entries)
+
+    def test_index_records_every_entry_with_its_source(self):
+        keys = [
+            legacy_word_key(1200, "EN_US", 9, self.the),
+            legacy_word_key(5, "EN_US", 1, self.the),
+        ]
+        plan = plan_word_pool(
+            keys,
+            "bucket",
+            preferred_expression_ranges=((982, 1938),),
+            word_texts=[("EN_US", "the")],
+        )
+
+        index = build_word_pool_index(plan, ((982, 1938),))
+
+        self.assertEqual(index["schemaVersion"], 1)
+        self.assertEqual(index["issue"], "LAN-475")
+        self.assertEqual(index["bucket"], "bucket")
+        self.assertEqual(index["preferredExpressionRanges"], [[982, 1938]])
+        self.assertEqual(index["summary"]["legacyWordKeys"], 2)
+        self.assertEqual(index["summary"]["entries"], 1)
+        self.assertEqual(index["summary"]["qaVerified"], 1)
+        self.assertEqual(index["summary"]["byAccentLocale"], {"EN_US": 1})
+        self.assertEqual(
+            index["entries"][0],
+            {
+                "accentLocale": "EN_US",
+                "fingerprint": self.the,
+                "targetKey": shared_word_key("EN_US", self.the),
+                "sourceKey": legacy_word_key(1200, "EN_US", 9, self.the),
+                "sourceExpressionId": 1200,
+                "sourceWordOrder": 9,
+                "qaVerified": True,
+                "duplicateCount": 2,
+                "word": "the",
+            },
+        )
+
+
+class WordTextFileTests(unittest.TestCase):
+    def write(self, body: str) -> Path:
+        handle = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".tsv", delete=False, encoding="utf-8"
+        )
+        handle.write(body)
+        handle.close()
+        self.addCleanup(Path(handle.name).unlink, True)
+        return Path(handle.name)
+
+    def test_pairs_are_read_in_order_without_duplicates(self):
+        path = self.write("EN_US\tthe\nEN_GB\tthe\nEN_US\tthe\n\n")
+
+        self.assertEqual(
+            load_word_texts(path), (("EN_US", "the"), ("EN_GB", "the"))
+        )
+
+    def test_case_and_punctuation_stay_distinct(self):
+        path = self.write("EN_US\tGood\nEN_US\tgood\n")
+
+        pairs = load_word_texts(path)
+
+        self.assertEqual(len(pairs), 2)
+        self.assertNotEqual(
+            word_fingerprint("EN_US", "Good"), word_fingerprint("EN_US", "good")
+        )
+
+    def test_missing_tab_and_unknown_locale_are_rejected(self):
+        with self.assertRaises(ValueError):
+            load_word_texts(self.write("EN_US the\n"))
+        with self.assertRaises(ValueError):
+            load_word_texts(self.write("EN_ZZ\tthe\n"))
+
+
+class FakeS3:
+    """copy-object까지 다루는 최소 S3 흉내. 저장은 키 → head 응답 dict."""
+
+    def __init__(self, objects: dict[str, dict] | None = None):
+        self.objects: dict[str, dict] = dict(objects or {})
+        self.copies: list[tuple[str, str]] = []
+
+    @staticmethod
+    def _option(command, name):
+        return command[command.index(name) + 1] if name in command else None
+
+    def __call__(self, command, **kwargs):
+        operation = command[2]
+        key = self._option(command, "--key")
+        if operation == "list-objects-v2":
+            prefix = self._option(command, "--prefix")
+            keys = [item for item in self.objects if item.startswith(prefix)]
+            return _CompletedCall(0, json.dumps(keys or None))
+        if operation == "head-object":
+            if key not in self.objects:
+                return _CompletedCall(1, "", "404 Not Found")
+            return _CompletedCall(0, json.dumps(self.objects[key]))
+        if operation == "copy-object":
+            source = self._option(command, "--copy-source").split("/", 1)[1]
+            self.copies.append((source, key))
+            self.objects[key] = dict(self.objects[source])
+            return _CompletedCall(0, "{}")
+        if operation == "put-object":
+            body = Path(self._option(command, "--body")).read_bytes()
+            self.objects[key] = {
+                "ContentLength": len(body),
+                "ContentType": self._option(command, "--content-type"),
+                "CacheControl": self._option(command, "--cache-control"),
+                "Metadata": dict(
+                    item.split("=", 1)
+                    for item in self._option(command, "--metadata").split(",")
+                ),
+            }
+            return _CompletedCall(0)
+        raise AssertionError(f"unexpected aws command: {command[:3]}")
+
+
+def audio_head(size: int, audio_sha: str) -> dict:
+    return {
+        "ContentLength": size,
+        "ContentType": "audio/mpeg",
+        "CacheControl": "public, max-age=31536000, immutable",
+        "Metadata": {"audio-sha256": audio_sha, "model": "deepgram/aura-2"},
+    }
+
+
+class WordPoolBackfillTests(unittest.TestCase):
+    def setUp(self):
+        self.the = word_fingerprint("EN_US", "the")
+        self.take = word_fingerprint("EN_US", "take")
+        self.source_key = legacy_word_key(1200, "EN_US", 9, self.the)
+        self.other_key = legacy_word_key(1201, "EN_US", 2, self.take)
+
+    def build(self, objects=None):
+        s3 = FakeS3(
+            objects
+            if objects is not None
+            else {
+                self.source_key: audio_head(100, "sha-the"),
+                legacy_word_key(5, "EN_US", 1, self.the): audio_head(100, "sha-the"),
+                self.other_key: audio_head(120, "sha-take"),
+            }
+        )
+        plan = plan_word_pool(
+            list(s3.objects), "bucket", preferred_expression_ranges=((982, 1938),)
+        )
+        return s3, plan
+
+    def test_dry_run_writes_nothing(self):
+        s3, plan = self.build()
+
+        copied = execute_word_pool_backfill(plan, execute=False, aws_runner=s3)
+
+        self.assertEqual(copied, 0)
+        self.assertEqual(s3.copies, [])
+
+    def test_execute_copies_each_unit_once_and_verifies(self):
+        s3, plan = self.build()
+
+        copied = execute_word_pool_backfill(plan, execute=True, aws_runner=s3)
+
+        self.assertEqual(copied, 2)
+        self.assertEqual(
+            sorted(target for _, target in s3.copies),
+            sorted([shared_word_key("EN_US", self.the), shared_word_key("EN_US", self.take)]),
+        )
+        # 중복 3개짜리 "the"도 딱 한 번만 복사된다
+        self.assertEqual(
+            [source for source, _ in s3.copies].count(self.source_key), 1
+        )
+
+    def test_second_run_copies_nothing(self):
+        s3, plan = self.build()
+        execute_word_pool_backfill(plan, execute=True, aws_runner=s3)
+
+        replan = plan_word_pool(list(s3.objects), "bucket")
+        copied = execute_word_pool_backfill(replan, execute=True, aws_runner=s3)
+
+        self.assertEqual(copied, 0)
+        self.assertEqual(len(replan.reused_entries), 2)
+
+    def test_copy_that_lands_with_a_different_audio_sha_fails(self):
+        s3, plan = self.build()
+        original_copy = s3.__call__
+
+        def corrupt(command, **kwargs):
+            result = original_copy(command, **kwargs)
+            if command[2] == "copy-object":
+                key = command[command.index("--key") + 1]
+                s3.objects[key]["Metadata"]["audio-sha256"] = "tampered"
+            return result
+
+        with self.assertRaises(ValueError) as caught:
+            execute_word_pool_backfill(plan, execute=True, aws_runner=corrupt)
+        self.assertIn("verification conflict", str(caught.exception))
+
+    def test_missing_source_object_fails(self):
+        s3, plan = self.build()
+        del s3.objects[self.source_key]
+
+        with self.assertRaises(ValueError) as caught:
+            execute_word_pool_backfill(plan, execute=True, aws_runner=s3)
+        self.assertIn("source object is missing", str(caught.exception))
+
+    def test_verify_reports_drifted_and_missing_targets(self):
+        s3, plan = self.build()
+        execute_word_pool_backfill(plan, execute=True, aws_runner=s3)
+        s3.objects[shared_word_key("EN_US", self.the)]["ContentLength"] = 999
+        del s3.objects[shared_word_key("EN_US", self.take)]
+
+        problems = verify_word_pool(plan, aws_runner=s3)
+
+        self.assertEqual(len(problems), 2)
+        self.assertTrue(any("differs from" in problem for problem in problems))
+        self.assertTrue(any("missing" in problem for problem in problems))
+
+    def test_object_without_audio_sha_is_not_accepted_as_verified(self):
+        head = audio_head(100, "sha")
+        head["Metadata"].pop("audio-sha256")
+        self.assertFalse(_copied_head_matches(head, head))
+
+
+class WordPoolIndexPublishTests(unittest.TestCase):
+    def test_index_is_published_under_a_content_hash_key(self):
+        s3 = FakeS3()
+        index = {"schemaVersion": 1, "issue": "LAN-475", "entries": []}
+
+        key = publish_word_pool_index(index, "bucket", execute=True, aws_runner=s3)
+
+        digest = hashlib.sha256(canonical_manifest_bytes(index)).hexdigest()
+        self.assertEqual(
+            key, f"content/expression-pronunciation-audio/word-pool/{digest}.json"
+        )
+        self.assertIn(key, s3.objects)
+
+    def test_dry_run_publish_writes_nothing(self):
+        s3 = FakeS3()
+
+        publish_word_pool_index({"entries": []}, "bucket", execute=False, aws_runner=s3)
+
+        self.assertEqual(s3.objects, {})
+
+
+class WordPoolCliTests(unittest.TestCase):
+    def setUp(self):
+        self.the = word_fingerprint("EN_US", "the")
+        self.output = Path(tempfile.mkdtemp()) / "word-pool-index.json"
+
+    def run_cli(self, s3, *extra):
+        with unittest.mock.patch(
+            "scripts.expression_pronunciation_audio.subprocess.run", s3
+        ):
+            return main(
+                [
+                    "backfill-word-pool",
+                    "--bucket",
+                    "bucket",
+                    "--output",
+                    str(self.output),
+                    *extra,
+                ]
+            )
+
+    def test_unmatched_fingerprints_stop_the_run(self):
+        words = Path(tempfile.mkdtemp()) / "words.tsv"
+        words.write_text("EN_US\ttake\n", encoding="utf-8")
+        s3 = FakeS3({legacy_word_key(5, "EN_US", 1, self.the): audio_head(10, "sha")})
+
+        code = self.run_cli(s3, "--words", str(words), "--execute")
+
+        self.assertEqual(code, 1)
+        self.assertEqual(s3.copies, [])
+        self.assertFalse(self.output.exists())
+
+    def test_keep_puts_unmatched_into_the_pool_without_a_word(self):
+        words = Path(tempfile.mkdtemp()) / "words.tsv"
+        words.write_text("EN_US\ttake\n", encoding="utf-8")
+        s3 = FakeS3({legacy_word_key(5, "EN_US", 1, self.the): audio_head(10, "sha")})
+
+        code = self.run_cli(
+            s3, "--words", str(words), "--unmatched", "keep", "--execute"
+        )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(len(s3.copies), 1)
+        index = json.loads(self.output.read_text(encoding="utf-8"))
+        self.assertEqual(index["summary"]["entries"], 1)
+        self.assertNotIn("word", index["entries"][0])
+
+    def test_drop_leaves_unmatched_out_of_the_pool_entirely(self):
+        words = Path(tempfile.mkdtemp()) / "words.tsv"
+        words.write_text("EN_US\ttake\n", encoding="utf-8")
+        s3 = FakeS3({legacy_word_key(5, "EN_US", 1, self.the): audio_head(10, "sha")})
+
+        code = self.run_cli(
+            s3, "--words", str(words), "--unmatched", "drop", "--execute"
+        )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(s3.copies, [])
+        index = json.loads(self.output.read_text(encoding="utf-8"))
+        self.assertEqual(index["summary"]["entries"], 0)
+
+    def test_dry_run_still_writes_the_index_but_copies_nothing(self):
+        s3 = FakeS3({legacy_word_key(5, "EN_US", 1, self.the): audio_head(10, "sha")})
+
+        code = self.run_cli(s3)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(s3.copies, [])
+        self.assertTrue(self.output.exists())
+
+
+class Boto3CopyObjectTests(unittest.TestCase):
+    def test_copy_object_follows_the_cli_contract(self):
+        client = Mock()
+        runner = Boto3AwsRunner.__new__(Boto3AwsRunner)
+        runner._client = client
+
+        result = runner(
+            ["aws", "s3api", "copy-object", "--bucket", "b", "--key", "target",
+             "--copy-source", "b/source", "--metadata-directive", "COPY",
+             "--output", "json"],
+            capture_output=True, text=True, check=False,
+        )
+
+        self.assertEqual(result.returncode, 0)
+        client.copy_object.assert_called_once_with(
+            Bucket="b", Key="target", CopySource="b/source", MetadataDirective="COPY"
+        )

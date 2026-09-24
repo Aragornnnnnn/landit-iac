@@ -27,7 +27,7 @@ import shutil
 import subprocess
 import tempfile
 import time
-from typing import Callable, Mapping
+from typing import Callable, Iterable, Mapping
 
 
 MODEL = "deepgram/aura-2"
@@ -1186,6 +1186,14 @@ class Boto3AwsRunner:
                     "Metadata": head.get("Metadata", {}),
                 }
                 return _CompletedCall(0, json.dumps(payload))
+            if operation == "copy-object":
+                self._client.copy_object(
+                    Bucket=bucket,
+                    Key=self._option(command, "--key"),
+                    CopySource=self._option(command, "--copy-source"),
+                    MetadataDirective=self._option(command, "--metadata-directive"),
+                )
+                return _CompletedCall(0, "{}")
             if operation == "put-object":
                 metadata = dict(
                     item.split("=", 1)
@@ -1211,9 +1219,8 @@ class Boto3AwsRunner:
         raise ValueError(f"unsupported aws command: {command[:3]}")
 
 
-def _head_object(
-    bucket: str, upload_object: UploadObject, aws_runner: Callable
-) -> dict | None:
+def _head_key(bucket: str, key: str, aws_runner: Callable) -> dict | None:
+    """키 하나의 head 응답을 돌려준다. 객체가 없으면 None, 그 밖의 실패는 예외."""
     completed = aws_runner(
         [
             "aws",
@@ -1222,7 +1229,7 @@ def _head_object(
             "--bucket",
             bucket,
             "--key",
-            upload_object.key,
+            key,
             "--output",
             "json",
         ],
@@ -1236,7 +1243,13 @@ def _head_object(
         marker in completed.stderr for marker in ("404", "Not Found", "NoSuchKey")
     ):
         return None
-    raise RuntimeError(f"S3 head-object failed for key {upload_object.key}")
+    raise RuntimeError(f"S3 head-object failed for key {key}")
+
+
+def _head_object(
+    bucket: str, upload_object: UploadObject, aws_runner: Callable
+) -> dict | None:
+    return _head_key(bucket, upload_object.key, aws_runner)
 
 
 def _head_matches(upload_object: UploadObject, head: dict) -> bool:
@@ -1697,6 +1710,479 @@ def publish_be_manifest(
     return key
 
 
+# ---------------------------------------------------------------------------
+# LAN-475 공용 단어 풀
+#
+# 단어 음성의 옛 키는 `{표현id}/{억양}/word/{순서}/{해시}.mp3`라 경로에 표현 id가
+# 들어가 같은 단어가 표현마다 따로 저장됐다(실측 69,531개 중 서로 다른 것은 10,506개).
+# 해시는 이미 (모델·보이스·텍스트·포맷)으로만 계산되므로, 같은 해시는 같은 소리다.
+# 여기서는 (억양, 해시)마다 대표를 하나 골라 공용 자리로 서버 사이드 복사만 한다.
+# 새 합성은 없고, 옛 키도 건드리지 않는다(삭제는 V126 prod 검증 뒤 별도 단계).
+# ---------------------------------------------------------------------------
+
+WORD_POOL_SCHEMA_VERSION = 1
+WORD_POOL_ISSUE = "LAN-475"
+WORD_POOL_SEGMENT = "word"
+
+LEGACY_WORD_KEY_PATTERN = re.compile(
+    rf"^{re.escape(KEY_PREFIX)}/(?P<expression_id>\d+)/(?P<accent_locale>[A-Z]{{2}}_[A-Z]{{2}})"
+    r"/word/(?P<word_order>\d+)/(?P<fingerprint>[0-9a-f]{64})\.mp3$"
+)
+SHARED_WORD_KEY_PATTERN = re.compile(
+    rf"^{re.escape(KEY_PREFIX)}/{WORD_POOL_SEGMENT}"
+    r"/(?P<accent_locale>[A-Z]{2}_[A-Z]{2})/(?P<fingerprint>[0-9a-f]{64})\.mp3$"
+)
+
+
+def shared_word_key(accent_locale: str, fingerprint: str) -> str:
+    """(억양, 해시) 하나가 차지하는 공용 단어 키를 돌려준다.
+
+    표현 id 자리에 숫자가 아닌 `word`가 들어가므로 옛 키와 섞이지 않는다.
+
+    :param accent_locale: 억양 로케일 (EN_US·EN_GB·EN_AU)
+    :param fingerprint: 생성 계약 sha256
+    :return: `content/expression-pronunciation-audio/word/{억양}/{해시}.mp3`
+    """
+    return f"{KEY_PREFIX}/{WORD_POOL_SEGMENT}/{accent_locale}/{fingerprint}.mp3"
+
+
+def word_fingerprint(accent_locale: str, text: str) -> str:
+    """단어 텍스트로부터 해시를 계산한다 (표현 id·순서와 무관함을 드러낸다)."""
+    return generation_fingerprint(
+        SourceAsset(
+            expression_id=0,
+            accent_locale=accent_locale,
+            kind=KIND_WORD,
+            word_order=1,
+            text=text,
+        )
+    )
+
+
+@dataclass(frozen=True)
+class LegacyWordKey:
+    key: str
+    expression_id: int
+    accent_locale: str
+    word_order: int
+    fingerprint: str
+
+
+@dataclass(frozen=True)
+class WordPoolEntry:
+    accent_locale: str
+    fingerprint: str
+    source_key: str
+    source_expression_id: int
+    source_word_order: int
+    qa_verified: bool
+    duplicate_count: int
+    word: str | None = None
+
+    @property
+    def target_key(self) -> str:
+        return shared_word_key(self.accent_locale, self.fingerprint)
+
+
+@dataclass(frozen=True)
+class WordPoolPlan:
+    bucket: str
+    entries: tuple[WordPoolEntry, ...]
+    existing_target_keys: frozenset[str]
+    legacy_key_count: int
+    # 단어 텍스트를 함께 넘겼을 때, 어떤 텍스트와도 이어지지 않은 (억양, 해시)
+    unmatched: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def copy_entries(self) -> tuple[WordPoolEntry, ...]:
+        return tuple(
+            entry
+            for entry in self.entries
+            if entry.target_key not in self.existing_target_keys
+        )
+
+    @property
+    def reused_entries(self) -> tuple[WordPoolEntry, ...]:
+        return tuple(
+            entry
+            for entry in self.entries
+            if entry.target_key in self.existing_target_keys
+        )
+
+
+def parse_expression_ranges(raw: str) -> tuple[tuple[int, int], ...]:
+    """`982-1938,2259-3000` 형식을 (시작, 끝) 쌍으로 바꾼다. 양끝 포함."""
+    ranges: list[tuple[int, int]] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" not in part:
+            raise ValueError(f"expression range must look like 982-1938: {part}")
+        start_text, _, end_text = part.partition("-")
+        start, end = int(start_text), int(end_text)
+        if start > end:
+            raise ValueError(f"expression range start exceeds end: {part}")
+        ranges.append((start, end))
+    return tuple(ranges)
+
+
+def parse_legacy_word_keys(keys: Iterable[str]) -> tuple[LegacyWordKey, ...]:
+    """키 목록에서 옛 단어 키만 골라 구성 요소로 쪼갠다. 문장·표현 키는 버린다."""
+    parsed: list[LegacyWordKey] = []
+    for key in keys:
+        match = LEGACY_WORD_KEY_PATTERN.match(key)
+        if match is None:
+            continue
+        parsed.append(
+            LegacyWordKey(
+                key=key,
+                expression_id=int(match.group("expression_id")),
+                accent_locale=match.group("accent_locale"),
+                word_order=int(match.group("word_order")),
+                fingerprint=match.group("fingerprint"),
+            )
+        )
+    return tuple(parsed)
+
+
+def _representative(
+    candidates: list[LegacyWordKey], preferred_ranges: tuple[tuple[int, int], ...]
+) -> tuple[LegacyWordKey, bool]:
+    """중복 후보 중 대표 하나와 그 대표가 QA를 받은 배치 출신인지를 돌려준다.
+
+    QA 이력이 있는 배치를 먼저 쓰고, 그 안에서는 표현 id·단어 순서가 작은 쪽을
+    쓴다. 같은 입력이면 항상 같은 대표가 나와야 재실행이 안전하다.
+    """
+
+    def in_preferred(item: LegacyWordKey) -> bool:
+        return any(start <= item.expression_id <= end for start, end in preferred_ranges)
+
+    chosen = min(
+        candidates,
+        key=lambda item: (
+            0 if in_preferred(item) else 1,
+            item.expression_id,
+            item.word_order,
+        ),
+    )
+    return chosen, in_preferred(chosen)
+
+
+def plan_word_pool(
+    keys: Iterable[str],
+    bucket: str,
+    *,
+    preferred_expression_ranges: tuple[tuple[int, int], ...] = (),
+    word_texts: Iterable[tuple[str, str]] | None = None,
+    drop_unmatched: bool = False,
+) -> WordPoolPlan:
+    """버킷 키 목록에서 (억양, 해시)별 대표를 골라 복사 계획을 세운다.
+
+    :param keys: `content/expression-pronunciation-audio/` 아래 키 전체
+    :param bucket: 대상 버킷 (복사는 같은 버킷 안에서 일어난다)
+    :param preferred_expression_ranges: QA를 받은 배치의 표현 id 구간. 대표 선정에 우선한다
+    :param word_texts: (억양, 단어) 쌍. 주면 해시를 다시 계산해 단어를 이어 붙인다
+    :param drop_unmatched: True면 어떤 단어와도 이어지지 않은 해시를 풀에서 뺀다
+    :return: 복사 대상과 이미 있는 것이 나뉜 계획
+    """
+    key_list = list(keys)
+    legacy = parse_legacy_word_keys(key_list)
+    existing_targets = frozenset(
+        key for key in key_list if SHARED_WORD_KEY_PATTERN.match(key)
+    )
+
+    grouped: dict[tuple[str, str], list[LegacyWordKey]] = defaultdict(list)
+    for item in legacy:
+        grouped[(item.accent_locale, item.fingerprint)].append(item)
+
+    text_by_fingerprint: dict[tuple[str, str], str] = {}
+    if word_texts is not None:
+        for accent_locale, word in word_texts:
+            text_by_fingerprint[
+                (accent_locale, word_fingerprint(accent_locale, word))
+            ] = word
+
+    entries: list[WordPoolEntry] = []
+    unmatched: list[tuple[str, str]] = []
+    for (accent_locale, fingerprint), candidates in sorted(grouped.items()):
+        chosen, qa_verified = _representative(candidates, preferred_expression_ranges)
+        text = text_by_fingerprint.get((accent_locale, fingerprint))
+        if word_texts is not None and text is None:
+            unmatched.append((accent_locale, fingerprint))
+            if drop_unmatched:
+                continue
+        entries.append(
+            WordPoolEntry(
+                accent_locale=accent_locale,
+                fingerprint=fingerprint,
+                source_key=chosen.key,
+                source_expression_id=chosen.expression_id,
+                source_word_order=chosen.word_order,
+                qa_verified=qa_verified,
+                duplicate_count=len(candidates),
+                word=text,
+            )
+        )
+    return WordPoolPlan(
+        bucket=bucket,
+        entries=tuple(entries),
+        existing_target_keys=existing_targets,
+        legacy_key_count=len(legacy),
+        unmatched=tuple(unmatched),
+    )
+
+
+def load_word_texts(path: Path) -> tuple[tuple[str, str], ...]:
+    """`{억양}<탭>{단어}` 줄로 된 파일을 읽어 (억양, 단어) 쌍으로 돌려준다.
+
+    단어의 앞뒤 공백도 해시에 들어가므로 strip 하지 않는다. 빈 줄만 건너뛴다.
+
+    :param path: 탭으로 구분된 (억양, 단어) 파일
+    :return: 파일에 나온 순서대로, 중복을 뺀 (억양, 단어) 쌍
+    :raises ValueError: 탭이 없거나 억양이 지원 목록에 없는 줄이 있을 때
+    """
+    pairs: dict[tuple[str, str], None] = {}
+    for number, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        if not line.strip():
+            continue
+        accent_locale, tab, word = line.partition("\t")
+        if not tab:
+            raise ValueError(f"{path}:{number} must be tab separated locale and word")
+        if accent_locale not in SUPPORTED_LOCALES:
+            raise ValueError(f"{path}:{number} has unsupported locale {accent_locale}")
+        pairs[(accent_locale, word)] = None
+    return tuple(pairs)
+
+
+def build_word_pool_index(
+    plan: WordPoolPlan, preferred_expression_ranges: tuple[tuple[int, int], ...]
+) -> dict:
+    """공용 풀의 내용을 2·3단계가 읽을 문서로 만든다.
+
+    V126 마이그레이션의 허용 목록과, 다음 배치의 "이미 있으니 합성하지 않는다"
+    판정이 이 문서를 입력으로 쓴다.
+    """
+    entries = [
+        {
+            "accentLocale": entry.accent_locale,
+            "fingerprint": entry.fingerprint,
+            "targetKey": entry.target_key,
+            "sourceKey": entry.source_key,
+            "sourceExpressionId": entry.source_expression_id,
+            "sourceWordOrder": entry.source_word_order,
+            "qaVerified": entry.qa_verified,
+            "duplicateCount": entry.duplicate_count,
+            **({"word": entry.word} if entry.word is not None else {}),
+        }
+        for entry in plan.entries
+    ]
+    return {
+        "schemaVersion": WORD_POOL_SCHEMA_VERSION,
+        "issue": WORD_POOL_ISSUE,
+        "keyPrefix": KEY_PREFIX,
+        "bucket": plan.bucket,
+        "preferredExpressionRanges": [
+            [start, end] for start, end in preferred_expression_ranges
+        ],
+        "summary": {
+            "legacyWordKeys": plan.legacy_key_count,
+            "entries": len(plan.entries),
+            "qaVerified": sum(1 for entry in plan.entries if entry.qa_verified),
+            "byAccentLocale": {
+                locale: sum(
+                    1 for entry in plan.entries if entry.accent_locale == locale
+                )
+                for locale in sorted({entry.accent_locale for entry in plan.entries})
+            },
+        },
+        "entries": entries,
+    }
+
+
+def _copy_object(
+    bucket: str, source_key: str, target_key: str, aws_runner: Callable
+) -> None:
+    """같은 버킷 안에서 서버 사이드 복사한다. 메타데이터·Cache-Control은 그대로 옮긴다."""
+    completed = aws_runner(
+        [
+            "aws",
+            "s3api",
+            "copy-object",
+            "--bucket",
+            bucket,
+            "--key",
+            target_key,
+            "--copy-source",
+            f"{bucket}/{source_key}",
+            "--metadata-directive",
+            "COPY",
+            "--output",
+            "json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(f"S3 copy-object failed for key {target_key}")
+
+
+def _copied_head_matches(source_head: dict, target_head: dict) -> bool:
+    """복사본이 원본과 같은 바이트·타입·캐시 정책·audio-sha256을 갖는지 본다."""
+
+    def audio_sha(head: dict) -> str | None:
+        metadata = {
+            key.lower(): str(value) for key, value in head.get("Metadata", {}).items()
+        }
+        return metadata.get("audio-sha256")
+
+    return (
+        source_head.get("ContentLength") == target_head.get("ContentLength")
+        and source_head.get("ContentType") == target_head.get("ContentType")
+        and source_head.get("CacheControl") == target_head.get("CacheControl")
+        and audio_sha(source_head) == audio_sha(target_head)
+        and audio_sha(source_head) is not None
+    )
+
+
+def execute_word_pool_backfill(
+    plan: WordPoolPlan,
+    *,
+    execute: bool = False,
+    aws_runner: Callable = subprocess.run,
+    max_workers: int = 16,
+    progress: Callable[[str], None] = lambda message: None,
+) -> int:
+    """계획의 복사 대상을 공용 자리에 복사하고 원본과 대조해 검증한다.
+
+    이미 공용 자리에 있는 키는 건드리지 않되, 원본과 같은 내용인지 대조한다.
+    하나라도 어긋나면 예외를 던져 멈춘다 — 조용히 넘기면 잘못된 소리가 모든
+    표현에 한꺼번에 퍼진다.
+
+    :param plan: plan_word_pool이 만든 계획
+    :param execute: False면 아무것도 쓰지 않고 대상 수만 돌려준다
+    :param aws_runner: aws CLI 호출 대행 (Boto3AwsRunner 사용 가능)
+    :param max_workers: 동시 복사 스레드 수
+    :param progress: 진행 상황 출력 콜백
+    :return: 실제로 복사한 객체 수
+    :raises ValueError: 복사본이 원본과 다르거나 원본 head를 못 읽을 때
+    """
+    if not execute:
+        return 0
+
+    copied = 0
+    total = len(plan.copy_entries)
+
+    def copy_one(entry: WordPoolEntry) -> None:
+        source_head = _head_key(plan.bucket, entry.source_key, aws_runner)
+        if source_head is None:
+            raise ValueError(f"source object is missing: {entry.source_key}")
+        _copy_object(plan.bucket, entry.source_key, entry.target_key, aws_runner)
+        target_head = _head_key(plan.bucket, entry.target_key, aws_runner)
+        if target_head is None or not _copied_head_matches(source_head, target_head):
+            raise ValueError(f"copied object verification conflict: {entry.target_key}")
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for _ in executor.map(copy_one, plan.copy_entries):
+            copied += 1
+            if copied % 500 == 0:
+                progress(f"copied {copied}/{total}")
+    return copied
+
+
+def verify_word_pool(
+    plan: WordPoolPlan,
+    *,
+    aws_runner: Callable = subprocess.run,
+    max_workers: int = 16,
+) -> tuple[str, ...]:
+    """공용 자리의 모든 항목이 자기 원본과 같은 내용인지 전수 대조한다.
+
+    :return: 어긋난 대상 키 목록 (비어 있으면 통과)
+    """
+    problems: list[str] = []
+
+    def check_one(entry: WordPoolEntry) -> str | None:
+        source_head = _head_key(plan.bucket, entry.source_key, aws_runner)
+        target_head = _head_key(plan.bucket, entry.target_key, aws_runner)
+        if source_head is None:
+            return f"{entry.target_key} source missing {entry.source_key}"
+        if target_head is None:
+            return f"{entry.target_key} missing"
+        if not _copied_head_matches(source_head, target_head):
+            return f"{entry.target_key} differs from {entry.source_key}"
+        return None
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for problem in executor.map(check_one, plan.entries):
+            if problem is not None:
+                problems.append(problem)
+    return tuple(problems)
+
+
+def publish_word_pool_index(
+    index: dict,
+    bucket: str,
+    *,
+    execute: bool = False,
+    aws_runner: Callable = subprocess.run,
+) -> str:
+    """풀 색인을 콘텐츠 해시 키로 게시하고 키를 반환한다.
+
+    2단계 V126의 허용 목록을 이 키에서 받아 만든다.
+    """
+    body = canonical_manifest_bytes(index)
+    digest = hashlib.sha256(body).hexdigest()
+    key = f"{KEY_PREFIX}/word-pool/{digest}.json"
+    upload_object = UploadObject(
+        key=key,
+        body_path=None,
+        body_bytes=body,
+        content_length=len(body),
+        content_type="application/json",
+        cache_control=CACHE_CONTROL,
+        metadata={"manifest-sha256": digest},
+        manifest_object=True,
+    )
+    head = _head_object(bucket, upload_object, aws_runner)
+    if head is not None:
+        if not _head_matches(upload_object, head):
+            raise ValueError(f"existing object conflict: {key}")
+        print(f"reused {key}")
+        return key
+    if not execute:
+        print(f"would upload {key} ({len(body)}B)")
+        return key
+    with tempfile.NamedTemporaryFile(
+        prefix="lan-475-word-pool-", suffix=".json", delete=False
+    ) as handle:
+        handle.write(body)
+        temporary = Path(handle.name)
+    try:
+        _put_object(
+            UploadPlan(
+                bucket=bucket,
+                new_keys=(key,),
+                reused_keys=(),
+                conflict_keys=(),
+                objects=(upload_object,),
+            ),
+            upload_object,
+            temporary,
+            aws_runner,
+        )
+    finally:
+        temporary.unlink(missing_ok=True)
+    verified = _head_object(bucket, upload_object, aws_runner)
+    if verified is None or not _head_matches(upload_object, verified):
+        raise ValueError(f"uploaded object verification conflict: {key}")
+    print(f"uploaded {key}")
+    return key
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1742,6 +2228,41 @@ def main(argv: list[str] | None = None) -> int:
         "--output", type=Path, help="변환 결과를 로컬 파일로도 남긴다"
     )
     be_parser.add_argument("--execute", action="store_true")
+    pool_parser = subparsers.add_parser("backfill-word-pool")
+    pool_parser.add_argument("--bucket", required=True)
+    pool_parser.add_argument(
+        "--prefer-expression-ranges",
+        default="",
+        help="QA를 받은 배치의 표현 id 구간 (예: 982-1938,2259-3000). 대표 선정에 우선한다",
+    )
+    pool_parser.add_argument(
+        "--words",
+        type=Path,
+        help="'<억양><탭><단어>' 줄로 된 파일. 주면 색인에 단어 텍스트를 함께 담는다",
+    )
+    pool_parser.add_argument(
+        "--unmatched",
+        choices=("stop", "drop", "keep"),
+        default="stop",
+        help=(
+            "--words의 어떤 단어로도 만들어지지 않는 (억양, 해시)를 어떻게 할지. "
+            "stop=중단(기본), drop=풀에서 빼고 계속, keep=단어 없이 풀에 넣는다"
+        ),
+    )
+    pool_parser.add_argument(
+        "--output", required=True, type=Path, help="풀 색인을 남길 로컬 경로"
+    )
+    pool_parser.add_argument(
+        "--publish-index",
+        action="store_true",
+        help="풀 색인을 S3에도 게시한다 (2·3단계가 이 키를 읽는다)",
+    )
+    pool_parser.add_argument(
+        "--verify-existing",
+        action="store_true",
+        help="이미 공용 자리에 있는 항목까지 원본과 전수 대조한다",
+    )
+    pool_parser.add_argument("--execute", action="store_true")
     upload_parser = subparsers.add_parser("upload")
     upload_parser.add_argument("--manifest", required=True, type=Path)
     upload_parser.add_argument("--work-dir", required=True, type=Path)
@@ -1752,7 +2273,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="내용이 바뀐 기존 키를 충돌 대신 덮어쓴다 (QA 교체용, 게시 후 CloudFront 무효화 필요)",
     )
-    for s3_parser in (upload_parser, be_parser, reference_parser):
+    for s3_parser in (upload_parser, be_parser, reference_parser, pool_parser):
         s3_parser.add_argument(
             "--boto3",
             action="store_true",
@@ -1855,6 +2376,62 @@ def main(argv: list[str] | None = None) -> int:
         print(f"expressions={len(be_manifest['assets'])}")
         # 사람이 BE Swagger의 manifestKey 파라미터에 복사해 넣는 키
         print(f"be_manifest_key={key}")
+    elif args.command == "backfill-word-pool":
+        aws_runner = Boto3AwsRunner() if args.boto3 else subprocess.run
+        preferred = parse_expression_ranges(args.prefer_expression_ranges)
+        word_texts = load_word_texts(args.words) if args.words else None
+        keys = _list_existing_keys(args.bucket, f"{KEY_PREFIX}/", aws_runner)
+        plan = plan_word_pool(
+            keys,
+            args.bucket,
+            preferred_expression_ranges=preferred,
+            word_texts=word_texts,
+            drop_unmatched=args.unmatched == "drop",
+        )
+        print(
+            f"legacy_word_keys={plan.legacy_key_count}, entries={len(plan.entries)}, "
+            f"copy={len(plan.copy_entries)}, reused={len(plan.reused_entries)}, "
+            f"qa_verified={sum(1 for e in plan.entries if e.qa_verified)}"
+        )
+        if plan.unmatched:
+            print(f"unmatched_keys={len(plan.unmatched)} ({args.unmatched})")
+            for accent_locale, fingerprint in plan.unmatched[:20]:
+                print(f"unmatched {accent_locale} {fingerprint}")
+            if args.unmatched == "stop":
+                print(
+                    "STOP: 위 (억양, 해시)는 --words의 어떤 단어로도 만들어지지 않는다. "
+                    "단어 목록이 모자라거나, 예문이 수정되면서 버려진 옛 음성이다. "
+                    "확인 후 --unmatched drop(풀에서 뺀다) 또는 keep(넣는다)으로 다시 돌릴 것"
+                )
+                return 1
+        copied = execute_word_pool_backfill(
+            plan,
+            execute=args.execute,
+            aws_runner=aws_runner,
+            max_workers=32 if args.boto3 else 8,
+            progress=print,
+        )
+        print(f"copied={copied}")
+        if args.verify_existing:
+            problems = verify_word_pool(
+                plan, aws_runner=aws_runner, max_workers=32 if args.boto3 else 8
+            )
+            print(f"verify_problems={len(problems)}")
+            for problem in problems:
+                print(problem)
+            if problems:
+                return 1
+        index = build_word_pool_index(plan, preferred)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = Path(f"{args.output}.part")
+        temporary_path.write_bytes(canonical_manifest_bytes(index))
+        os.replace(temporary_path, args.output)
+        print(f"index={args.output}, index_sha256={manifest_sha256(index)}")
+        if args.publish_index:
+            key = publish_word_pool_index(
+                index, args.bucket, execute=args.execute, aws_runner=aws_runner
+            )
+            print(f"word_pool_index_key={key}")
     elif args.command == "upload":
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
         verify_manifest(manifest, args.work_dir)

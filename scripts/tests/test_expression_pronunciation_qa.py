@@ -1353,6 +1353,31 @@ class CheckPoolTests(unittest.TestCase):
 
         self.assertIn("origin is unknown", str(caught.exception))
 
+    def test_downloaded_clip_is_not_mistaken_for_a_local_fix_when_s3_moves_on(self):
+        # 공용 풀 객체는 --metadata-directive COPY로 복사돼 원래 배치의 진짜
+        # generation-id를 달고 있다. 내려받은 클립에 그 값을 그대로 쓰면 "s3-recovered"
+        # 관문이 무력화돼, 다른 사람이 올린 최신 음성 위에 내 옛 사본을 덮어쓰게 된다.
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
+        s3, index = self.build([entry])
+        s3.objects[entry["targetKey"]]["Metadata"]["generation-id"] = "gen-from-batch-4"
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            self.run_pool(s3, index, work_dir)
+
+            # 다른 사람이 같은 키에 고친 음성을 올렸다고 하자.
+            s3.add_audio(entry["targetKey"], b"mp3:warning:EN_US:SOMEONE-ELSES-FIX")
+            s3.objects[entry["targetKey"]]["Metadata"]["generation-id"] = "gen-theirs"
+
+            with self.assertRaises(ValueError) as caught:
+                self.run_pool(
+                    s3, index, work_dir, publish_fixes=True, execute=True
+                )
+
+        self.assertIn("downloaded from S3 but no longer matches", str(caught.exception))
+        self.assertEqual(
+            s3.bodies[entry["targetKey"]], b"mp3:warning:EN_US:SOMEONE-ELSES-FIX"
+        )
+
     def test_publish_that_writes_then_fails_verification_lists_the_key(self):
         # put은 성공하고 게시 결과 검증만 어긋난 경우, 객체는 이미 바뀌어 있다.
         # 교체 목록에서 빠지면 CloudFront 무효화 대상에서도 빠져 옛 소리가 계속 나간다.

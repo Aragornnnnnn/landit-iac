@@ -2553,10 +2553,13 @@ def fetch_word_pool_audio(
                 path=path,
                 audio_byte_size=len(body),
                 audio_sha256=local_sha,
+                # 내려받은 클립은 S3 객체의 generation-id를 물려받지 않고 "s3-recovered"로
+                # 표시한다. 공용 풀 객체는 --metadata-directive COPY로 복사돼 원래 배치의
+                # 진짜 generation-id를 달고 있어서, 그대로 쓰면 위 정체 검사의 마지막
+                # 관문이 무력화된다. 그러면 다른 사람이 같은 키에 올린 최신 음성 위에
+                # 내 옛 사본이 "미게시 수정본"으로 덮어써진다.
                 generation_id=(
-                    prior_state[key_id].generation_id
-                    if local_fix
-                    else metadata.get("generation-id") or "s3-recovered"
+                    prior_state[key_id].generation_id if local_fix else "s3-recovered"
                 ),
                 duration_seconds=duration,
             ),

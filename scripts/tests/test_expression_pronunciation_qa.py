@@ -20,6 +20,9 @@ from scripts.expression_pronunciation_audio import (
 from scripts.expression_pronunciation_qa import epa as qa_epa
 from scripts.expression_pronunciation_qa import (
     SILENCE_RMS_DBFS,
+    format_pool_failures,
+    pool_snapshot,
+    run_check_pool,
     Adjudication,
     adjudicate_audio,
     run_adjudication,
@@ -35,6 +38,7 @@ from scripts.expression_pronunciation_qa import (
     variant_text,
 )
 from scripts.tests.test_expression_pronunciation_audio import (
+    FakeS3,
     fake_probe_runner,
     load_snapshot,
     make_source_payload,
@@ -777,6 +781,722 @@ class SampleTests(unittest.TestCase):
         self.assertEqual(locales.count("EN_US"), 3)
         self.assertEqual(locales.count("EN_GB"), 3)
         self.assertEqual(len({asset_id(a) for a in first}), 6)
+
+
+
+
+def pool_index_payload(entries: list[dict]) -> dict:
+    return {
+        "schemaVersion": 2,
+        "issue": "LAN-475",
+        "keyPrefix": "content/expression-pronunciation-audio",
+        "bucket": "bucket",
+        "preferredExpressionRanges": [],
+        "summary": {},
+        "entries": entries,
+    }
+
+
+def pool_entry(locale: str, word: str, expression_id: int, order: int, *, qa: bool,
+               duplicates: int = 1) -> dict:
+    fingerprint = qa_epa.word_fingerprint(locale, word)
+    return {
+        "accentLocale": locale,
+        "fingerprint": fingerprint,
+        "targetKey": qa_epa.shared_word_key(locale, fingerprint),
+        "sourceKey": (
+            f"content/expression-pronunciation-audio/{expression_id}/{locale}"
+            f"/word/{order}/{fingerprint}.mp3"
+        ),
+        "sourceExpressionId": expression_id,
+        "sourceWordOrder": order,
+        "qaVerified": qa,
+        "duplicateCount": duplicates,
+        "published": True,
+        "word": word,
+    }
+
+
+class WordPoolAssetTests(unittest.TestCase):
+    def test_asset_keeps_the_legacy_asset_id_shape(self):
+        entry = qa_epa.load_word_pool_index(
+            write_json(pool_index_payload([pool_entry("EN_AU", "ago", 2386, 6, qa=True)]))
+        )[0]
+
+        asset = qa_epa.word_pool_asset(entry)
+
+        self.assertEqual(qa_epa.asset_id(asset), "2386/EN_AU/word-6")
+        self.assertEqual(qa_epa.generation_fingerprint(asset), entry.fingerprint)
+
+    def test_entry_without_a_word_is_rejected(self):
+        payload = pool_index_payload([pool_entry("EN_US", "the", 5, 1, qa=False)])
+        payload["entries"][0].pop("word")
+        entry = qa_epa.load_word_pool_index(write_json(payload))[0]
+
+        with self.assertRaises(ValueError) as caught:
+            qa_epa.word_pool_asset(entry)
+        self.assertIn("no word text", str(caught.exception))
+        # 무엇을 해야 하는지까지 말해 준다 — 색인을 다시 만들라는 것
+        self.assertIn("--words", str(caught.exception))
+        self.assertIn("--unmatched drop", str(caught.exception))
+
+    def test_entry_whose_word_does_not_hash_to_its_fingerprint_is_rejected(self):
+        payload = pool_index_payload([pool_entry("EN_US", "the", 5, 1, qa=False)])
+        payload["entries"][0]["word"] = "take"
+        entry = qa_epa.load_word_pool_index(write_json(payload))[0]
+
+        with self.assertRaises(ValueError) as caught:
+            qa_epa.word_pool_asset(entry)
+        self.assertIn("does not match its word text", str(caught.exception))
+
+    def test_index_of_another_schema_is_rejected(self):
+        payload = pool_index_payload([])
+        payload["issue"] = "LAN-373"
+
+        with self.assertRaises(ValueError):
+            qa_epa.load_word_pool_index(write_json(payload))
+
+    def test_colliding_asset_ids_stop_the_run(self):
+        # 예문이 수정된 표현은 같은 단어 순서에 키가 둘이다 (표현 1942·1945·1946).
+        entries = qa_epa.load_word_pool_index(
+            write_json(
+                pool_index_payload(
+                    [
+                        pool_entry("EN_US", "the", 1942, 6, qa=False),
+                        pool_entry("EN_US", "take", 1942, 6, qa=False),
+                    ]
+                )
+            )
+        )
+
+        with self.assertRaises(ValueError) as caught:
+            pool_snapshot(entries)
+        self.assertIn("collide on asset id", str(caught.exception))
+
+    def test_identical_duplicate_entries_stop_the_run(self):
+        # 해시까지 같은 완전 중복은 판정이 서로 덮어써 한쪽이 보고서에서 사라진다.
+        # 개수만 보면 눈치채지 못하므로 여기서 막는다.
+        row = pool_entry("EN_US", "the", 982, 7, qa=True)
+        entries = qa_epa.load_word_pool_index(
+            write_json(pool_index_payload([row, dict(row)]))
+        )
+
+        with self.assertRaises(ValueError) as caught:
+            pool_snapshot(entries)
+        self.assertIn("collide on asset id", str(caught.exception))
+
+
+def write_json(payload: dict) -> Path:
+    handle = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False, encoding="utf-8"
+    )
+    json.dump(payload, handle, ensure_ascii=False)
+    handle.close()
+    return Path(handle.name)
+
+
+class SilenceOnlyAssetIdTests(unittest.TestCase):
+    def loud(self, path):
+        return array.array("h", [8000, -8000] * 8000)
+
+    def test_only_the_named_assets_skip_transcription(self):
+        snapshot = load_snapshot(make_source_payload())
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            make_generated_work_dir(snapshot, work_dir)
+            skipped = asset_id(snapshot.assets[0])
+            transcribed: list[Path] = []
+
+            def transcribe(path):
+                transcribed.append(path)
+                return next(
+                    a.text for a in snapshot.assets
+                    if audio_path_for(work_dir, a) == path
+                )
+
+            outcomes = run_check(
+                snapshot,
+                work_dir,
+                work_dir / "qa.json",
+                transcribe=transcribe,
+                client=None,
+                max_resynth=0,
+                workers=2,
+                silence_only_asset_ids=frozenset({skipped}),
+                decoder=self.loud,
+                probe_runner=fake_probe_runner,
+                probe_name="ffprobe",
+                progress=lambda message: None,
+            )
+
+            self.assertNotIn(
+                audio_path_for(work_dir, snapshot.assets[0]), transcribed
+            )
+            self.assertEqual(len(transcribed), len(snapshot.assets) - 1)
+            self.assertTrue(outcomes[skipped].passed)
+            self.assertEqual(outcomes[skipped].last_transcript, "")
+
+
+class CheckPoolTests(unittest.TestCase):
+    def loud(self, path):
+        return array.array("h", [8000, -8000] * 8000)
+
+    def build(self, entries: list[dict]):
+        s3 = FakeS3()
+        for item in entries:
+            s3.add_audio(item["targetKey"], f"mp3:{item['word']}:{item['accentLocale']}".encode())
+        return s3, write_json(pool_index_payload(entries))
+
+    def run_pool(self, s3, index, work_dir, **kwargs):
+        transcribed: list[str] = []
+        words = {}
+
+        def transcribe(path):
+            body = path.read_bytes().decode()
+            transcribed.append(body)
+            return words.get(body, body.split(":")[1])
+
+        kwargs.setdefault("client", None)
+        kwargs.setdefault("max_resynth", 0)
+        result = run_check_pool(
+            index,
+            work_dir,
+            work_dir / "qa.json",
+            "bucket",
+            transcribe=kwargs.pop("transcribe", transcribe),
+            workers=2,
+            aws_runner=kwargs.pop("aws_override", s3),
+            probe_runner=fake_probe_runner,
+            probe_name="ffprobe",
+            decoder=self.loud,
+            progress=lambda message: None,
+            **kwargs,
+        )
+        return result, transcribed
+
+    def test_qa_verified_units_are_only_checked_for_silence(self):
+        entries = [
+            pool_entry("EN_US", "the", 982, 7, qa=True, duplicates=852),
+            pool_entry("EN_US", "warning", 5, 1, qa=False),
+        ]
+        s3, index = self.build(entries)
+        with tempfile.TemporaryDirectory() as tmp:
+            (summary, outcomes, _), transcribed = self.run_pool(s3, index, Path(tmp))
+
+        self.assertEqual(summary["poolEntries"], 2)
+        self.assertEqual(summary["silenceOnly"], 1)
+        self.assertEqual(summary["failed"], 0)
+        self.assertEqual(transcribed, ["mp3:warning:EN_US"])
+
+    def test_recheck_transcribes_every_unit(self):
+        entries = [pool_entry("EN_US", "the", 982, 7, qa=True)]
+        s3, index = self.build(entries)
+        with tempfile.TemporaryDirectory() as tmp:
+            (summary, _, _), transcribed = self.run_pool(
+                s3, index, Path(tmp), recheck_qa_verified=True
+            )
+
+        self.assertEqual(summary["silenceOnly"], 0)
+        self.assertEqual(transcribed, ["mp3:the:EN_US"])
+
+    def test_each_word_is_fetched_and_checked_once_however_many_expressions_use_it(self):
+        entries = [pool_entry("EN_US", "the", 982, 7, qa=False, duplicates=852)]
+        s3, index = self.build(entries)
+        with tempfile.TemporaryDirectory() as tmp:
+            (summary, outcomes, _), transcribed = self.run_pool(s3, index, Path(tmp))
+
+        self.assertEqual(summary["total"], 1)
+        self.assertEqual(len(transcribed), 1)
+        self.assertEqual(len(outcomes), 1)
+
+    def test_source_key_is_used_when_the_pool_copy_is_not_there_yet(self):
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
+        s3 = FakeS3()
+        s3.add_audio(entry["sourceKey"], b"mp3:warning:EN_US")
+        index = write_json(pool_index_payload([entry]))
+        with tempfile.TemporaryDirectory() as tmp:
+            (summary, _, _), transcribed = self.run_pool(s3, index, Path(tmp))
+
+        self.assertEqual(summary["failed"], 0)
+        self.assertEqual(transcribed, ["mp3:warning:EN_US"])
+
+    def test_missing_object_stops_the_run(self):
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
+        s3 = FakeS3()
+        index = write_json(pool_index_payload([entry]))
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError) as caught:
+                self.run_pool(s3, index, Path(tmp))
+        self.assertIn("word pool object is missing", str(caught.exception))
+
+    def test_download_that_does_not_match_its_metadata_sha_stops_the_run(self):
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
+        s3 = FakeS3()
+        s3.add_audio(entry["targetKey"], b"mp3:warning:EN_US")
+        s3.bodies[entry["targetKey"]] = b"tampered"
+        index = write_json(pool_index_payload([entry]))
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError) as caught:
+                self.run_pool(s3, index, Path(tmp))
+        self.assertIn("sha256 mismatch", str(caught.exception))
+
+    def test_resynthesized_unit_is_published_back_to_its_pool_key(self):
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False, duplicates=40)
+        s3, index = self.build([entry])
+        client = Mock()
+        # 재합성 바이트가 원본과 달라야 교체 대상이 된다 (같으면 올릴 이유가 없다).
+        client.synthesize = Mock(
+            side_effect=lambda asset: Mock(
+                body=b"mp3:warning:EN_US:fixed", generation_id="gen-fix"
+            )
+        )
+        attempts = {"n": 0}
+
+        def transcribe(path):
+            attempts["n"] += 1
+            return "warning" if attempts["n"] > 1 else "wrong"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            (summary, _, _), _ = self.run_pool(
+                s3,
+                index,
+                Path(tmp),
+                transcribe=transcribe,
+                client=client,
+                max_resynth=3,
+                publish_fixes=True,
+                execute=True,
+            )
+
+        self.assertEqual(summary["failed"], 0)
+        self.assertEqual(summary["pendingPublish"], 1)
+        self.assertEqual(summary["replaced"], 1)
+        self.assertEqual(s3.bodies[entry["targetKey"]], b"mp3:warning:EN_US:fixed")
+        self.assertEqual(
+            s3.objects[entry["targetKey"]]["Metadata"]["generation-id"], "gen-fix"
+        )
+
+    def test_publish_dry_run_leaves_the_pool_object_untouched(self):
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
+        s3, index = self.build([entry])
+        client = Mock()
+        client.synthesize = Mock(
+            side_effect=lambda asset: Mock(body=b"fixed", generation_id="gen-fix")
+        )
+        attempts = {"n": 0}
+
+        def transcribe(path):
+            attempts["n"] += 1
+            return "warning" if attempts["n"] > 1 else "wrong"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            (summary, _, _), _ = self.run_pool(
+                s3, index, Path(tmp), transcribe=transcribe, client=client,
+                max_resynth=3, publish_fixes=True, execute=False,
+            )
+
+        self.assertEqual(summary["pendingPublish"], 1)
+        self.assertEqual(summary["replaced"], 0)
+        self.assertEqual(s3.bodies[entry["targetKey"]], b"mp3:warning:EN_US")
+
+    def test_unpublished_local_fix_survives_the_next_run_and_gets_published(self):
+        # 앞선 실행이 --resynth만 하고 게시하지 않았으면 로컬 mp3가 S3와 다르다.
+        # 다시 받아 덮어쓰면 그 작업이 조용히 사라진다.
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
+        s3, index = self.build([entry])
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            client = Mock()
+            client.synthesize = Mock(
+                side_effect=lambda asset: Mock(
+                    body=b"mp3:warning:EN_US:fixed", generation_id="gen-fix"
+                )
+            )
+            attempts = {"n": 0}
+
+            def failing_then_fixed(path):
+                attempts["n"] += 1
+                return "warning" if attempts["n"] > 1 else "wrong"
+
+            (first, _, _), _ = self.run_pool(
+                s3, index, work_dir, transcribe=failing_then_fixed,
+                client=client, max_resynth=3,
+            )
+            self.assertEqual(first["pendingPublish"], 1)
+            self.assertEqual(first["replaced"], 0)
+            self.assertEqual(s3.bodies[entry["targetKey"]], b"mp3:warning:EN_US")
+
+            # 같은 작업 폴더로 다시 돌린다 — 이번에는 게시까지.
+            (second, _, _), _ = self.run_pool(
+                s3, index, work_dir, transcribe=lambda path: "warning",
+                client=None, max_resynth=0, publish_fixes=True, execute=True,
+            )
+
+        self.assertEqual(second["carriedOverFixes"], 1)
+        self.assertEqual(second["pendingPublish"], 1)
+        self.assertEqual(second["replaced"], 1)
+        self.assertEqual(s3.bodies[entry["targetKey"]], b"mp3:warning:EN_US:fixed")
+
+    def test_replaced_pool_object_carries_the_qa_marker(self):
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
+        s3, index = self.build([entry])
+        client = Mock()
+        client.synthesize = Mock(
+            side_effect=lambda asset: Mock(body=b"fixed-bytes", generation_id="gen-fix")
+        )
+        attempts = {"n": 0}
+
+        def failing_then_fixed(path):
+            attempts["n"] += 1
+            return "warning" if attempts["n"] > 1 else "wrong"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self.run_pool(
+                s3, index, Path(tmp), transcribe=failing_then_fixed, client=client,
+                max_resynth=3, publish_fixes=True, execute=True,
+            )
+
+        self.assertEqual(
+            s3.objects[entry["targetKey"]]["Metadata"][qa_epa.WORD_POOL_REPLACED_MARKER],
+            qa_epa.WORD_POOL_REPLACED_VALUE,
+        )
+
+    def test_failed_resynth_is_not_published(self):
+        # 재합성을 다 써도 불합격이면 공용 키는 건드리지 않는다. 그 키는 수백 개 표현이
+        # 함께 쓰고, 버킷에 버저닝이 없어 되돌릴 수 없다.
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False, duplicates=852)
+        s3, index = self.build([entry])
+        client = Mock()
+        bad = {"n": 0}
+
+        def always_bad(asset):
+            bad["n"] += 1
+            return Mock(body=f"BAD-{bad['n']}".encode(), generation_id="gen-bad")
+
+        client.synthesize = Mock(side_effect=always_bad)
+        with tempfile.TemporaryDirectory() as tmp:
+            (summary, _, _), _ = self.run_pool(
+                s3, index, Path(tmp), transcribe=lambda path: "zero zero",
+                client=client, max_resynth=3, publish_fixes=True, execute=True,
+            )
+
+        self.assertEqual(summary["failed"], 1)
+        self.assertEqual(summary["withheldFailures"], 1)
+        self.assertEqual(summary["pendingPublish"], 0)
+        self.assertEqual(summary["replaced"], 0)
+        self.assertEqual(s3.bodies[entry["targetKey"]], b"mp3:warning:EN_US")
+
+    def test_stale_local_clip_is_not_adopted_as_a_fix(self):
+        # 작업 폴더의 mp3 경로는 generate·check 명령과 형식이 같다. 옛 배치 폴더를
+        # 재사용하면 남의 음성이 "미게시 수정본"으로 둔갑해 공용 키에 올라간다.
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
+        s3, index = self.build([entry])
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            asset = qa_epa.word_pool_asset(qa_epa.load_word_pool_index(index)[0])
+            stale = qa_epa.audio_path_for(work_dir, asset)
+            stale.parent.mkdir(parents=True, exist_ok=True)
+            stale.write_bytes(b"STALE-FROM-AN-OLD-BATCH")
+
+            with self.assertRaises(ValueError) as caught:
+                self.run_pool(s3, index, work_dir, publish_fixes=True, execute=True)
+
+        self.assertIn("this tool has no record of it", str(caught.exception))
+        self.assertEqual(s3.bodies[entry["targetKey"]], b"mp3:warning:EN_US")
+
+    def test_object_without_audio_sha_metadata_is_not_treated_as_changed(self):
+        # 원격 sha를 모르면 "로컬이 다르다"를 판정할 수 없다. 빈 문자열로 뭉개면
+        # 매 실행마다 게시 대상이 되어 pendingPublish가 0이 되는 날이 오지 않는다.
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
+        s3 = FakeS3()
+        s3.add_audio(entry["targetKey"], b"mp3:warning:EN_US")
+        s3.objects[entry["targetKey"]]["Metadata"].pop("audio-sha256")
+        index = write_json(pool_index_payload([entry]))
+        with tempfile.TemporaryDirectory() as tmp:
+            (summary, _, _), _ = self.run_pool(
+                s3, index, Path(tmp), publish_fixes=True, execute=True
+            )
+
+        self.assertEqual(summary["missingRemoteSha"], 1)
+        self.assertEqual(summary["pendingPublish"], 0)
+        self.assertEqual(summary["replaced"], 0)
+
+    def test_partial_publish_failure_reports_what_was_replaced(self):
+        entries = [
+            pool_entry("EN_US", "alpha", 5, 1, qa=False),
+            pool_entry("EN_US", "bravo", 5, 2, qa=False),
+            pool_entry("EN_US", "delta", 5, 3, qa=False),
+        ]
+        s3, index = self.build(entries)
+        client = Mock()
+        client.synthesize = Mock(
+            side_effect=lambda asset: Mock(
+                body=f"mp3:{asset.text}:EN_US:fixed".encode(), generation_id="gen-fix"
+            )
+        )
+        seen: dict[str, int] = {}
+
+        def failing_then_fixed(path):
+            word = path.read_bytes().decode().split(":")[1]
+            seen[word] = seen.get(word, 0) + 1
+            return word if seen[word] > 1 else "wrong"
+
+        original = s3.__call__
+        # 가운데 항목의 put만 실패시킨다.
+        bravo_key = entries[1]["targetKey"]
+
+        def break_bravo(command, **kwargs):
+            if command[2] == "put-object" and command[command.index("--key") + 1] == bravo_key:
+                raise RuntimeError("S3 put-object failed for key " + bravo_key)
+            return original(command, **kwargs)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            (summary, _, _), _ = self.run_pool(
+                s3, index, Path(tmp), transcribe=failing_then_fixed, client=client,
+                max_resynth=3, publish_fixes=True, execute=True, aws_override=break_bravo,
+            )
+
+        self.assertIn("publishError", summary)
+        self.assertEqual(summary["replaced"], 1)
+        self.assertEqual(summary["replacedKeys"], [entries[0]["targetKey"]])
+        # 실패 뒤의 항목은 올리지 않는다
+        self.assertEqual(s3.bodies[entries[2]["targetKey"]], b"mp3:delta:EN_US")
+
+    def test_second_run_after_a_successful_publish_is_a_noop(self):
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
+        s3, index = self.build([entry])
+        client = Mock()
+        client.synthesize = Mock(
+            side_effect=lambda asset: Mock(
+                body=b"mp3:warning:EN_US:fixed", generation_id="gen-fix"
+            )
+        )
+        attempts = {"n": 0}
+
+        def failing_then_fixed(path):
+            attempts["n"] += 1
+            return "warning" if attempts["n"] > 1 else "wrong"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            (first, _, _), _ = self.run_pool(
+                s3, index, work_dir, transcribe=failing_then_fixed, client=client,
+                max_resynth=3, publish_fixes=True, execute=True,
+            )
+            self.assertEqual(first["replaced"], 1)
+
+            client.synthesize.reset_mock()
+            (second, _, _), _ = self.run_pool(
+                s3, index, work_dir, transcribe=lambda path: "warning",
+                client=client, max_resynth=3, publish_fixes=True, execute=True,
+            )
+
+        self.assertEqual(second["pendingPublish"], 0)
+        self.assertEqual(second["carriedOverFixes"], 0)
+        self.assertEqual(second["replaced"], 0)
+        self.assertEqual(client.synthesize.call_count, 0)
+
+    def test_pool_state_does_not_clobber_the_expression_level_state(self):
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
+        s3, index = self.build([entry])
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            (work_dir / "state.json").write_text(
+                '{"schemaVersion":1,"assets":[]}', encoding="utf-8"
+            )
+            self.run_pool(s3, index, work_dir)
+
+            self.assertEqual(
+                (work_dir / "state.json").read_text(encoding="utf-8"),
+                '{"schemaVersion":1,"assets":[]}',
+            )
+            self.assertTrue((work_dir / "pool-state.json").is_file())
+
+    def test_missing_audio_sha_survives_a_second_run_in_the_same_work_dir(self):
+        # 문서는 "먼저 검사, 그다음 게시"를 같은 work-dir에서 두 번 돌리라고 한다.
+        # 원격 sha를 모르는 항목을 "다르다"로 몰면 2회차가 통째로 막힌다.
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
+        s3 = FakeS3()
+        s3.add_audio(entry["targetKey"], b"mp3:warning:EN_US")
+        s3.objects[entry["targetKey"]]["Metadata"].pop("audio-sha256")
+        index = write_json(pool_index_payload([entry]))
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            (first, _, _), _ = self.run_pool(s3, index, work_dir)
+            (second, _, _), _ = self.run_pool(
+                s3, index, work_dir, publish_fixes=True, execute=True
+            )
+
+        self.assertEqual(first["missingRemoteSha"], 1)
+        self.assertEqual(second["missingRemoteSha"], 1)
+        self.assertEqual(second["failed"], 0)
+        self.assertEqual(second["pendingPublish"], 0)
+        self.assertEqual(second["carriedOverFixes"], 0)
+
+    def test_stale_clip_is_rejected_even_when_the_object_has_no_audio_sha(self):
+        # "같은 내용인가"(판정 불가)와 "어디서 왔나"(판정 가능)는 별개의 질문이다.
+        # 앞엣것을 모른다고 뒤엣것까지 묻지 않으면 남의 파일이 합격으로 보고된다.
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
+        s3 = FakeS3()
+        s3.add_audio(entry["targetKey"], b"mp3:warning:EN_US:REAL")
+        s3.objects[entry["targetKey"]]["Metadata"].pop("audio-sha256")
+        index = write_json(pool_index_payload([entry]))
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            asset = qa_epa.word_pool_asset(qa_epa.load_word_pool_index(index)[0])
+            stale = qa_epa.audio_path_for(work_dir, asset)
+            stale.parent.mkdir(parents=True, exist_ok=True)
+            stale.write_bytes(b"STALE-FROM-SOMEONE-ELSES-BATCH")
+
+            with self.assertRaises(ValueError) as caught:
+                self.run_pool(s3, index, work_dir)
+
+        self.assertIn("origin is unknown", str(caught.exception))
+
+    def test_downloaded_clip_is_not_mistaken_for_a_local_fix_when_s3_moves_on(self):
+        # 공용 풀 객체는 --metadata-directive COPY로 복사돼 원래 배치의 진짜
+        # generation-id를 달고 있다. 내려받은 클립에 그 값을 그대로 쓰면 "s3-recovered"
+        # 관문이 무력화돼, 다른 사람이 올린 최신 음성 위에 내 옛 사본을 덮어쓰게 된다.
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
+        s3, index = self.build([entry])
+        s3.objects[entry["targetKey"]]["Metadata"]["generation-id"] = "gen-from-batch-4"
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            self.run_pool(s3, index, work_dir)
+
+            # 다른 사람이 같은 키에 고친 음성을 올렸다고 하자.
+            s3.add_audio(entry["targetKey"], b"mp3:warning:EN_US:SOMEONE-ELSES-FIX")
+            s3.objects[entry["targetKey"]]["Metadata"]["generation-id"] = "gen-theirs"
+
+            with self.assertRaises(ValueError) as caught:
+                self.run_pool(
+                    s3, index, work_dir, publish_fixes=True, execute=True
+                )
+
+        self.assertIn("downloaded from S3 but no longer matches", str(caught.exception))
+        self.assertEqual(
+            s3.bodies[entry["targetKey"]], b"mp3:warning:EN_US:SOMEONE-ELSES-FIX"
+        )
+
+    def test_publish_that_writes_then_fails_verification_lists_the_key(self):
+        # put은 성공하고 게시 결과 검증만 어긋난 경우, 객체는 이미 바뀌어 있다.
+        # 교체 목록에서 빠지면 CloudFront 무효화 대상에서도 빠져 옛 소리가 계속 나간다.
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
+        s3, index = self.build([entry])
+        client = Mock()
+        client.synthesize = Mock(
+            side_effect=lambda asset: Mock(
+                body=b"mp3:warning:EN_US:fixed", generation_id="gen-fix"
+            )
+        )
+        attempts = {"n": 0}
+
+        def failing_then_fixed(path):
+            attempts["n"] += 1
+            return "warning" if attempts["n"] > 1 else "wrong"
+
+        original = s3.__call__
+
+        def corrupt_after_put(command, **kwargs):
+            result = original(command, **kwargs)
+            if command[2] == "put-object":
+                key = command[command.index("--key") + 1]
+                s3.objects[key]["Metadata"]["audio-sha256"] = "drifted"
+            return result
+
+        with tempfile.TemporaryDirectory() as tmp:
+            (summary, _, _), _ = self.run_pool(
+                s3, index, Path(tmp), transcribe=failing_then_fixed, client=client,
+                max_resynth=3, publish_fixes=True, execute=True,
+                aws_override=corrupt_after_put,
+            )
+
+        self.assertIn("publishError", summary)
+        self.assertEqual(summary["unverifiedKey"], entry["targetKey"])
+        # 실제로 바뀌었으므로 무효화 목록에 들어 있어야 한다
+        self.assertIn(entry["targetKey"], summary["replacedKeys"])
+        self.assertEqual(s3.bodies[entry["targetKey"]], b"mp3:warning:EN_US:fixed")
+
+    def test_alternating_indexes_in_one_work_dir_names_the_real_cause(self):
+        # 같은 (표현id, 순서)에 해시가 둘인 경우가 실제로 있다(표현 1942·1945·1946).
+        # 한 폴더에서 두 색인을 번갈아 돌리면 기록이 서로의 것이 된다.
+        first_entry = pool_entry("EN_US", "alpha", 5, 1, qa=False)
+        second_entry = pool_entry("EN_US", "bravo", 5, 1, qa=False)
+        s3, first_index = self.build([first_entry])
+        s3.add_audio(second_entry["targetKey"], b"mp3:bravo:EN_US")
+        second_index = write_json(pool_index_payload([second_entry]))
+        client = Mock()
+        client.synthesize = Mock(
+            side_effect=lambda asset: Mock(body=b"fixed-alpha", generation_id="gen-fix")
+        )
+        attempts = {"n": 0}
+
+        def failing_then_fixed(path):
+            attempts["n"] += 1
+            return "alpha" if attempts["n"] > 1 else "wrong"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            self.run_pool(
+                s3, first_index, work_dir, transcribe=failing_then_fixed,
+                client=client, max_resynth=3,
+            )
+            # alpha의 수정본이 남은 폴더에서 bravo 색인을 돌린다. 경로에 해시가 들어가
+            # 파일은 갈리지만, 기록은 같은 자산 id를 공유한다.
+            alpha_path = qa_epa.audio_path_for(
+                work_dir, qa_epa.word_pool_asset(qa_epa.load_word_pool_index(second_index)[0])
+            )
+            alpha_path.write_bytes(b"not-bravo")
+
+            with self.assertRaises(ValueError) as caught:
+                self.run_pool(s3, second_index, work_dir)
+
+        self.assertIn("different pool entry", str(caught.exception))
+
+    def test_mp3_newer_than_the_record_says_it_may_be_an_interrupted_resynth(self):
+        # 재합성 파일이 디스크에 쓰인 뒤 state 반영 전에 죽으면 생기는 창.
+        # "남의 배치"로 몰면 운영자가 할 일을 잘못 고른다 — 이건 지워도 안전하다.
+        entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
+        s3, index = self.build([entry])
+        client = Mock()
+        client.synthesize = Mock(
+            side_effect=lambda asset: Mock(body=b"first-fix", generation_id="gen-fix")
+        )
+        attempts = {"n": 0}
+
+        def failing_then_fixed(path):
+            attempts["n"] += 1
+            return "warning" if attempts["n"] > 1 else "wrong"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            self.run_pool(
+                s3, index, work_dir, transcribe=failing_then_fixed,
+                client=client, max_resynth=3,
+            )
+            asset = qa_epa.word_pool_asset(qa_epa.load_word_pool_index(index)[0])
+            qa_epa.audio_path_for(work_dir, asset).write_bytes(b"even-newer")
+
+            with self.assertRaises(ValueError) as caught:
+                self.run_pool(s3, index, work_dir)
+
+        message = str(caught.exception)
+        self.assertIn("newer than this tool's record", message)
+        self.assertIn("지워도 안전하다", message)
+
+    def test_failure_lines_say_how_many_expressions_use_the_word(self):
+        entry = pool_entry("EN_US", "the", 982, 7, qa=False, duplicates=852)
+        s3, index = self.build([entry])
+        with tempfile.TemporaryDirectory() as tmp:
+            (summary, outcomes, by_id), _ = self.run_pool(
+                s3, index, Path(tmp), transcribe=lambda path: "zero zero"
+            )
+            lines = format_pool_failures(outcomes, by_id)
+
+        self.assertEqual(summary["failed"], 1)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("used_by=852", lines[0])
+        self.assertIn(qa_epa.shared_word_key("EN_US", entry["fingerprint"]), lines[0])
 
 
 if __name__ == "__main__":

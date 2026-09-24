@@ -50,7 +50,7 @@ from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import Callable, Mapping, Sequence
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import expression_pronunciation_audio as epa  # noqa: E402
@@ -966,6 +966,7 @@ def run_check(
     ids: set[int] | None = None,
     kinds: set[str] | None = None,
     silence_only_kinds: set[str] = frozenset(),
+    silence_only_asset_ids: frozenset[str] = frozenset(),
     only_report_failures: bool = False,
     asset_ids: set[str] | None = None,
     decoder: Callable[[Path], array.array] = decode_pcm16k,
@@ -973,9 +974,10 @@ def run_check(
     probe_name: str | None = None,
     keep_failed_dir: Path | None = None,
     keep_failed_max: int = DEFAULT_KEEP_FAILED_MAX,
+    state_filename: str = "state.json",
     progress: Callable[[str], None] = print,
 ) -> dict[str, AssetOutcome]:
-    state_path = work_dir / "state.json"
+    state_path = work_dir / state_filename
     state = epa.load_generation_state(state_path)
     previous = load_report(report_path)
     outcomes: dict[str, AssetOutcome] = {}
@@ -1018,7 +1020,12 @@ def run_check(
         result = CheckResult(False, -math.inf, "", "not checked")
         while True:
             attempts += 1
-            checker = None if asset.kind in silence_only_kinds else transcribe
+            # 종류 단위(단어 전체)와 자산 단위(이미 검사를 통과한 이력이 있는 것) 둘 다
+            # 무음 검사만으로 넘길 수 있다. 후자는 공용 풀 검사에서 쓴다.
+            skip_transcribe = (
+                asset.kind in silence_only_kinds or key in silence_only_asset_ids
+            )
+            checker = None if skip_transcribe else transcribe
             result = check_audio(
                 path,
                 asset.text,
@@ -1185,6 +1192,230 @@ def write_samples(
 # ---------------------------------------------------------------- CLI
 
 
+# ------------------------------------------------------- 공용 단어 풀 검사 (LAN-475)
+
+# 표현 단위 작업의 state.json과 파일을 나눈다 (같은 작업 폴더를 써도 서로 지우지 않게).
+POOL_STATE_FILENAME = "pool-state.json"
+
+
+def pool_snapshot(entries: Sequence[epa.WordPoolEntry]) -> epa.SourceSnapshot:
+    """풀 항목들을 기존 검사 루프가 그대로 받는 스냅샷으로 바꾼다.
+
+    자산 id는 대표를 뽑아온 원본 키의 (표현 id, 단어 순서)를 쓴다. 같은 자산 id가
+    두 번 나오면 검사 결과가 서로 덮어써 한쪽이 조용히 사라지므로 즉시 멈춘다
+    (실제로 예문이 수정된 표현에는 같은 단어 순서에 키가 둘 있다).
+
+    :param entries: 단어 텍스트가 채워진 풀 항목
+    :return: 대조 정보 없는 단어 전용 스냅샷
+    :raises ValueError: 자산 id가 겹칠 때
+    """
+    assets = [epa.word_pool_asset(entry) for entry in entries]
+    seen: dict[str, str] = {}
+    collisions: list[str] = []
+    for asset, entry in zip(assets, entries):
+        key = epa.asset_id(asset)
+        if key in seen:
+            # 해시까지 같은 완전 중복도 막는다. 판정이 서로 덮어써 한쪽이 보고서에서
+            # 사라지는데, 개수만 보면 눈치채지 못한다.
+            collisions.append(f"{key} ({seen[key]} vs {entry.fingerprint})")
+        seen[key] = entry.fingerprint
+    if collisions:
+        raise ValueError(
+            "word pool entries collide on asset id — 색인을 --unmatched drop으로 다시 "
+            f"만들 것: {', '.join(collisions[:5])}"
+        )
+    return epa.SourceSnapshot(
+        schema_version=1, environment="production", assets=tuple(assets), contrasts={}
+    )
+
+
+def run_check_pool(
+    index_path: Path,
+    work_dir: Path,
+    report_path: Path,
+    bucket: str,
+    *,
+    transcribe: Callable[[Path], str] | None,
+    client: epa.OpenRouterSpeechClient | None,
+    max_resynth: int,
+    workers: int,
+    aws_runner: Callable = subprocess.run,
+    probe_runner: Callable = subprocess.run,
+    probe_name: str | None = None,
+    recheck_qa_verified: bool = False,
+    keep_failed_dir: Path | None = None,
+    keep_failed_max: int = DEFAULT_KEEP_FAILED_MAX,
+    publish_fixes: bool = False,
+    execute: bool = False,
+    decoder: Callable[[Path], array.array] = decode_pcm16k,
+    entries: Sequence[epa.WordPoolEntry] | None = None,
+    progress: Callable[[str], None] = print,
+) -> tuple[dict, dict[str, AssetOutcome], dict[str, epa.WordPoolEntry]]:
+    """공용 단어 풀을 (억양, 단어) 단위로 한 번씩만 검사한다.
+
+    QA를 받은 배치에서 뽑은 대표는 무음 검사만으로 훑고(복사 사고를 잡는 그물),
+    검사 이력이 없는 대표만 전사까지 본다. 불합격은 기존 재합성 루프로 고치고,
+    --publish-fixes면 공용 키에 덮어쓴다.
+
+    :param index_path: backfill-word-pool이 남긴 풀 색인
+    :param bucket: 콘텐츠 버킷 (음성을 여기서 내려받는다)
+    :param recheck_qa_verified: True면 QA 이력이 있는 대표도 전사까지 다시 본다
+    :param publish_fixes: True면 내용이 바뀐 항목을 공용 키에 교체 게시한다
+    :param entries: 이미 읽어 둔 풀 항목. 주면 색인을 다시 읽지 않는다
+    :param execute: publish_fixes와 함께 True여야 실제로 S3에 쓴다
+    :return: (검사 요약에 풀 관련 수치를 더한 것, 자산별 판정, 자산id→풀 항목)
+    """
+    entries = entries if entries is not None else epa.load_word_pool_index(index_path)
+    snapshot = pool_snapshot(entries)
+    entry_by_asset_id = {
+        epa.asset_id(asset): entry
+        for asset, entry in zip(snapshot.assets, entries)
+    }
+
+    # 풀 state는 표현 단위 작업(`check`)의 state.json과 파일을 나눈다. 한 폴더를 공유해도
+    # 서로의 기록을 지우지 않게 한다.
+    state_path = work_dir / POOL_STATE_FILENAME
+    epa.require_bucket(bucket, aws_runner)
+    progress(f"fetching {len(entries)} pool objects from {bucket}")
+    fetched = epa.fetch_word_pool_audio(
+        entries,
+        work_dir,
+        bucket,
+        prior_state=epa.load_generation_state(state_path),
+        aws_runner=aws_runner,
+        probe_runner=probe_runner,
+        probe_name=probe_name,
+        max_workers=workers * 4,
+        progress=progress,
+    )
+    epa.write_generation_state(
+        state_path, {key: item.generated for key, item in fetched.items()}
+    )
+    remote_sha = {key: item.remote_sha256 for key, item in fetched.items()}
+    carried_over = sorted(key for key, item in fetched.items() if item.local_fix)
+    if carried_over:
+        progress(
+            f"{len(carried_over)} local clips are unpublished fixes from an earlier run "
+            "— --publish-fixes --execute로 올릴 것"
+        )
+    # audio-sha256 메타데이터가 없는 객체는 "로컬이 원격과 같은지"를 판정할 수 없다.
+    # 빈 문자열로 뭉개면 매 실행마다 게시 대상이 되므로, 따로 세서 게시에서 뺀다.
+    undecidable = sorted(key for key, value in remote_sha.items() if value is None)
+
+    silence_only_asset_ids = (
+        frozenset()
+        if recheck_qa_verified
+        else frozenset(
+            asset_id for asset_id, entry in entry_by_asset_id.items() if entry.qa_verified
+        )
+    )
+    progress(
+        f"checking {len(entries)} units "
+        f"({len(silence_only_asset_ids)} silence-only, "
+        f"{len(entries) - len(silence_only_asset_ids)} transcribed)"
+    )
+    outcomes = run_check(
+        snapshot,
+        work_dir,
+        report_path,
+        transcribe=transcribe,
+        client=client,
+        max_resynth=max_resynth,
+        workers=workers,
+        silence_only_asset_ids=silence_only_asset_ids,
+        keep_failed_dir=keep_failed_dir,
+        keep_failed_max=keep_failed_max,
+        decoder=decoder,
+        probe_runner=probe_runner,
+        probe_name=probe_name,
+        state_filename=POOL_STATE_FILENAME,
+        progress=progress,
+    )
+    # 개수만 맞추지 않는다 — 자산 id 집합이 색인과 정확히 같아야 한 항목도 묻히지 않는다.
+    if set(outcomes) != set(entry_by_asset_id):
+        missing = sorted(set(entry_by_asset_id) - set(outcomes))
+        extra = sorted(set(outcomes) - set(entry_by_asset_id))
+        raise ValueError(
+            f"pool check did not cover every entry — missing {missing[:5]}, extra {extra[:5]}"
+        )
+
+    summary = summarize(outcomes)
+    summary["poolEntries"] = len(entries)
+    summary["silenceOnly"] = len(silence_only_asset_ids)
+    summary["carriedOverFixes"] = len(carried_over)
+    summary["missingRemoteSha"] = len(undecidable)
+
+    state = epa.load_generation_state(state_path)
+    undecidable_set = set(undecidable)
+    # 게시 대상은 "지금 로컬이 S3와 다르고, **합격한** 단위"다.
+    #   - 바이트만 보면 재합성을 다 쓰고도 불합격으로 끝난 음성이 공용 키를 덮는다.
+    #     그 키는 수백 개 표현이 함께 쓰고, 버킷에 버저닝이 없어 되돌릴 수 없다.
+    #   - 앞선 실행의 미게시 수정본도 같은 기준이라야 빠지지 않는다.
+    changed = [
+        asset_id
+        for asset_id in sorted(entry_by_asset_id)
+        if asset_id not in undecidable_set
+        and state[asset_id].audio_sha256 != remote_sha[asset_id]
+    ]
+    publishable = [asset_id for asset_id in changed if outcomes[asset_id].passed]
+    withheld = [asset_id for asset_id in changed if not outcomes[asset_id].passed]
+    summary["pendingPublish"] = len(publishable)
+    summary["withheldFailures"] = len(withheld)
+    summary["replaced"] = 0
+    replaced_keys: list[str] = []
+    if publish_fixes:
+        for asset_id in publishable:
+            try:
+                epa.publish_word_pool_replacement(
+                    bucket,
+                    entry_by_asset_id[asset_id],
+                    state[asset_id],
+                    execute=execute,
+                    aws_runner=aws_runner,
+                )
+            except epa.WordPoolReplacementUnverified as error:
+                # put은 성공했다 — 객체는 이미 바뀌어 있다. 목록에서 빼면 무효화 대상에서도
+                # 빠져 CloudFront가 옛 소리를 계속 내보낸다.
+                replaced_keys.append(entry_by_asset_id[asset_id].target_key)
+                summary["publishError"] = f"{asset_id}: {error}"
+                summary["unverifiedKey"] = entry_by_asset_id[asset_id].target_key
+                break
+            except Exception as error:
+                # 중간에 터져도 무엇이 이미 S3에 써졌는지는 사람이 알아야 한다. 예외를
+                # 그대로 올리면 요약이 통째로 사라지고, 이미 바뀐 키를 모르는 채로
+                # CloudFront를 전체 무효화하게 된다. 남은 것은 올리지 않고 멈춘다.
+                summary["publishError"] = f"{asset_id}: {error}"
+                break
+            if execute:
+                replaced_keys.append(entry_by_asset_id[asset_id].target_key)
+        summary["replaced"] = len(replaced_keys)
+        summary["replacedKeys"] = replaced_keys
+    return summary, outcomes, entry_by_asset_id
+
+
+def format_pool_failures(
+    outcomes: Mapping[str, AssetOutcome],
+    entry_by_asset_id: Mapping[str, epa.WordPoolEntry],
+) -> list[str]:
+    """불합격 단위를 사람이 바로 판단할 수 있는 줄로 만든다.
+
+    단어 하나를 몇 개 표현이 쓰는지(usedBy)를 함께 보여 준다 — 같은 불합격이라도
+    852개 표현이 쓰는 "the"와 한 표현만 쓰는 단어는 급이 다르다.
+    """
+    lines: list[str] = []
+    for asset_id, outcome in sorted(outcomes.items()):
+        if outcome.passed:
+            continue
+        entry = entry_by_asset_id.get(asset_id)
+        used_by = f" used_by={entry.duplicate_count}" if entry is not None else ""
+        target = f" {entry.target_key}" if entry is not None else ""
+        lines.append(
+            f"  {outcome.accent_locale} {outcome.text!r}{used_by} "
+            f"reason={outcome.last_reason}{target}"
+        )
+    return lines
+
+
 def _parse_kinds(value: str | None) -> set[str] | None:
     if not value:
         return None
@@ -1199,6 +1430,97 @@ def _parse_ids(value: str | None) -> set[int] | None:
     if not value:
         return None
     return {int(item) for item in value.split(",") if item.strip()}
+
+
+def _run_check_pool_command(args) -> int:
+    """check-pool 명령의 본체. main이 길어지지 않게 따로 뺐다."""
+    client = (
+        epa.OpenRouterSpeechClient(os.environ["OPENROUTER_API_KEY"])
+        if args.resynth
+        else None
+    )
+    if args.publish_fixes and not args.resynth:
+        raise SystemExit("--publish-fixes는 --resynth와 함께 써야 한다")
+    entries = epa.load_word_pool_index(args.index)
+    # QA 이력이 있는 대표는 무음 검사만 하므로, 전부 그런 색인이면 Whisper를 띄우지 않는다.
+    needs_whisper = args.recheck_qa_verified or any(
+        not entry.qa_verified for entry in entries
+    )
+    transcriber = (
+        build_transcriber(
+            args.backend,
+            args.model,
+            args.workers,
+            timeout_seconds=args.transcribe_timeout,
+        )
+        if needs_whisper
+        else None
+    )
+    aws_runner = epa.Boto3AwsRunner() if args.boto3 else subprocess.run
+    try:
+        summary, outcomes, entry_by_asset_id = run_check_pool(
+            args.index,
+            args.work_dir,
+            args.report,
+            args.bucket,
+            transcribe=transcriber,
+            client=client,
+            max_resynth=args.max_resynth,
+            workers=args.workers,
+            aws_runner=aws_runner,
+            recheck_qa_verified=args.recheck_qa_verified,
+            keep_failed_dir=args.keep_failed_dir,
+            keep_failed_max=args.keep_failed_max,
+            publish_fixes=args.publish_fixes,
+            execute=args.execute,
+            entries=entries,
+        )
+    finally:
+        if isinstance(transcriber, SubprocessTranscriber):
+            transcriber.close()
+    if isinstance(transcriber, SubprocessTranscriber):
+        summary["transcribeTimeouts"] = transcriber.timeouts
+    print(json.dumps(summary, ensure_ascii=False))
+    failures = format_pool_failures(outcomes, entry_by_asset_id)
+    if failures:
+        print(f"failed units ({len(failures)}):")
+        for line in failures:
+            print(line)
+    if summary.get("withheldFailures"):
+        print(
+            f"WITHHELD: 재합성했지만 끝내 불합격인 {summary['withheldFailures']}건은 "
+            "게시하지 않았다. 공용 키는 수백 개 표현이 함께 쓰고 버킷에 버저닝이 없어 "
+            "되돌릴 수 없다. 위 불합격 목록을 듣고 손으로 고를 것"
+        )
+    if summary.get("missingRemoteSha"):
+        print(
+            f"WARNING: {summary['missingRemoteSha']}건은 S3에 audio-sha256 메타데이터가 "
+            "없어 게시 필요 여부를 판정할 수 없다. 게시 대상에서 제외했다"
+        )
+    if summary.get("publishError"):
+        print(
+            f"PUBLISH FAILED at {summary['publishError']} — "
+            f"이미 S3에 올라간 {summary['replaced']}건은 아래 목록에 있다. 그것만 "
+            "무효화하고, 원인을 고친 뒤 같은 명령을 다시 돌릴 것(멱등하다)"
+        )
+        if summary.get("unverifiedKey"):
+            print(
+                f"  주의: {summary['unverifiedKey']}는 올라갔지만 게시 결과 검증이 "
+                "어긋났다. 내용을 직접 확인할 것 (목록에는 포함돼 있다)"
+            )
+    if summary["replaced"]:
+        print(
+            "NOTE: 교체한 키는 CloudFront 캐시(immutable)에 옛 소리가 남는다. "
+            "아래 키만 무효화하면 된다: aws cloudfront create-invalidation "
+            "--distribution-id <id> --paths " 
+            + " ".join(f"/{key}" for key in summary["replacedKeys"][:10])
+            + (" ..." if len(summary["replacedKeys"]) > 10 else "")
+        )
+        for key in summary["replacedKeys"]:
+            print(f"replaced {key}")
+    if summary.get("publishError"):
+        return 1
+    return 0 if summary["failed"] == 0 else 2
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1258,6 +1580,54 @@ def main(argv: list[str] | None = None) -> int:
         help="클립 하나의 전사 제한 시간(초). 넘기면 전사 프로세스를 죽이고 불합격 처리",
     )
 
+    pool = subparsers.add_parser(
+        "check-pool", help="공용 단어 풀을 (억양, 단어) 단위로 한 번씩만 검사한다"
+    )
+    pool.add_argument(
+        "--index", required=True, type=Path, help="backfill-word-pool이 남긴 풀 색인"
+    )
+    pool.add_argument("--work-dir", required=True, type=Path)
+    pool.add_argument("--report", required=True, type=Path)
+    pool.add_argument("--bucket", required=True, help="음성을 내려받을 콘텐츠 버킷")
+    pool.add_argument("--resynth", action="store_true", help="불합격을 재합성한다")
+    pool.add_argument("--max-resynth", type=int, default=DEFAULT_MAX_RESYNTH)
+    pool.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
+    pool.add_argument("--model", default=DEFAULT_WHISPER_MODEL)
+    pool.add_argument(
+        "--backend", choices=("auto", "mlx", "faster"), default="auto"
+    )
+    pool.add_argument(
+        "--transcribe-timeout",
+        type=float,
+        default=DEFAULT_TRANSCRIBE_TIMEOUT_SECONDS,
+    )
+    pool.add_argument(
+        "--recheck-qa-verified",
+        action="store_true",
+        help="QA 이력이 있는 대표까지 전사로 다시 본다 (기본은 무음 검사만)",
+    )
+    pool.add_argument(
+        "--keep-failed-dir",
+        type=Path,
+        help="재합성으로 덮어쓰기 전의 불합격 파일을 보관할 폴더",
+    )
+    pool.add_argument(
+        "--keep-failed-max", type=int, default=DEFAULT_KEEP_FAILED_MAX
+    )
+    pool.add_argument(
+        "--publish-fixes",
+        action="store_true",
+        help="재합성으로 바뀐 음성을 공용 키에 덮어쓴다 (게시 후 CloudFront 무효화 필요)",
+    )
+    pool.add_argument(
+        "--execute", action="store_true", help="--publish-fixes와 함께 줘야 실제로 게시한다"
+    )
+    pool.add_argument(
+        "--boto3",
+        action="store_true",
+        help="aws CLI 대신 boto3로 S3를 호출한다 (수천 개 내려받을 때 훨씬 빠름)",
+    )
+
     worker = subparsers.add_parser("transcribe-worker", help="내부용: 전사 자식 프로세스")
     worker.add_argument("--backend", choices=("auto", "mlx", "faster"), default="auto")
     worker.add_argument("--model", default=DEFAULT_WHISPER_MODEL)
@@ -1294,6 +1664,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "transcribe-worker":
         return run_transcribe_worker(args.backend, args.model)
+    if args.command == "check-pool":
+        return _run_check_pool_command(args)
     snapshot = epa.load_source(args.source)
 
     if args.command == "check":

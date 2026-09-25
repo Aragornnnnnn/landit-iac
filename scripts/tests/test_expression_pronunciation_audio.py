@@ -16,6 +16,7 @@ from scripts.expression_pronunciation_audio import (
     Boto3AwsRunner,
     _CompletedCall,
     _copied_head_matches,
+    _upload_objects,
     _head_key,
     require_bucket,
     InvalidAudioResponse,
@@ -41,6 +42,7 @@ from scripts.expression_pronunciation_audio import (
     publish_reference,
     build_word_pool_index,
     execute_word_pool_backfill,
+    load_generation_state,
     load_word_pool_index,
     load_word_texts,
     main,
@@ -51,6 +53,9 @@ from scripts.expression_pronunciation_audio import (
     s3_key,
     shared_word_key,
     speech_text,
+    synthesis_unit_id,
+    synthesis_unit_members,
+    synthesis_units,
     validate_source,
     WORD_POOL_REPLACED_MARKER,
     WORD_POOL_REPLACED_VALUE,
@@ -182,19 +187,25 @@ class FingerprintTests(unittest.TestCase):
             f"{fingerprint}.mp3",
         )
 
-    def test_word_s3_key_includes_order(self):
+    def test_word_s3_key_points_at_the_shared_place(self):
+        # 같은 (억양, 단어)는 표현이 달라도 한 파일이다 (LAN-475/561).
         word_asset = SourceAsset(
-            expression_id=7,
-            accent_locale="EN_GB",
-            kind="word",
-            word_order=4,
-            text="it",
+            expression_id=7, accent_locale="EN_GB", kind="word", word_order=4, text="it",
+        )
+        elsewhere = SourceAsset(
+            expression_id=99, accent_locale="EN_GB", kind="word", word_order=1, text="it",
         )
         fingerprint = generation_fingerprint(word_asset)
         self.assertEqual(
             s3_key(word_asset, fingerprint),
-            "content/expression-pronunciation-audio/7/EN_GB/word/4/"
-            f"{fingerprint}.mp3",
+            f"content/expression-pronunciation-audio/word/EN_GB/{fingerprint}.mp3",
+        )
+        self.assertEqual(
+            s3_key(elsewhere, generation_fingerprint(elsewhere)),
+            s3_key(word_asset, fingerprint),
+        )
+        self.assertEqual(
+            synthesis_unit_id(word_asset), synthesis_unit_id(elsewhere)
         )
 
 
@@ -1947,6 +1958,209 @@ class SpeechTextTests(unittest.TestCase):
         payload = requester.call_args.args[0]
         self.assertEqual(payload["input"], "hang out with.")
         seen.update(payload)
+
+
+class SynthesisUnitTests(unittest.TestCase):
+    def word(self, expression_id, locale, order, text):
+        return SourceAsset(expression_id=expression_id, accent_locale=locale,
+                           kind="word", word_order=order, text=text)
+
+    def test_same_word_in_different_expressions_is_one_unit(self):
+        a = self.word(7, "EN_US", 4, "the")
+        b = self.word(982, "EN_US", 1, "the")
+        self.assertEqual(synthesis_unit_id(a), synthesis_unit_id(b))
+        self.assertEqual(audio_path_for(Path("/w"), a), audio_path_for(Path("/w"), b))
+
+    def test_each_accent_keeps_its_own_unit(self):
+        units = {synthesis_unit_id(self.word(7, loc, 1, "the"))
+                 for loc in ("EN_US", "EN_GB", "EN_AU")}
+        self.assertEqual(len(units), 3)
+
+    def test_case_is_not_merged(self):
+        self.assertNotEqual(synthesis_unit_id(self.word(7, "EN_US", 1, "Good")),
+                            synthesis_unit_id(self.word(7, "EN_US", 2, "good")))
+
+    def test_sentences_and_expressions_stay_per_expression(self):
+        for kind in ("sentence", "expression"):
+            a = SourceAsset(expression_id=7, accent_locale="EN_US", kind=kind,
+                            word_order=None, text="There's nothing like it.")
+            b = SourceAsset(expression_id=99, accent_locale="EN_US", kind=kind,
+                            word_order=None, text="There's nothing like it.")
+            self.assertNotEqual(synthesis_unit_id(a), synthesis_unit_id(b))
+            self.assertEqual(synthesis_unit_id(a), asset_id(a))
+
+    def test_unit_ids_never_look_like_asset_ids(self):
+        # 자산 id는 표현 번호(숫자)로 시작하고 단어 단위 id는 'word/'로 시작한다.
+        unit = synthesis_unit_id(self.word(7, "EN_US", 1, "the"))
+        self.assertTrue(unit.startswith("word/"))
+        self.assertFalse(unit.split("/")[0].isdigit())
+
+    def test_repeated_word_inside_one_expression_collapses(self):
+        # 실데이터에 한 표현 안에서 같은 단어가 반복되는 경우가 53건 있다 (LAN-471).
+        payload = make_source_payload()
+        payload["expressions"][0]["sentenceText"] = "it it it"
+        payload["expressions"][0]["words"] = [
+            {"order": order, "word": "it"} for order in (1, 2, 3)
+        ]
+        snapshot = load_snapshot(payload)
+        words = [a for a in snapshot.assets if a.kind == "word"]
+        units = [u for u in synthesis_units(snapshot) if u.kind == "word"]
+
+        self.assertEqual(len(words), 6)   # 3단어 × 2억양
+        self.assertEqual(len(units), 2)   # 억양마다 하나
+
+    def test_members_map_points_back_at_every_slot(self):
+        payload = make_source_payload()
+        payload["expressions"][0]["sentenceText"] = "it it it"
+        payload["expressions"][0]["words"] = [
+            {"order": order, "word": "it"} for order in (1, 2, 3)
+        ]
+        snapshot = load_snapshot(payload)
+        members = synthesis_unit_members(snapshot.assets)
+        word_units = [u for u in synthesis_units(snapshot) if u.kind == "word"]
+
+        for unit in word_units:
+            self.assertEqual(len(members[synthesis_unit_id(unit)]), 3)
+        self.assertEqual(sum(len(v) for v in members.values()), len(snapshot.assets))
+
+    def test_generation_makes_one_clip_per_unit_not_per_asset(self):
+        payload = make_source_payload()
+        payload["expressions"][0]["sentenceText"] = "it it it"
+        payload["expressions"][0]["words"] = [
+            {"order": order, "word": "it"} for order in (1, 2, 3)
+        ]
+        snapshot = load_snapshot(payload)
+        client = Mock()
+        client.synthesize = Mock(
+            side_effect=lambda asset: Mock(body=f"mp3:{asset.text}".encode(),
+                                           generation_id="gen-1")
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            generated = generate_assets(
+                snapshot, work_dir, client=client,
+                probe_runner=fake_probe_runner, probe_name="ffprobe",
+            )
+            files = list((work_dir / "mp3").glob("*.mp3"))
+
+        self.assertEqual(len(generated), len(synthesis_units(snapshot)))
+        self.assertEqual(len(files), len(generated))
+        self.assertEqual(client.synthesize.call_count, len(generated))
+        # 같은 단어를 세 자리에서 쓰지만 합성은 억양당 한 번뿐이다
+        self.assertLess(len(generated), len(snapshot.assets))
+
+    def test_manifest_still_has_one_row_per_asset(self):
+        # BE는 (표현, 억양, 단어순서)마다 한 행을 요구한다. 파일을 합쳐도 행은 안 합친다.
+        payload = make_source_payload()
+        payload["expressions"][0]["sentenceText"] = "it it it"
+        payload["expressions"][0]["words"] = [
+            {"order": order, "word": "it"} for order in (1, 2, 3)
+        ]
+        snapshot = load_snapshot(payload)
+        client = Mock()
+        client.synthesize = Mock(
+            side_effect=lambda asset: Mock(body=f"mp3:{asset.text}".encode(),
+                                           generation_id="gen-1")
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            generated = generate_assets(
+                snapshot, work_dir, client=client,
+                probe_runner=fake_probe_runner, probe_name="ffprobe",
+            )
+            manifest = build_manifest(snapshot, generated)
+
+        self.assertEqual(len(manifest["assets"]), len(snapshot.assets))
+        word_rows = [r for r in manifest["assets"] if r["kind"] == "word"]
+        self.assertEqual(len(word_rows), 6)
+        self.assertEqual({r["wordOrder"] for r in word_rows}, {1, 2, 3})
+        # 같은 억양의 같은 단어 행들은 같은 S3 키를 가리킨다
+        us_keys = {r["s3Key"] for r in word_rows if r["accentLocale"] == "EN_US"}
+        self.assertEqual(len(us_keys), 1)
+
+    def test_old_state_files_are_refused(self):
+        # 자산 id로 적힌 옛 state를 읽으면 같은 단어의 형제 행이 낡은 sha를 들고 있어
+        # 재합성 판정이 어긋난다.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            path.write_text('{"schemaVersion": 1, "assets": []}', encoding="utf-8")
+            with self.assertRaises(ValueError) as caught:
+                load_generation_state(path)
+        self.assertIn("schema version 2", str(caught.exception))
+
+
+class SharedWordUploadTests(unittest.TestCase):
+    def repeated_manifest(self, work_dir):
+        payload = make_source_payload()
+        payload["expressions"][0]["sentenceText"] = "it it it"
+        payload["expressions"][0]["words"] = [
+            {"order": order, "word": "it"} for order in (1, 2, 3)
+        ]
+        snapshot = load_snapshot(payload)
+        client = Mock()
+        client.synthesize = Mock(
+            side_effect=lambda asset: Mock(body=f"mp3:{asset.text}".encode(),
+                                           generation_id="gen-1")
+        )
+        generated = generate_assets(
+            snapshot, work_dir, client=client,
+            probe_runner=fake_probe_runner, probe_name="ffprobe",
+        )
+        return snapshot, build_manifest(snapshot, generated)
+
+    def test_shared_word_is_uploaded_once_not_once_per_slot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            snapshot, manifest = self.repeated_manifest(work_dir)
+            objects = _upload_objects(manifest, work_dir)
+
+            word_rows = [r for r in manifest["assets"] if r["kind"] == "word"]
+            keys = [o.key for o in objects]
+            self.assertEqual(len(word_rows), 6)
+            self.assertEqual(len(keys), len(set(keys)), "같은 키를 두 번 올리면 412가 난다")
+            word_keys = [k for k in keys if "/word/" in k]
+            self.assertEqual(len(word_keys), 2)
+
+    def test_upload_never_puts_the_same_key_twice(self):
+        # 412는 실제 게시에서만 드러나므로 put 호출 자체를 센다.
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            snapshot, manifest = self.repeated_manifest(work_dir)
+            stub, stored = make_upload_stub()
+            puts = []
+
+            def aws_runner(command, **kwargs):
+                if command[2] == "list-objects-v2":
+                    return _CompletedCall(0, json.dumps(sorted(stored) or None))
+                if command[2] == "put-object":
+                    key = command[command.index("--key") + 1]
+                    self.assertNotIn(key, puts, "같은 키에 두 번 put하면 412가 난다")
+                    puts.append(key)
+                return stub(command, **kwargs)
+
+            plan = plan_s3_upload(manifest, "bucket", work_dir=work_dir,
+                                  aws_runner=aws_runner)
+            self.assertEqual(len(plan.new_keys), len(set(plan.new_keys)))
+            result = execute_s3_upload(plan, execute=True, aws_runner=aws_runner)
+
+        self.assertEqual(len(puts), len(set(puts)))
+        self.assertEqual(result.uploaded, len(plan.new_keys))
+        self.assertEqual(result.conflicts, 0)
+
+    def test_manifest_rows_that_disagree_on_the_audio_stop_the_run(self):
+        # 같은 키를 가리키는 행이 서로 다른 sha를 들고 있으면 어느 소리가 올라갈지 알 수 없다.
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            snapshot, manifest = self.repeated_manifest(work_dir)
+            word_rows = [r for r in manifest["assets"]
+                         if r["kind"] == "word" and r["accentLocale"] == "EN_US"]
+            self.assertGreaterEqual(len(word_rows), 2)
+            word_rows[1]["audioSha256"] = "f" * 64
+
+            with self.assertRaises(ValueError) as caught:
+                _upload_objects(manifest, work_dir)
+
+        self.assertIn("disagree on the audio", str(caught.exception))
 
 
 if __name__ == "__main__":

@@ -337,8 +337,14 @@ def audio_path_for(work_dir: Path, asset: SourceAsset) -> Path:
 
     파일 이름을 단위 id에서 만들어 S3 키와 1:1로 맞춘다. 단어 하나를 여러 표현이 쓰면
     파일도 하나다 — 예전처럼 표현마다 따로 두면 같은 소리를 여러 번 만들고 검사하게 된다.
+
+    이름은 항상 해시로 끝난다. 단어는 단위 id에 이미 들어 있고, 문장·표현은 뒤에 붙인다 —
+    텍스트가 바뀌면 경로도 바뀌어야 옛 파일을 새 텍스트의 것으로 오인하지 않는다.
     """
-    return work_dir / "mp3" / (synthesis_unit_id(asset).replace("/", "-") + ".mp3")
+    unit = synthesis_unit_id(asset).replace("/", "-")
+    if asset.kind == KIND_WORD:
+        return work_dir / "mp3" / f"{unit}.mp3"
+    return work_dir / "mp3" / f"{unit}-{generation_fingerprint(asset)}.mp3"
 
 
 def resolve_probe(which: Callable[[str], str | None] = shutil.which) -> str:
@@ -617,8 +623,46 @@ def verify_accent_pronunciations(
 
     단어 단독 음성과 문장 음성을 둘 다 검사한다 — 단어 음성은 오류 카드 재생용이고
     문장 음성은 판정의 대조 기준이라 어느 쪽이 틀려도 콘텐츠 결함이다.
+
+    단어 음성은 (억양, 단어) 하나를 여러 표현이 공유하므로 같은 (파일, 대조)는 한 번만
+    판정한다. 보고는 표현 자리마다 나온다 — 대조를 순회하며 그 표현의 자산을 찾기 때문에
+    공유되는 것은 파일 경로뿐이고 자산 id는 표현마다 다르다. 문제 문자열 형식
+    `{표현id}/{억양}/word-{순서}`는 landit-ai `scripts/prune_accent_contrasts.py`가
+    정규식으로 파싱하는 계약이라 유지해야 하고, 자리마다 한 줄씩 나와야 그 도구가
+    영향받는 대조를 전부 정리할 수 있다.
+
+    :raises ValueError: 한 단어 클립에 서로 다른 대조가 붙어 있을 때. 클립이 하나인데
+        기대값이 둘이면 어느 쪽도 만족시킬 수 없다 — 조용히 한쪽을 고르면 안 된다
     """
     assets_by_id = {asset_id(asset): asset for asset in snapshot.assets}
+
+    # 같은 단어 클립에 붙은 대조가 갈리는지 먼저 본다.
+    contrasts_by_unit: dict[str, dict[AccentContrast, list[str]]] = defaultdict(dict)
+    for (expression_id, locale, word_order), contrast in snapshot.contrasts.items():
+        target = assets_by_id.get(f"{expression_id}/{locale}/{KIND_WORD}-{word_order}")
+        if target is None:
+            continue
+        slot = f"{expression_id}/{locale}/{KIND_WORD}-{word_order}"
+        contrasts_by_unit[synthesis_unit_id(target)].setdefault(contrast, []).append(slot)
+    conflicts = {
+        unit: sorted(c.expected for c in by_contrast)
+        for unit, by_contrast in contrasts_by_unit.items()
+        if len(by_contrast) > 1
+    }
+    if conflicts:
+        detail = "; ".join(f"{unit} expects {sorted(v)}" for unit, v in sorted(conflicts.items()))
+        raise ValueError(
+            "one shared word clip cannot satisfy two different accent contrasts: " + detail
+        )
+
+    judged: dict[tuple[Path, AccentContrast], tuple[bool | None, str | None]] = {}
+
+    def judge(audio_path: Path, contrast: AccentContrast):
+        key = (audio_path, contrast)
+        if key not in judged:
+            judged[key] = checker(api_key, audio_path, contrast)
+        return judged[key]
+
     problems = []
     for (expression_id, locale, word_order), contrast in sorted(
         snapshot.contrasts.items()
@@ -639,18 +683,19 @@ def verify_accent_pronunciations(
                 and _is_flap_class(contrast)
             ):
                 continue
+            # 공유되는 것은 파일 경로뿐이고 자산은 표현마다 따로다. 그래서 보고는
+            # 별도 처리 없이도 표현 자리마다 나온다 (landit-ai 계약 유지).
+            slot = asset_id(target)
             audio_path = audio_path_for(work_dir, target)
             if not audio_path.is_file():
-                problems.append(f"{asset_id(target)}: audio file is missing")
+                problems.append(f"{slot}: audio file is missing")
                 continue
-            matches, heard = checker(api_key, audio_path, contrast)
+            matches, heard = judge(audio_path, contrast)
             if matches is None:
-                problems.append(
-                    f"{asset_id(target)}: '{contrast.word}' could not be judged"
-                )
+                problems.append(f"{slot}: '{contrast.word}' could not be judged")
             elif not matches:
                 problems.append(
-                    f"{asset_id(target)}: '{contrast.word}' sounded like "
+                    f"{slot}: '{contrast.word}' sounded like "
                     f"{heard!r}, expected {contrast.expected!r} — regenerate"
                 )
     return problems

@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import re
 import unittest
 import unittest.mock
 from pathlib import Path
@@ -1973,6 +1974,23 @@ class SynthesisUnitTests(unittest.TestCase):
         self.assertEqual(synthesis_unit_id(a), synthesis_unit_id(b))
         self.assertEqual(audio_path_for(Path("/w"), a), audio_path_for(Path("/w"), b))
 
+    def test_sentence_path_changes_when_the_text_changes(self):
+        # 이름이 해시로 끝나지 않으면, 예문이 수정됐을 때 옛 파일을 새 텍스트의 것으로
+        # 오인할 수 있다 (state가 지워진 작업 폴더에서 실제로 일어난다).
+        old_text = SourceAsset(expression_id=7, accent_locale="EN_US", kind="sentence",
+                               word_order=None, text="There's nothing like it.")
+        new_text = SourceAsset(expression_id=7, accent_locale="EN_US", kind="sentence",
+                               word_order=None, text="There is nothing like it.")
+
+        self.assertNotEqual(audio_path_for(Path("/w"), old_text),
+                            audio_path_for(Path("/w"), new_text))
+        for asset in (old_text, new_text):
+            self.assertTrue(
+                audio_path_for(Path("/w"), asset).stem.endswith(
+                    generation_fingerprint(asset)
+                )
+            )
+
     def test_each_accent_keeps_its_own_unit(self):
         units = {synthesis_unit_id(self.word(7, loc, 1, "the"))
                  for loc in ("EN_US", "EN_GB", "EN_AU")}
@@ -2286,6 +2304,96 @@ class SharedWordReuseTests(unittest.TestCase):
                 )
 
         self.assertIn("sha256 mismatch", str(caught.exception))
+
+
+class SharedClipAccentTests(unittest.TestCase):
+    def payload_with(self, contrasts):
+        """같은 단어 'it'을 두 표현이 쓰고, 각 표현에 주어진 대조를 붙인다."""
+        payload = make_source_payload()
+        payload["expressions"] = []
+        for index, (expression_id, contrast) in enumerate(contrasts):
+            entry = {
+                "expressionId": expression_id,
+                "expressionText": "there it is",
+                "sentenceText": "There it is.",
+                "accentLocales": ["EN_GB"],
+                "words": [{"order": 1, "word": "There"}, {"order": 2, "word": "it"}],
+            }
+            if contrast is not None:
+                entry["words"][1]["accentContrast"] = {"EN_GB": contrast}
+            payload["expressions"].append(entry)
+        return payload
+
+    def make_files(self, snapshot, work_dir):
+        for asset in snapshot.assets:
+            path = audio_path_for(work_dir, asset)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"mp3")
+
+    def test_a_shared_clip_is_judged_once_but_reported_for_every_expression(self):
+        contrast = {"expected": "a clear t", "other": "a d-like flap"}
+        snapshot = load_snapshot(self.payload_with([(7, contrast), (99, contrast)]))
+        calls = []
+
+        def checker(api_key, path, contrast_arg):
+            calls.append(path)
+            return False, "a d-like flap"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            self.make_files(snapshot, work_dir)
+            problems = verify_accent_pronunciations(
+                snapshot, work_dir, "key", checker=checker
+            )
+
+        # 두 표현이 같은 단어 클립을 쓰지만 판정은 한 번만 한다 (캐시가 없으면 2회).
+        word_calls = [p for p in calls if p.name.startswith("word-")]
+        self.assertEqual(len(word_calls), 1, calls)
+        self.assertEqual(len(set(calls)), len(calls), calls)
+        word_problems = [p for p in problems if "/word-2" in p]
+        self.assertEqual(len(word_problems), 2)
+        self.assertTrue(any(p.startswith("7/EN_GB/word-2") for p in word_problems))
+        self.assertTrue(any(p.startswith("99/EN_GB/word-2") for p in word_problems))
+
+    def test_problem_string_keeps_the_format_landit_ai_parses(self):
+        # landit-ai prune_accent_contrasts.py의 정규식: ^(\\d+)/(EN_\\w+)/(\\S+): '(.*?)' (sounded|could)
+        contrast = {"expected": "a clear t", "other": "a d-like flap"}
+        snapshot = load_snapshot(self.payload_with([(7, contrast)]))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            self.make_files(snapshot, work_dir)
+            problems = verify_accent_pronunciations(
+                snapshot, work_dir, "key",
+                checker=lambda *a: (False, "a d-like flap"),
+            )
+
+        pattern = re.compile(r"^(\d+)/(EN_\w+)/(\S+): '(.*?)' (?:sounded|could)")
+        self.assertTrue(problems)
+        for problem in problems:
+            self.assertRegex(problem, pattern)
+        self.assertTrue(any(re.fullmatch(r"word-\d+", pattern.match(p).group(3))
+                            for p in problems))
+
+    def test_two_expressions_wanting_different_contrasts_stop_the_run(self):
+        # 클립은 하나인데 기대값이 둘이면 어느 쪽도 만족시킬 수 없다.
+        snapshot = load_snapshot(self.payload_with([
+            (7, {"expected": "a clear t", "other": "a d-like flap"}),
+            (99, {"expected": "a d-like flap", "other": "a clear t"}),
+        ]))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            self.make_files(snapshot, work_dir)
+            with self.assertRaises(ValueError) as caught:
+                verify_accent_pronunciations(
+                    snapshot, work_dir, "key", checker=lambda *a: (True, None)
+                )
+
+        message = str(caught.exception)
+        self.assertIn("cannot satisfy two different accent contrasts", message)
+        self.assertIn("a clear t", message)
+        self.assertIn("a d-like flap", message)
 
 
 if __name__ == "__main__":

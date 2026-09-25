@@ -14,8 +14,10 @@ from unittest.mock import Mock
 from scripts.expression_pronunciation_audio import (
     AccentContrast,
     Boto3AwsRunner,
+    CACHE_CONTROL,
     _CompletedCall,
     _copied_head_matches,
+    _fetch_existing_s3_asset,
     _upload_objects,
     _head_key,
     require_bucket,
@@ -2161,6 +2163,129 @@ class SharedWordUploadTests(unittest.TestCase):
                 _upload_objects(manifest, work_dir)
 
         self.assertIn("disagree on the audio", str(caught.exception))
+
+
+class SharedWordReuseTests(unittest.TestCase):
+    def word(self, expression_id, text, order=1, locale="EN_US"):
+        return SourceAsset(expression_id=expression_id, accent_locale=locale,
+                           kind="word", word_order=order, text=text)
+
+    def s3_with(self, assets, body=b"mp3-from-pool"):
+        """주어진 자산들의 공용 키만 들고 있는 S3 대역."""
+        # head가 광고하는 sha는 만들 때 고정한다. 본문만 바꿔 "S3가 딴 걸 준" 상황을
+        # 흉내 낼 수 있어야 sha 대조가 의미를 갖는다.
+        stored = {s3_key(a, generation_fingerprint(a)):
+                  {"body": body, "sha": hashlib.sha256(body).hexdigest()}
+                  for a in assets}
+
+        def runner(command, **kwargs):
+            key = command[command.index("--key") + 1]
+            if command[2] == "head-object":
+                if key not in stored:
+                    return _CompletedCall(1, "", "404 Not Found")
+                item = stored[key]
+                return _CompletedCall(0, json.dumps({
+                    "ContentLength": len(item["body"]), "ContentType": "audio/mpeg",
+                    "CacheControl": CACHE_CONTROL,
+                    "Metadata": {"audio-sha256": item["sha"], "generation-id": "gen-pool"},
+                }))
+            if command[2] == "get-object":
+                Path(command[-1]).write_bytes(stored[key]["body"])
+                return _CompletedCall(0, "{}")
+            raise AssertionError(command[:3])
+
+        return runner, stored
+
+    def test_a_brand_new_expression_reuses_words_another_expression_made(self):
+        # 이 작업의 목적. 표현 번호가 처음 보는 것이어도 단어는 이미 있으면 안 만든다.
+        payload = make_source_payload()
+        payload["expressions"][0]["expressionId"] = 3500
+        snapshot = load_snapshot(payload)
+        # 공용 자리에는 "다른 표현이 만든" 같은 단어가 들어 있다.
+        pooled = [self.word(7, a.text, locale=a.accent_locale)
+                  for a in snapshot.assets if a.kind == "word"]
+        runner, _ = self.s3_with(pooled)
+        client = Mock()
+        client.synthesize = Mock(
+            side_effect=lambda asset: Mock(body=b"mp3-new", generation_id="gen-new")
+        )
+        lines = []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            generated = generate_assets(
+                snapshot, Path(tmp), client=client, reuse_bucket="bucket",
+                aws_runner=runner, probe_runner=fake_probe_runner,
+                probe_name="ffprobe", progress=lines.append,
+            )
+
+        word_units = [g for g in generated if g.kind == "word"]
+        self.assertTrue(word_units)
+        # 단어는 하나도 합성하지 않았다
+        synthesized_words = [c.args[0] for c in client.synthesize.call_args_list
+                             if c.args[0].kind == "word"]
+        self.assertEqual(synthesized_words, [])
+        self.assertTrue(all(g.generation_id == "gen-pool" for g in word_units))
+        self.assertTrue(any("reused_from_s3=" in line for line in lines), lines)
+
+    def test_only_the_unseen_word_is_synthesized(self):
+        payload = make_source_payload()
+        payload["expressions"][0]["accentLocales"] = ["EN_US"]
+        snapshot = load_snapshot(payload)
+        words = [a for a in snapshot.assets if a.kind == "word"]
+        # 마지막 단어 하나만 공용 자리에 없다
+        runner, _ = self.s3_with(
+            [a for a in snapshot.assets if a.kind != "word" or a is not words[-1]]
+        )
+        client = Mock()
+        client.synthesize = Mock(
+            side_effect=lambda asset: Mock(body=b"mp3-new", generation_id="gen-new")
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            generate_assets(
+                snapshot, Path(tmp), client=client, reuse_bucket="bucket",
+                aws_runner=runner, probe_runner=fake_probe_runner, probe_name="ffprobe",
+            )
+
+        synthesized = [c.args[0].text for c in client.synthesize.call_args_list]
+        self.assertEqual(synthesized, [words[-1].text])
+
+    def test_reuse_writes_through_a_temporary_file(self):
+        # 여러 자산이 한 파일을 공유하므로 최종 경로에 직접 쓰면 반쪽 파일을 서로 읽는다.
+        asset = self.word(7, "the")
+        runner, _ = self.s3_with([asset])
+        seen = []
+        original = runner
+
+        def watching(command, **kwargs):
+            if command[2] == "get-object":
+                seen.append(command[-1])
+            return original(command, **kwargs)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            fetched = _fetch_existing_s3_asset(
+                "bucket", asset, work_dir, fake_probe_runner, "ffprobe", watching
+            )
+
+        self.assertIsNotNone(fetched)
+        self.assertEqual(len(seen), 1)
+        self.assertTrue(seen[0].endswith(".part"), seen)
+        self.assertEqual(fetched.asset_id, synthesis_unit_id(asset))
+
+    def test_a_tampered_pool_object_stops_the_run(self):
+        asset = self.word(7, "the")
+        runner, stored = self.s3_with([asset])
+        key = s3_key(asset, generation_fingerprint(asset))
+        stored[key]["body"] = b"different-bytes"   # 광고된 sha와 어긋나게 만든다
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError) as caught:
+                _fetch_existing_s3_asset(
+                    "bucket", asset, Path(tmp), fake_probe_runner, "ffprobe", runner
+                )
+
+        self.assertIn("sha256 mismatch", str(caught.exception))
 
 
 if __name__ == "__main__":

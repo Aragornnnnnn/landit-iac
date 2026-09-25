@@ -887,59 +887,28 @@ def _fetch_existing_s3_asset(
     probe_name: str,
     aws_runner: Callable,
 ) -> GeneratedAsset | None:
-    """이미 S3에 게시된 자산이면 내려받아 재사용한다. 없으면 None.
+    """이미 S3에 게시된 소리면 내려받아 재사용한다. 없으면 None.
 
-    TTS는 재합성하면 바이트가 달라져 기존 immutable 객체와 충돌하므로, S3에 있는 키는
-    합성하지 않고 원본을 내려받는다 (TTS 비용 절약 + 충돌 방지).
+    단어는 (억양, 단어) 공용 자리를 본다. 그래서 새 배치라도 이미 만들어 둔 단어는
+    합성하지 않는다 — LAN-471 배치 기준 단어 16,167개 중 새로 필요한 것은 984개뿐이었다.
+    재합성하면 바이트가 달라져 기존 immutable 객체와 충돌하므로 내려받는 쪽이 맞기도 하다.
+
+    :return: 내려받아 검증한 자산, 또는 S3에 없으면 None
+    :raises ValueError: 내려받은 파일의 sha256이 S3 메타데이터와 다를 때
     """
     fingerprint = generation_fingerprint(asset)
     key = s3_key(asset, fingerprint)
-    head = aws_runner(
-        [
-            "aws",
-            "s3api",
-            "head-object",
-            "--bucket",
-            bucket,
-            "--key",
-            key,
-            "--output",
-            "json",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if head.returncode != 0:
-        if any(
-            marker in head.stderr for marker in ("404", "Not Found", "NoSuchKey")
-        ):
-            return None
-        raise RuntimeError(f"S3 head-object failed for key {key}")
+    head = _head_key(bucket, key, aws_runner)
+    if head is None:
+        return None
     metadata = {
-        name.lower(): str(value)
-        for name, value in json.loads(head.stdout).get("Metadata", {}).items()
+        name.lower(): str(value) for name, value in head.get("Metadata", {}).items()
     }
 
+    # 여러 자산이 같은 단위를 공유하므로 최종 경로에 직접 쓰면 서로의 반쪽 파일을 읽을 수
+    # 있다. 임시 파일에 받아 제자리 교체한다.
     final_path = audio_path_for(work_dir, asset)
-    final_path.parent.mkdir(parents=True, exist_ok=True)
-    fetched = aws_runner(
-        [
-            "aws",
-            "s3api",
-            "get-object",
-            "--bucket",
-            bucket,
-            "--key",
-            key,
-            str(final_path),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if fetched.returncode != 0:
-        raise RuntimeError(f"S3 get-object failed for key {key}")
+    _get_object(bucket, key, final_path, aws_runner)
 
     audio_bytes = final_path.read_bytes()
     audio_sha256 = hashlib.sha256(audio_bytes).hexdigest()
@@ -948,7 +917,7 @@ def _fetch_existing_s3_asset(
         raise ValueError(f"downloaded audio sha256 mismatch for key {key}")
     probe = validate_mp3(final_path, probe_runner=probe_runner, probe_name=probe_name)
     return GeneratedAsset(
-        asset_id=asset_id(asset),
+        asset_id=synthesis_unit_id(asset),
         expression_id=asset.expression_id,
         accent_locale=asset.accent_locale,
         kind=asset.kind,
@@ -974,6 +943,7 @@ def generate_assets(
     max_workers: int = DEFAULT_GENERATE_WORKERS,
     state_flush_interval_seconds: float = STATE_FLUSH_INTERVAL_SECONDS,
     clock: Callable[[], float] = time.monotonic,
+    progress: Callable[[str], None] = lambda message: None,
 ) -> list[GeneratedAsset]:
     resolved_probe = probe_name or resolve_probe()
     speech_client = client or OpenRouterSpeechClient(os.environ["OPENROUTER_API_KEY"])
@@ -991,14 +961,21 @@ def generate_assets(
         else:
             completed[synthesis_unit_id(asset)] = existing
 
+    counts = {"reused": 0, "synthesized": 0}
+    counts_lock = threading.Lock()
+
     def generate_one(asset: SourceAsset) -> GeneratedAsset:
         if reuse_bucket is not None:
             fetched = _fetch_existing_s3_asset(
                 reuse_bucket, asset, work_dir, probe_runner, resolved_probe, aws_runner
             )
             if fetched is not None:
+                with counts_lock:
+                    counts["reused"] += 1
                 return fetched
         response = speech_client.synthesize(asset)
+        with counts_lock:
+            counts["synthesized"] += 1
         final_path = audio_path_for(work_dir, asset)
         final_path.parent.mkdir(parents=True, exist_ok=True)
         temporary_path = Path(f"{final_path}.part")
@@ -1052,6 +1029,11 @@ def generate_assets(
     if pending:
         state.update(completed)
         write_generation_state(state_path, state)
+    # 재사용이 몇 건인지 보여야 --reuse-s3-bucket을 쓸 이유가 드러난다.
+    progress(
+        f"units={len(completed)}, synthesized={counts['synthesized']}, "
+        f"reused_from_s3={counts['reused']}, already_local={len(completed) - len(pending)}"
+    )
     return sorted(completed.values(), key=lambda item: item.asset_id)
 
 
@@ -2762,7 +2744,10 @@ def main(argv: list[str] | None = None) -> int:
     generate_parser.add_argument("--work-dir", required=True, type=Path)
     generate_parser.add_argument(
         "--reuse-s3-bucket",
-        help="이미 이 버킷에 게시된 키는 합성하지 않고 내려받아 재사용한다",
+        help=(
+            "이미 이 버킷에 게시된 키는 합성하지 않고 내려받아 재사용한다. "
+            "단어는 (억양, 단어) 공용 자리를 보므로 새 배치에서도 대부분 적중한다 — 권장"
+        ),
     )
     generate_parser.add_argument(
         "--workers",
@@ -2842,7 +2827,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="내용이 바뀐 기존 키를 충돌 대신 덮어쓴다 (QA 교체용, 게시 후 CloudFront 무효화 필요)",
     )
-    for s3_parser in (upload_parser, be_parser, reference_parser, pool_parser):
+    for s3_parser in (upload_parser, be_parser, reference_parser, pool_parser, generate_parser):
         s3_parser.add_argument(
             "--boto3",
             action="store_true",
@@ -2868,8 +2853,15 @@ def main(argv: list[str] | None = None) -> int:
             args.work_dir,
             reuse_bucket=args.reuse_s3_bucket,
             max_workers=args.workers,
+            aws_runner=Boto3AwsRunner() if args.boto3 else subprocess.run,
+            progress=print,
         )
         print(f"completed={len(generated)}, failed=0")
+        if args.reuse_s3_bucket is None:
+            print(
+                "NOTE: --reuse-s3-bucket을 주면 공용 자리에 이미 있는 단어는 합성하지 "
+                "않는다. LAN-471 배치 기준 단어 16,167개 중 새로 필요한 것은 984개였다"
+            )
     elif args.command == "verify":
         if not args.source and not args.manifest:
             parser.error("verify requires --source, --manifest, or both")

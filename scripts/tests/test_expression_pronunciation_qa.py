@@ -396,7 +396,10 @@ class RunCheckTests(unittest.TestCase):
                 decoder=self.loud,
                 progress=lambda message: None,
             )
-            patterns = systematic_failures(outcomes)
+            # 단위로 합쳐도 "영향받는 자리 3개"라는 신호는 그대로여야 한다.
+            patterns = systematic_failures(
+                outcomes, qa_epa.synthesis_unit_members(snapshot.assets)
+            )
             self.assertEqual(
                 {(p["accentLocale"], p["text"], p["count"]) for p in patterns},
                 {("EN_US", "it", 3), ("EN_GB", "it", 3)},
@@ -702,16 +705,19 @@ class InterruptedRunTests(unittest.TestCase):
                 snapshot, work_dir, report, transcribe=lambda p: text_of[p], client=None,
                 max_resynth=0, workers=1, decoder=loud, progress=lambda m: None,
             )
-            everyone = {asset_id(a) for a in snapshot.assets}
+            # 보고서 행은 합성 단위마다 하나다 (같은 단어는 표현이 달라도 한 행).
+            everyone = {qa_epa.synthesis_unit_id(a) for a in snapshot.assets}
             self.assertEqual({r["assetId"] for r in json.loads(report.read_text())["assets"]}, everyone)
 
             # 2차: 불합격으로 남은 일부만 재검사하다가 두 번째 자산에서 강제로 멈춘다
             # (실제로도 불합격분만 재검사한다 — 합격+sha 일치는 건너뛰므로 불합격으로 만들어 둔다)
             targets = [a for a in snapshot.assets if a.kind == "word"][:3]
+            # --asset-ids-file은 예전 자산 id도 받아야 한다 (사람이 그 형식으로 복사해 온다).
             target_ids = {asset_id(a) for a in targets}
+            target_units = {qa_epa.synthesis_unit_id(a) for a in targets}
             payload = json.loads(report.read_text())
             for row in payload["assets"]:
-                if row["assetId"] in target_ids:
+                if row["assetId"] in target_units:
                     row["passed"] = False
             report.write_text(json.dumps(payload))
             seen = {"n": 0}
@@ -856,8 +862,9 @@ class WordPoolAssetTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             qa_epa.load_word_pool_index(write_json(payload))
 
-    def test_colliding_asset_ids_stop_the_run(self):
+    def test_same_expression_slot_with_two_hashes_is_no_longer_a_collision(self):
         # 예문이 수정된 표현은 같은 단어 순서에 키가 둘이다 (표현 1942·1945·1946).
+        # 단위 id가 (억양, 해시)라 서로 다른 단위가 되므로 더는 충돌이 아니다.
         entries = qa_epa.load_word_pool_index(
             write_json(
                 pool_index_payload(
@@ -869,12 +876,15 @@ class WordPoolAssetTests(unittest.TestCase):
             )
         )
 
-        with self.assertRaises(ValueError) as caught:
-            pool_snapshot(entries)
-        self.assertIn("collide on asset id", str(caught.exception))
+        snapshot = pool_snapshot(entries)
+
+        self.assertEqual(len(snapshot.assets), 2)
+        self.assertEqual(
+            len({qa_epa.synthesis_unit_id(a) for a in snapshot.assets}), 2
+        )
 
     def test_identical_duplicate_entries_stop_the_run(self):
-        # 해시까지 같은 완전 중복은 판정이 서로 덮어써 한쪽이 보고서에서 사라진다.
+        # 같은 (억양, 해시)가 두 번 나오면 판정이 서로 덮어써 한쪽이 보고서에서 사라진다.
         # 개수만 보면 눈치채지 못하므로 여기서 막는다.
         row = pool_entry("EN_US", "the", 982, 7, qa=True)
         entries = qa_epa.load_word_pool_index(
@@ -883,7 +893,7 @@ class WordPoolAssetTests(unittest.TestCase):
 
         with self.assertRaises(ValueError) as caught:
             pool_snapshot(entries)
-        self.assertIn("collide on asset id", str(caught.exception))
+        self.assertIn("repeat the same", str(caught.exception))
 
 
 def write_json(payload: dict) -> Path:
@@ -893,6 +903,47 @@ def write_json(payload: dict) -> Path:
     json.dump(payload, handle, ensure_ascii=False)
     handle.close()
     return Path(handle.name)
+
+
+class SharedWordCheckTests(unittest.TestCase):
+    def loud(self, path):
+        return array.array("h", [8000, -8000] * 8000)
+
+    def repeated_snapshot(self):
+        payload = make_source_payload()
+        payload["expressions"][0]["sentenceText"] = "it it it"
+        payload["expressions"][0]["words"] = [
+            {"order": order, "word": "it"} for order in (1, 2, 3)
+        ]
+        return load_snapshot(payload)
+
+    def test_same_word_is_transcribed_once_however_many_slots_use_it(self):
+        # 한 표현 안에서 같은 단어가 3번 나와도 소리는 하나다. 세 번 검사하면 같은 일을
+        # 세 번 하고, 재합성하면 형제 자리의 판정이 낡는다.
+        snapshot = self.repeated_snapshot()
+        words = [a for a in snapshot.assets if a.kind == "word"]
+        seen = []
+
+        def transcribe(path):
+            seen.append(path)
+            return next(a.text for a in snapshot.assets
+                        if audio_path_for(Path(path).parent.parent, a) == Path(path))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            make_generated_work_dir(snapshot, work_dir)
+            outcomes = run_check(
+                snapshot, work_dir, work_dir / "qa.json", transcribe=transcribe,
+                client=None, max_resynth=0, workers=1, decoder=self.loud,
+                probe_runner=fake_probe_runner, probe_name="ffprobe",
+                progress=lambda message: None,
+            )
+
+        self.assertEqual(len(words), 6)
+        word_outcomes = [o for o in outcomes.values() if o.kind == "word"]
+        self.assertEqual(len(word_outcomes), 2)          # 억양당 하나
+        self.assertEqual(len(seen), len(outcomes))        # 단위마다 한 번만 전사
+        self.assertEqual(len(set(seen)), len(seen))       # 같은 파일을 두 번 안 본다
 
 
 class SilenceOnlyAssetIdTests(unittest.TestCase):
@@ -1242,12 +1293,16 @@ class CheckPoolTests(unittest.TestCase):
             return word if seen[word] > 1 else "wrong"
 
         original = s3.__call__
-        # 가운데 항목의 put만 실패시킨다.
-        bravo_key = entries[1]["targetKey"]
+        # 게시 순서는 단위 id 정렬을 따르므로, 두 번째로 올라가는 키를 실패시킨다.
+        order = sorted(entries, key=lambda e: f'word/{e["accentLocale"]}/{e["fingerprint"]}')
+        bravo_key = order[1]["targetKey"]
+        puts = []
 
         def break_bravo(command, **kwargs):
-            if command[2] == "put-object" and command[command.index("--key") + 1] == bravo_key:
-                raise RuntimeError("S3 put-object failed for key " + bravo_key)
+            if command[2] == "put-object":
+                puts.append(command)
+                if command[command.index("--key") + 1] == bravo_key:
+                    raise RuntimeError("S3 put-object failed for key " + bravo_key)
             return original(command, **kwargs)
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -1256,11 +1311,22 @@ class CheckPoolTests(unittest.TestCase):
                 max_resynth=3, publish_fixes=True, execute=True, aws_override=break_bravo,
             )
 
+        # 게시 순서는 단위 id 정렬을 따르므로 몇 번째에서 터지는지는 고정하지 않는다.
         self.assertIn("publishError", summary)
-        self.assertEqual(summary["replaced"], 1)
-        self.assertEqual(summary["replacedKeys"], [entries[0]["targetKey"]])
-        # 실패 뒤의 항목은 올리지 않는다
-        self.assertEqual(s3.bodies[entries[2]["targetKey"]], b"mp3:delta:EN_US")
+        self.assertIn(order[1]["word"], summary["publishError"])  # 해시가 아니라 단어로 알려준다
+        # 실패한 키는 쓰이지 않았으므로 교체 목록에 없다
+        self.assertNotIn(bravo_key, summary["replacedKeys"])
+        # 목록에 오른 키는 전부 실제로 S3에서 바뀌어 있다
+        for key in summary["replacedKeys"]:
+            self.assertTrue(s3.bodies[key].endswith(b":fixed"), key)
+        # 실패하면 거기서 멈춘다 — 남은 항목은 put을 시도조차 하지 않는다.
+        # (계속 올리면 되돌릴 수 없는 쓰기를 원인도 모른 채 이어가게 된다)
+        self.assertEqual(len(summary["replacedKeys"]), 1)
+        attempted = [c[c.index("--key") + 1] for c in puts]
+        self.assertEqual(len(attempted), 2)          # 성공 1 + 실패한 bravo 1
+        self.assertIn(bravo_key, attempted)
+        untouched = [e for e in entries if not s3.bodies[e["targetKey"]].endswith(b":fixed")]
+        self.assertEqual(len(untouched), 2)
 
     def test_second_run_after_a_successful_publish_is_a_noop(self):
         entry = pool_entry("EN_US", "warning", 5, 1, qa=False)
@@ -1417,41 +1483,24 @@ class CheckPoolTests(unittest.TestCase):
         self.assertIn(entry["targetKey"], summary["replacedKeys"])
         self.assertEqual(s3.bodies[entry["targetKey"]], b"mp3:warning:EN_US:fixed")
 
-    def test_alternating_indexes_in_one_work_dir_names_the_real_cause(self):
-        # 같은 (표현id, 순서)에 해시가 둘인 경우가 실제로 있다(표현 1942·1945·1946).
-        # 한 폴더에서 두 색인을 번갈아 돌리면 기록이 서로의 것이 된다.
-        first_entry = pool_entry("EN_US", "alpha", 5, 1, qa=False)
-        second_entry = pool_entry("EN_US", "bravo", 5, 1, qa=False)
-        s3, first_index = self.build([first_entry])
-        s3.add_audio(second_entry["targetKey"], b"mp3:bravo:EN_US")
-        second_index = write_json(pool_index_payload([second_entry]))
-        client = Mock()
-        client.synthesize = Mock(
-            side_effect=lambda asset: Mock(body=b"fixed-alpha", generation_id="gen-fix")
-        )
-        attempts = {"n": 0}
-
-        def failing_then_fixed(path):
-            attempts["n"] += 1
-            return "alpha" if attempts["n"] > 1 else "wrong"
-
+    def test_two_indexes_in_one_work_dir_cannot_mix_up_clips(self):
+        # 같은 (표현id, 순서)를 쓰는 두 색인을 한 폴더에서 번갈아 돌려도 파일이 섞이지
+        # 않는다. 경로가 합성 단위 id(억양+해시)에서 나오기 때문이다.
+        first = pool_entry("EN_US", "alpha", 5, 1, qa=False)
+        second = pool_entry("EN_US", "bravo", 5, 1, qa=False)
+        s3, first_index = self.build([first])
+        s3.add_audio(second["targetKey"], b"mp3:bravo:EN_US")
+        second_index = write_json(pool_index_payload([second]))
         with tempfile.TemporaryDirectory() as tmp:
             work_dir = Path(tmp)
-            self.run_pool(
-                s3, first_index, work_dir, transcribe=failing_then_fixed,
-                client=client, max_resynth=3,
-            )
-            # alpha의 수정본이 남은 폴더에서 bravo 색인을 돌린다. 경로에 해시가 들어가
-            # 파일은 갈리지만, 기록은 같은 자산 id를 공유한다.
-            alpha_path = qa_epa.audio_path_for(
-                work_dir, qa_epa.word_pool_asset(qa_epa.load_word_pool_index(second_index)[0])
-            )
-            alpha_path.write_bytes(b"not-bravo")
+            (a_summary, _, _), _ = self.run_pool(s3, first_index, work_dir)
+            (b_summary, _, _), _ = self.run_pool(s3, second_index, work_dir)
+            files = sorted(p.name for p in (work_dir / "mp3").glob("*.mp3"))
 
-            with self.assertRaises(ValueError) as caught:
-                self.run_pool(s3, second_index, work_dir)
-
-        self.assertIn("different pool entry", str(caught.exception))
+        self.assertEqual(a_summary["failed"], 0)
+        self.assertEqual(b_summary["failed"], 0)
+        self.assertEqual(len(files), 2, files)
+        self.assertTrue(all(name.startswith("word-EN_US-") for name in files))
 
     def test_mp3_newer_than_the_record_says_it_may_be_an_interrupted_resynth(self):
         # 재합성 파일이 디스크에 쓰인 뒤 state 반영 전에 죽으면 생기는 창.

@@ -615,7 +615,7 @@ def resynthesize(
         temporary_path.unlink(missing_ok=True)
         raise
     return epa.GeneratedAsset(
-        asset_id=epa.asset_id(asset),
+        asset_id=epa.synthesis_unit_id(asset),
         expression_id=asset.expression_id,
         accent_locale=asset.accent_locale,
         kind=asset.kind,
@@ -923,14 +923,25 @@ def summarize(outcomes: Mapping[str, AssetOutcome]) -> dict:
     }
 
 
-def systematic_failures(outcomes: Mapping[str, AssetOutcome]) -> list[dict]:
-    """같은 보이스가 같은 텍스트를 반복해서 같은 식으로 틀리면 계통적 실패다."""
+def systematic_failures(
+    outcomes: Mapping[str, AssetOutcome],
+    members: Mapping[str, list[epa.SourceAsset]] | None = None,
+) -> list[dict]:
+    """같은 보이스가 같은 텍스트를 반복해서 같은 식으로 틀리면 계통적 실패다.
+
+    세는 단위는 **영향받는 자산 자리**다. 합성 단위로 합치면 같은 단어를 한 번만 검사하므로
+    단위 수로 세면 언제나 1이 되어 이 신호가 사라진다. members를 주면 그 단위를 쓰는
+    자리 수를 더한다.
+
+    :param outcomes: 단위 id → 판정
+    :param members: 단위 id → 그 소리를 쓰는 자산 목록. 없으면 단위 하나를 1로 센다
+    """
     groups: dict[tuple[str, str, str], int] = defaultdict(int)
-    for outcome in outcomes.values():
+    for unit_id, outcome in outcomes.items():
         if outcome.passed or not outcome.last_transcript:
             continue
         key = (outcome.accent_locale, outcome.text.lower(), outcome.last_transcript.lower())
-        groups[key] += 1
+        groups[key] += len(members[unit_id]) if members and unit_id in members else 1
     return [
         {"accentLocale": locale, "text": text, "heard": heard, "count": count}
         for (locale, text, heard), count in sorted(groups.items(), key=lambda kv: -kv[1])
@@ -982,21 +993,30 @@ def run_check(
     previous = load_report(report_path)
     outcomes: dict[str, AssetOutcome] = {}
     pending: list[epa.SourceAsset] = []
-    for asset in snapshot.assets:
-        if ids is not None and asset.expression_id not in ids:
-            continue
-        if kinds is not None and asset.kind not in kinds:
-            continue
-        key = epa.asset_id(asset)
+    # 필터를 먼저 걸고 나서 단위로 합친다. 반대로 하면 공유 단어의 대표가 필터 밖 표현에
+    # 속했을 때 그 단어가 통째로 빠진다.
+    selected = [
+        asset
+        for asset in snapshot.assets
+        if (ids is None or asset.expression_id in ids)
+        and (kinds is None or asset.kind in kinds)
+    ]
+    members = epa.synthesis_unit_members(selected)
+    for asset in epa.dedupe_synthesis_units(selected):
+        key = epa.synthesis_unit_id(asset)
         generated = state.get(key)
         cached = previous.get(key)
-        if asset_ids is not None and key not in asset_ids:
+        # --asset-ids-file은 단위 id와 예전 자산 id를 모두 받는다. 사람이 보고서나
+        # verify-accent 출력에서 복사해 오는 값이 아직 자산 id 형식이다.
+        if asset_ids is not None and key not in asset_ids and not any(
+            epa.asset_id(member) in asset_ids for member in members[key]
+        ):
             if cached is not None:
                 outcomes[key] = _outcome_from_cached(asset, cached)
             continue
         if only_report_failures and (cached is None or cached["passed"]):
-            # 이전 보고서에서 불합격으로 확정된 자산만 다시 본다. 합격 기록은 보고서에
-            # 그대로 남기고(덮어쓰지 않게 outcomes에 옮김), 아직 안 본 자산은 건너뛴다.
+            # 이전 보고서에서 불합격으로 확정된 단위만 다시 본다. 합격 기록은 보고서에
+            # 그대로 남기고(덮어쓰지 않게 outcomes에 옮김), 아직 안 본 것은 건너뛴다.
             if cached is not None:
                 outcomes[key] = _outcome_from_cached(asset, cached)
             continue
@@ -1013,7 +1033,7 @@ def run_check(
     started = time.monotonic()
 
     def check_one(asset: epa.SourceAsset) -> AssetOutcome:
-        key = epa.asset_id(asset)
+        key = epa.synthesis_unit_id(asset)
         path = epa.audio_path_for(work_dir, asset)
         attempts = 0
         first_reason = ""
@@ -1059,7 +1079,7 @@ def run_check(
         with lock:
             sha = state[key].audio_sha256
         return AssetOutcome(
-            asset_id=key,
+            asset_id=key,  # 단위 id. 단어는 여러 표현이 공유한다
             text=asset.text,
             kind=asset.kind,
             accent_locale=asset.accent_locale,
@@ -1083,9 +1103,9 @@ def run_check(
     # 멈추면 영영 사라진다 (LAN-471 실측: 재검사를 중단하자 불합격 16건이 보고서에서 사라져
     # 다음 재검사 대상에서도 빠졌다). 검사가 끝나면 새 결과로 덮인다.
     for asset in pending:
-        cached = previous.get(epa.asset_id(asset))
+        cached = previous.get(epa.synthesis_unit_id(asset))
         if cached is not None:
-            outcomes[epa.asset_id(asset)] = _outcome_from_cached(asset, cached)
+            outcomes[epa.synthesis_unit_id(asset)] = _outcome_from_cached(asset, cached)
     progress(f"checking {len(pending)} assets ({cached_count} cached as passed)")
     last_flush = time.monotonic()
     executor = ThreadPoolExecutor(max_workers=workers)
@@ -1210,19 +1230,19 @@ def pool_snapshot(entries: Sequence[epa.WordPoolEntry]) -> epa.SourceSnapshot:
     :raises ValueError: 자산 id가 겹칠 때
     """
     assets = [epa.word_pool_asset(entry) for entry in entries]
-    seen: dict[str, str] = {}
+    seen: set[str] = set()
     collisions: list[str] = []
-    for asset, entry in zip(assets, entries):
-        key = epa.asset_id(asset)
+    for asset in assets:
+        key = epa.synthesis_unit_id(asset)
         if key in seen:
-            # 해시까지 같은 완전 중복도 막는다. 판정이 서로 덮어써 한쪽이 보고서에서
-            # 사라지는데, 개수만 보면 눈치채지 못한다.
-            collisions.append(f"{key} ({seen[key]} vs {entry.fingerprint})")
-        seen[key] = entry.fingerprint
+            # 같은 (억양, 해시)가 두 번 나오면 판정이 서로 덮어써 한쪽이 보고서에서
+            # 사라진다. 개수만 보면 눈치채지 못하므로 여기서 막는다.
+            collisions.append(key)
+        seen.add(key)
     if collisions:
         raise ValueError(
-            "word pool entries collide on asset id — 색인을 --unmatched drop으로 다시 "
-            f"만들 것: {', '.join(collisions[:5])}"
+            "word pool entries repeat the same (accentLocale, fingerprint) — 색인을 "
+            f"다시 만들 것: {', '.join(collisions[:5])}"
         )
     return epa.SourceSnapshot(
         schema_version=1, environment="production", assets=tuple(assets), contrasts={}
@@ -1267,8 +1287,8 @@ def run_check_pool(
     """
     entries = entries if entries is not None else epa.load_word_pool_index(index_path)
     snapshot = pool_snapshot(entries)
-    entry_by_asset_id = {
-        epa.asset_id(asset): entry
+    entry_by_unit_id = {
+        epa.synthesis_unit_id(asset): entry
         for asset, entry in zip(snapshot.assets, entries)
     }
 
@@ -1306,7 +1326,7 @@ def run_check_pool(
         frozenset()
         if recheck_qa_verified
         else frozenset(
-            asset_id for asset_id, entry in entry_by_asset_id.items() if entry.qa_verified
+            asset_id for asset_id, entry in entry_by_unit_id.items() if entry.qa_verified
         )
     )
     progress(
@@ -1332,9 +1352,9 @@ def run_check_pool(
         progress=progress,
     )
     # 개수만 맞추지 않는다 — 자산 id 집합이 색인과 정확히 같아야 한 항목도 묻히지 않는다.
-    if set(outcomes) != set(entry_by_asset_id):
-        missing = sorted(set(entry_by_asset_id) - set(outcomes))
-        extra = sorted(set(outcomes) - set(entry_by_asset_id))
+    if set(outcomes) != set(entry_by_unit_id):
+        missing = sorted(set(entry_by_unit_id) - set(outcomes))
+        extra = sorted(set(outcomes) - set(entry_by_unit_id))
         raise ValueError(
             f"pool check did not cover every entry — missing {missing[:5]}, extra {extra[:5]}"
         )
@@ -1353,7 +1373,7 @@ def run_check_pool(
     #   - 앞선 실행의 미게시 수정본도 같은 기준이라야 빠지지 않는다.
     changed = [
         asset_id
-        for asset_id in sorted(entry_by_asset_id)
+        for asset_id in sorted(entry_by_unit_id)
         if asset_id not in undecidable_set
         and state[asset_id].audio_sha256 != remote_sha[asset_id]
     ]
@@ -1363,12 +1383,18 @@ def run_check_pool(
     summary["withheldFailures"] = len(withheld)
     summary["replaced"] = 0
     replaced_keys: list[str] = []
+
+    def _label(unit_id: str) -> str:
+        # 해시만 있으면 사람이 어떤 단어인지 못 알아본다.
+        entry = entry_by_unit_id.get(unit_id)
+        return f"{entry.word!r} ({unit_id})" if entry and entry.word else unit_id
+
     if publish_fixes:
         for asset_id in publishable:
             try:
                 epa.publish_word_pool_replacement(
                     bucket,
-                    entry_by_asset_id[asset_id],
+                    entry_by_unit_id[asset_id],
                     state[asset_id],
                     execute=execute,
                     aws_runner=aws_runner,
@@ -1376,26 +1402,26 @@ def run_check_pool(
             except epa.WordPoolReplacementUnverified as error:
                 # put은 성공했다 — 객체는 이미 바뀌어 있다. 목록에서 빼면 무효화 대상에서도
                 # 빠져 CloudFront가 옛 소리를 계속 내보낸다.
-                replaced_keys.append(entry_by_asset_id[asset_id].target_key)
-                summary["publishError"] = f"{asset_id}: {error}"
-                summary["unverifiedKey"] = entry_by_asset_id[asset_id].target_key
+                replaced_keys.append(entry_by_unit_id[asset_id].target_key)
+                summary["publishError"] = f"{_label(asset_id)}: {error}"
+                summary["unverifiedKey"] = entry_by_unit_id[asset_id].target_key
                 break
             except Exception as error:
                 # 중간에 터져도 무엇이 이미 S3에 써졌는지는 사람이 알아야 한다. 예외를
                 # 그대로 올리면 요약이 통째로 사라지고, 이미 바뀐 키를 모르는 채로
                 # CloudFront를 전체 무효화하게 된다. 남은 것은 올리지 않고 멈춘다.
-                summary["publishError"] = f"{asset_id}: {error}"
+                summary["publishError"] = f"{_label(asset_id)}: {error}"
                 break
             if execute:
-                replaced_keys.append(entry_by_asset_id[asset_id].target_key)
+                replaced_keys.append(entry_by_unit_id[asset_id].target_key)
         summary["replaced"] = len(replaced_keys)
         summary["replacedKeys"] = replaced_keys
-    return summary, outcomes, entry_by_asset_id
+    return summary, outcomes, entry_by_unit_id
 
 
 def format_pool_failures(
     outcomes: Mapping[str, AssetOutcome],
-    entry_by_asset_id: Mapping[str, epa.WordPoolEntry],
+    entry_by_unit_id: Mapping[str, epa.WordPoolEntry],
 ) -> list[str]:
     """불합격 단위를 사람이 바로 판단할 수 있는 줄로 만든다.
 
@@ -1406,7 +1432,7 @@ def format_pool_failures(
     for asset_id, outcome in sorted(outcomes.items()):
         if outcome.passed:
             continue
-        entry = entry_by_asset_id.get(asset_id)
+        entry = entry_by_unit_id.get(asset_id)
         used_by = f" used_by={entry.duplicate_count}" if entry is not None else ""
         target = f" {entry.target_key}" if entry is not None else ""
         lines.append(
@@ -1458,7 +1484,7 @@ def _run_check_pool_command(args) -> int:
     )
     aws_runner = epa.Boto3AwsRunner() if args.boto3 else subprocess.run
     try:
-        summary, outcomes, entry_by_asset_id = run_check_pool(
+        summary, outcomes, entry_by_unit_id = run_check_pool(
             args.index,
             args.work_dir,
             args.report,
@@ -1481,7 +1507,7 @@ def _run_check_pool_command(args) -> int:
     if isinstance(transcriber, SubprocessTranscriber):
         summary["transcribeTimeouts"] = transcriber.timeouts
     print(json.dumps(summary, ensure_ascii=False))
-    failures = format_pool_failures(outcomes, entry_by_asset_id)
+    failures = format_pool_failures(outcomes, entry_by_unit_id)
     if failures:
         print(f"failed units ({len(failures)}):")
         for line in failures:
@@ -1710,7 +1736,9 @@ def main(argv: list[str] | None = None) -> int:
             summary["transcribeTimeouts"] = transcriber.timeouts
             transcriber.close()
         print(json.dumps(summary, ensure_ascii=False))
-        patterns = systematic_failures(outcomes)
+        patterns = systematic_failures(
+            outcomes, epa.synthesis_unit_members(snapshot.assets)
+        )
         if patterns:
             print(f"systematic failures (>= {SYSTEMATIC_FAILURE_THRESHOLD} repeats):")
             for item in patterns:

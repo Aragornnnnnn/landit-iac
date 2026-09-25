@@ -193,6 +193,39 @@ def asset_id(asset: SourceAsset) -> str:
     return f"{asset.expression_id}/{asset.accent_locale}/{asset.kind}{suffix}"
 
 
+# 표현 음성은 "hang out with"처럼 문법적으로 끝나지 않은 조각인 경우가 많다. 그대로 읽히면
+# TTS가 문장을 이어가려다 다음 단어의 첫 소리를 흘려서 잡음 꼬리가 붙는다 (배치 1·2 실측:
+# 조각형 표현의 19%, 그 밖의 1.3%). 같은 텍스트도 억양에 따라 붙기도 안 붙기도 해 확률적이므로,
+# 어떤 텍스트가 걸릴지 고르는 대신 **끝을 알리는 부호를 항상 붙여 유발 조건을 없앤다.**
+#
+# 이미 문장부호로 끝나면 건드리지 않는다. 물음표로 끝나는 표현이 103개 있는데(`Have you got a
+# minute?`) 마침표로 바꾸면 의문문 억양이 평서문이 된다. 재합성이 붙이는 쉼표 변형도 그대로 둬야
+# 그 실험이 유지된다. 그래서 판단 기준은 "종결부호"가 아니라 "부호로 끝나는가"이고, 이 함수는
+# 몇 번 적용해도 같은 결과를 낸다.
+#
+# 근거: 이미 꼬리가 난 51개에서 마침표 45/51 통과 vs 원문 재생성 29/51. 멀쩡한 표현 60개로는
+# 마침표 46/60 vs 원문 재생성 44/60으로 차이가 없어 해롭지 않음을 확인했다 (2026-09-25).
+# 이 부호로 끝나면 부르는 쪽이 이미 끝맺음을 정한 것으로 보고 손대지 않는다.
+EXPLICIT_ENDINGS = (".", "?", "!", ",", ";", ":")
+
+
+def speech_text(asset: SourceAsset) -> str:
+    """TTS에 실제로 보낼 문자열. 생성 계약(S3 키)은 asset.text 그대로를 쓴다.
+
+    말하는 입력과 내용 식별자를 분리한다. 같은 (억양, 원문)은 항상 같은 입력을 만들므로
+    키와 소리의 대응은 그대로 유지된다.
+
+    :param asset: 합성할 자산
+    :return: 표현 음성이면서 부호로 끝나지 않으면 마침표를 붙인 텍스트, 그 밖에는 원문 그대로
+    """
+    if asset.kind != KIND_EXPRESSION:
+        return asset.text
+    stripped = asset.text.rstrip()
+    if not stripped or stripped.endswith(EXPLICIT_ENDINGS):
+        return asset.text
+    return stripped + "."
+
+
 def generation_contract(asset: SourceAsset) -> dict[str, str]:
     return {
         "model": MODEL,
@@ -212,23 +245,106 @@ def generation_fingerprint(asset: SourceAsset) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+WORD_POOL_SCHEMA_VERSION = 2
+WORD_POOL_ISSUE = "LAN-475"
+WORD_POOL_SEGMENT = "word"
+# 풀 QA가 재합성으로 교체한 객체에 남기는 표시. 교체본은 원본 옛 키와 내용이 달라지는 것이
+# 정상이므로, 백필의 원본 대조가 이걸 보고 불일치를 오탐으로 올리지 않는다.
+WORD_POOL_REPLACED_MARKER = "replaced-by"
+WORD_POOL_REPLACED_VALUE = "lan-475-pool-qa"
+
+LEGACY_WORD_KEY_PATTERN = re.compile(
+    rf"^{re.escape(KEY_PREFIX)}/(?P<expression_id>\d+)/(?P<accent_locale>[A-Z]{{2}}_[A-Z]{{2}})"
+    r"/word/(?P<word_order>\d+)/(?P<fingerprint>[0-9a-f]{64})\.mp3$"
+)
+SHARED_WORD_KEY_PATTERN = re.compile(
+    rf"^{re.escape(KEY_PREFIX)}/{WORD_POOL_SEGMENT}"
+    r"/(?P<accent_locale>[A-Z]{2}_[A-Z]{2})/(?P<fingerprint>[0-9a-f]{64})\.mp3$"
+)
+
+
+def shared_word_key(accent_locale: str, fingerprint: str) -> str:
+    """(억양, 해시) 하나가 차지하는 공용 단어 키를 돌려준다.
+
+    표현 id 자리에 숫자가 아닌 `word`가 들어가므로 옛 키와 섞이지 않는다.
+
+    :param accent_locale: 억양 로케일 (EN_US·EN_GB·EN_AU)
+    :param fingerprint: 생성 계약 sha256
+    :return: `content/expression-pronunciation-audio/word/{억양}/{해시}.mp3`
+    """
+    return f"{KEY_PREFIX}/{WORD_POOL_SEGMENT}/{accent_locale}/{fingerprint}.mp3"
+
+
+def synthesis_unit_id(asset: SourceAsset) -> str:
+    """한 번만 합성하면 되는 단위의 id.
+
+    단어는 (억양, 해시)마다 하나다 — 같은 억양의 같은 단어는 표현이 달라도 같은 소리이고,
+    LAN-475에서 공용 자리 하나로 모았다. 문장·표현은 텍스트가 표현마다 달라 중복이 없으므로
+    지금처럼 자산 하나가 곧 단위다.
+
+    단어 단위 id는 `word/`로 시작하고 자산 id는 표현 번호(숫자)로 시작하므로 섞이지 않는다.
+
+    :param asset: 소스 자산
+    :return: 같은 소리를 내는 자산들이 공유하는 id
+    """
+    if asset.kind != KIND_WORD:
+        return asset_id(asset)
+    return f"{KIND_WORD}/{asset.accent_locale}/{generation_fingerprint(asset)}"
+
+
+def dedupe_synthesis_units(assets: Iterable[SourceAsset]) -> list[SourceAsset]:
+    """자산 목록에서 중복을 합쳐 단위마다 대표 하나씩 돌려준다.
+
+    LAN-471 배치는 단어 16,167개를 합성했지만 서로 다른 것은 3,843개뿐이었다. 대표는
+    자산 id가 가장 앞선 것으로 고정해 같은 입력이면 항상 같은 결과가 나오게 한다.
+
+    :param assets: 소스 자산 (필터를 먼저 적용한 부분집합이어도 된다)
+    :return: 단위 id 순으로 정렬된 대표 자산
+    """
+    representatives: dict[str, SourceAsset] = {}
+    for asset in sorted(assets, key=asset_id):
+        representatives.setdefault(synthesis_unit_id(asset), asset)
+    return [representatives[key] for key in sorted(representatives)]
+
+
+def synthesis_unit_members(
+    assets: Iterable[SourceAsset],
+) -> dict[str, list[SourceAsset]]:
+    """단위 id → 그 소리를 쓰는 자산 목록. 불합격이 어느 표현에 걸리는지 되짚을 때 쓴다."""
+    members: dict[str, list[SourceAsset]] = defaultdict(list)
+    for asset in sorted(assets, key=asset_id):
+        members[synthesis_unit_id(asset)].append(asset)
+    return dict(members)
+
+
+def synthesis_units(snapshot: SourceSnapshot) -> list[SourceAsset]:
+    """스냅샷 전체의 합성 단위 대표."""
+    return dedupe_synthesis_units(snapshot.assets)
+
+
 def s3_key(asset: SourceAsset, fingerprint: str) -> str:
-    kind_path = asset.kind if asset.word_order is None else f"word/{asset.word_order}"
+    """자산이 차지하는 S3 키. 단어는 표현과 무관한 공용 자리를 가리킨다."""
+    if asset.kind == KIND_WORD:
+        return shared_word_key(asset.accent_locale, fingerprint)
     return (
         f"{KEY_PREFIX}/{asset.expression_id}/{asset.accent_locale}/"
-        f"{kind_path}/{fingerprint}.mp3"
+        f"{asset.kind}/{fingerprint}.mp3"
     )
 
 
 def audio_path_for(work_dir: Path, asset: SourceAsset) -> Path:
-    fingerprint = generation_fingerprint(asset)
-    suffix = "" if asset.word_order is None else f"-{asset.word_order}"
-    return (
-        work_dir
-        / "mp3"
-        / f"{asset.expression_id}-{asset.accent_locale}-{asset.kind}{suffix}"
-        f"-{fingerprint}.mp3"
-    )
+    """작업 폴더에서 이 자산의 소리를 담는 파일. 같은 단위는 같은 파일을 쓴다.
+
+    파일 이름을 단위 id에서 만들어 S3 키와 1:1로 맞춘다. 단어 하나를 여러 표현이 쓰면
+    파일도 하나다 — 예전처럼 표현마다 따로 두면 같은 소리를 여러 번 만들고 검사하게 된다.
+
+    이름은 항상 해시로 끝난다. 단어는 단위 id에 이미 들어 있고, 문장·표현은 뒤에 붙인다 —
+    텍스트가 바뀌면 경로도 바뀌어야 옛 파일을 새 텍스트의 것으로 오인하지 않는다.
+    """
+    unit = synthesis_unit_id(asset).replace("/", "-")
+    if asset.kind == KIND_WORD:
+        return work_dir / "mp3" / f"{unit}.mp3"
+    return work_dir / "mp3" / f"{unit}-{generation_fingerprint(asset)}.mp3"
 
 
 def resolve_probe(which: Callable[[str], str | None] = shutil.which) -> str:
@@ -325,7 +441,8 @@ class OpenRouterSpeechClient:
     def synthesize(self, asset: SourceAsset) -> SpeechResponse:
         payload = {
             "model": MODEL,
-            "input": asset.text,
+            # 생성 계약(키)은 원문 기준이고, 말하는 입력만 speech_text가 다듬는다.
+            "input": speech_text(asset),
             "voice": VOICE_BY_LOCALE[asset.accent_locale],
             "response_format": RESPONSE_FORMAT,
         }
@@ -506,8 +623,46 @@ def verify_accent_pronunciations(
 
     단어 단독 음성과 문장 음성을 둘 다 검사한다 — 단어 음성은 오류 카드 재생용이고
     문장 음성은 판정의 대조 기준이라 어느 쪽이 틀려도 콘텐츠 결함이다.
+
+    단어 음성은 (억양, 단어) 하나를 여러 표현이 공유하므로 같은 (파일, 대조)는 한 번만
+    판정한다. 보고는 표현 자리마다 나온다 — 대조를 순회하며 그 표현의 자산을 찾기 때문에
+    공유되는 것은 파일 경로뿐이고 자산 id는 표현마다 다르다. 문제 문자열 형식
+    `{표현id}/{억양}/word-{순서}`는 landit-ai `scripts/prune_accent_contrasts.py`가
+    정규식으로 파싱하는 계약이라 유지해야 하고, 자리마다 한 줄씩 나와야 그 도구가
+    영향받는 대조를 전부 정리할 수 있다.
+
+    :raises ValueError: 한 단어 클립에 서로 다른 대조가 붙어 있을 때. 클립이 하나인데
+        기대값이 둘이면 어느 쪽도 만족시킬 수 없다 — 조용히 한쪽을 고르면 안 된다
     """
     assets_by_id = {asset_id(asset): asset for asset in snapshot.assets}
+
+    # 같은 단어 클립에 붙은 대조가 갈리는지 먼저 본다.
+    contrasts_by_unit: dict[str, dict[AccentContrast, list[str]]] = defaultdict(dict)
+    for (expression_id, locale, word_order), contrast in snapshot.contrasts.items():
+        target = assets_by_id.get(f"{expression_id}/{locale}/{KIND_WORD}-{word_order}")
+        if target is None:
+            continue
+        slot = f"{expression_id}/{locale}/{KIND_WORD}-{word_order}"
+        contrasts_by_unit[synthesis_unit_id(target)].setdefault(contrast, []).append(slot)
+    conflicts = {
+        unit: sorted(c.expected for c in by_contrast)
+        for unit, by_contrast in contrasts_by_unit.items()
+        if len(by_contrast) > 1
+    }
+    if conflicts:
+        detail = "; ".join(f"{unit} expects {sorted(v)}" for unit, v in sorted(conflicts.items()))
+        raise ValueError(
+            "one shared word clip cannot satisfy two different accent contrasts: " + detail
+        )
+
+    judged: dict[tuple[Path, AccentContrast], tuple[bool | None, str | None]] = {}
+
+    def judge(audio_path: Path, contrast: AccentContrast):
+        key = (audio_path, contrast)
+        if key not in judged:
+            judged[key] = checker(api_key, audio_path, contrast)
+        return judged[key]
+
     problems = []
     for (expression_id, locale, word_order), contrast in sorted(
         snapshot.contrasts.items()
@@ -528,18 +683,19 @@ def verify_accent_pronunciations(
                 and _is_flap_class(contrast)
             ):
                 continue
+            # 공유되는 것은 파일 경로뿐이고 자산은 표현마다 따로다. 그래서 보고는
+            # 별도 처리 없이도 표현 자리마다 나온다 (landit-ai 계약 유지).
+            slot = asset_id(target)
             audio_path = audio_path_for(work_dir, target)
             if not audio_path.is_file():
-                problems.append(f"{asset_id(target)}: audio file is missing")
+                problems.append(f"{slot}: audio file is missing")
                 continue
-            matches, heard = checker(api_key, audio_path, contrast)
+            matches, heard = judge(audio_path, contrast)
             if matches is None:
-                problems.append(
-                    f"{asset_id(target)}: '{contrast.word}' could not be judged"
-                )
+                problems.append(f"{slot}: '{contrast.word}' could not be judged")
             elif not matches:
                 problems.append(
-                    f"{asset_id(target)}: '{contrast.word}' sounded like "
+                    f"{slot}: '{contrast.word}' sounded like "
                     f"{heard!r}, expected {contrast.expected!r} — regenerate"
                 )
     return problems
@@ -675,8 +831,10 @@ def load_generation_state(path: Path) -> dict[str, GeneratedAsset]:
     if not path.exists():
         return {}
     payload = json.loads(path.read_text(encoding="utf-8"))
-    if payload.get("schemaVersion") != 1:
-        raise ValueError("generation state must use schema version 1")
+    # 2: 항목의 키가 자산 id에서 합성 단위 id로 바뀌었다 (LAN-561). 옛 파일은 받지 않는다 —
+    # 자산별로 읽으면 같은 단어의 형제 행이 낡은 sha를 들고 있어 재합성 판정이 어긋난다.
+    if payload.get("schemaVersion") != 2:
+        raise ValueError("generation state must use schema version 2")
     return {
         item["assetId"]: GeneratedAsset(
             asset_id=item["assetId"],
@@ -697,7 +855,7 @@ def load_generation_state(path: Path) -> dict[str, GeneratedAsset]:
 
 def write_generation_state(path: Path, assets: Mapping[str, GeneratedAsset]) -> None:
     payload = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "assets": [
             {
                 "assetId": asset.asset_id,
@@ -733,7 +891,7 @@ def _verified_existing_asset(
     probe_runner: Callable,
     probe_name: str,
 ) -> GeneratedAsset | None:
-    existing = state.get(asset_id(asset))
+    existing = state.get(synthesis_unit_id(asset))
     expected_path = audio_path_for(work_dir, asset)
     if (
         existing is None
@@ -774,59 +932,28 @@ def _fetch_existing_s3_asset(
     probe_name: str,
     aws_runner: Callable,
 ) -> GeneratedAsset | None:
-    """이미 S3에 게시된 자산이면 내려받아 재사용한다. 없으면 None.
+    """이미 S3에 게시된 소리면 내려받아 재사용한다. 없으면 None.
 
-    TTS는 재합성하면 바이트가 달라져 기존 immutable 객체와 충돌하므로, S3에 있는 키는
-    합성하지 않고 원본을 내려받는다 (TTS 비용 절약 + 충돌 방지).
+    단어는 (억양, 단어) 공용 자리를 본다. 그래서 새 배치라도 이미 만들어 둔 단어는
+    합성하지 않는다 — LAN-471 배치 기준 단어 16,167개 중 새로 필요한 것은 984개뿐이었다.
+    재합성하면 바이트가 달라져 기존 immutable 객체와 충돌하므로 내려받는 쪽이 맞기도 하다.
+
+    :return: 내려받아 검증한 자산, 또는 S3에 없으면 None
+    :raises ValueError: 내려받은 파일의 sha256이 S3 메타데이터와 다를 때
     """
     fingerprint = generation_fingerprint(asset)
     key = s3_key(asset, fingerprint)
-    head = aws_runner(
-        [
-            "aws",
-            "s3api",
-            "head-object",
-            "--bucket",
-            bucket,
-            "--key",
-            key,
-            "--output",
-            "json",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if head.returncode != 0:
-        if any(
-            marker in head.stderr for marker in ("404", "Not Found", "NoSuchKey")
-        ):
-            return None
-        raise RuntimeError(f"S3 head-object failed for key {key}")
+    head = _head_key(bucket, key, aws_runner)
+    if head is None:
+        return None
     metadata = {
-        name.lower(): str(value)
-        for name, value in json.loads(head.stdout).get("Metadata", {}).items()
+        name.lower(): str(value) for name, value in head.get("Metadata", {}).items()
     }
 
+    # 여러 자산이 같은 단위를 공유하므로 최종 경로에 직접 쓰면 서로의 반쪽 파일을 읽을 수
+    # 있다. 임시 파일에 받아 제자리 교체한다.
     final_path = audio_path_for(work_dir, asset)
-    final_path.parent.mkdir(parents=True, exist_ok=True)
-    fetched = aws_runner(
-        [
-            "aws",
-            "s3api",
-            "get-object",
-            "--bucket",
-            bucket,
-            "--key",
-            key,
-            str(final_path),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if fetched.returncode != 0:
-        raise RuntimeError(f"S3 get-object failed for key {key}")
+    _get_object(bucket, key, final_path, aws_runner)
 
     audio_bytes = final_path.read_bytes()
     audio_sha256 = hashlib.sha256(audio_bytes).hexdigest()
@@ -835,7 +962,7 @@ def _fetch_existing_s3_asset(
         raise ValueError(f"downloaded audio sha256 mismatch for key {key}")
     probe = validate_mp3(final_path, probe_runner=probe_runner, probe_name=probe_name)
     return GeneratedAsset(
-        asset_id=asset_id(asset),
+        asset_id=synthesis_unit_id(asset),
         expression_id=asset.expression_id,
         accent_locale=asset.accent_locale,
         kind=asset.kind,
@@ -861,6 +988,7 @@ def generate_assets(
     max_workers: int = DEFAULT_GENERATE_WORKERS,
     state_flush_interval_seconds: float = STATE_FLUSH_INTERVAL_SECONDS,
     clock: Callable[[], float] = time.monotonic,
+    progress: Callable[[str], None] = lambda message: None,
 ) -> list[GeneratedAsset]:
     resolved_probe = probe_name or resolve_probe()
     speech_client = client or OpenRouterSpeechClient(os.environ["OPENROUTER_API_KEY"])
@@ -868,14 +996,18 @@ def generate_assets(
     state = load_generation_state(state_path)
     completed: dict[str, GeneratedAsset] = {}
     pending = []
-    for asset in snapshot.assets:
+    # 같은 소리를 여러 번 만들지 않도록 단위마다 한 번만 돈다.
+    for asset in synthesis_units(snapshot):
         existing = _verified_existing_asset(
             asset, work_dir, state, probe_runner, resolved_probe
         )
         if existing is None:
             pending.append(asset)
         else:
-            completed[asset_id(asset)] = existing
+            completed[synthesis_unit_id(asset)] = existing
+
+    counts = {"reused": 0, "synthesized": 0}
+    counts_lock = threading.Lock()
 
     def generate_one(asset: SourceAsset) -> GeneratedAsset:
         if reuse_bucket is not None:
@@ -883,8 +1015,12 @@ def generate_assets(
                 reuse_bucket, asset, work_dir, probe_runner, resolved_probe, aws_runner
             )
             if fetched is not None:
+                with counts_lock:
+                    counts["reused"] += 1
                 return fetched
         response = speech_client.synthesize(asset)
+        with counts_lock:
+            counts["synthesized"] += 1
         final_path = audio_path_for(work_dir, asset)
         final_path.parent.mkdir(parents=True, exist_ok=True)
         temporary_path = Path(f"{final_path}.part")
@@ -899,7 +1035,8 @@ def generate_assets(
             temporary_path.unlink(missing_ok=True)
             raise
         return GeneratedAsset(
-            asset_id=asset_id(asset),
+            # 단어는 여러 표현이 공유하므로 expression_id·word_order는 대표의 출처 기록일 뿐이다.
+            asset_id=synthesis_unit_id(asset),
             expression_id=asset.expression_id,
             accent_locale=asset.accent_locale,
             kind=asset.kind,
@@ -937,6 +1074,11 @@ def generate_assets(
     if pending:
         state.update(completed)
         write_generation_state(state_path, state)
+    # 재사용이 몇 건인지 보여야 --reuse-s3-bucket을 쓸 이유가 드러난다.
+    progress(
+        f"units={len(completed)}, synthesized={counts['synthesized']}, "
+        f"reused_from_s3={counts['reused']}, already_local={len(completed) - len(pending)}"
+    )
     return sorted(completed.values(), key=lambda item: item.asset_id)
 
 
@@ -950,6 +1092,8 @@ def verify_generated_assets(
     resolved_probe = probe_name or resolve_probe()
     state = load_generation_state(work_dir / "state.json")
 
+    units = synthesis_units(snapshot)
+
     def verify_one(asset: SourceAsset) -> GeneratedAsset | None:
         return _verified_existing_asset(
             asset, work_dir, state, probe_runner, resolved_probe
@@ -959,13 +1103,17 @@ def verify_generated_assets(
     with ThreadPoolExecutor(max_workers=8) as executor:
         verified = [
             generated
-            for generated in executor.map(verify_one, snapshot.assets)
+            for generated in executor.map(verify_one, units)
             if generated is not None
         ]
-    if len(verified) != len(snapshot.assets):
+    # 개수만 맞추지 않는다 — 모든 자산이 자기 단위를 갖는지 집합으로 확인한다.
+    missing = {synthesis_unit_id(asset) for asset in snapshot.assets} - {
+        generated.asset_id for generated in verified
+    }
+    if missing:
         raise InvalidMp3Error(
-            f"expected {len(snapshot.assets)} generated assets, "
-            f"verified {len(verified)}"
+            f"expected {len(units)} synthesis units, verified {len(verified)} "
+            f"(missing {sorted(missing)[:3]})"
         )
     return sorted(verified, key=lambda item: item.asset_id)
 
@@ -974,13 +1122,19 @@ def build_manifest(
     snapshot: SourceSnapshot, generated_assets: list[GeneratedAsset]
 ) -> dict:
     validate_source(snapshot)
-    generated_by_id = {asset.asset_id: asset for asset in generated_assets}
-    if set(generated_by_id) != {asset_id(asset) for asset in snapshot.assets}:
-        raise ValueError("manifest requires one generated asset per source asset")
+    # 매니페스트 행은 자산마다 하나다 (BE가 표현·억양·단어순서마다 한 행을 요구한다).
+    # 오디오 데이터는 그 자산이 속한 합성 단위에서 가져온다 — 단어는 여러 자산이 공유한다.
+    generated_by_unit = {asset.asset_id: asset for asset in generated_assets}
+    missing = {synthesis_unit_id(asset) for asset in snapshot.assets} - set(generated_by_unit)
+    if missing:
+        raise ValueError(
+            f"manifest requires a generated asset for every synthesis unit "
+            f"(missing {sorted(missing)[:3]})"
+        )
 
     manifest_assets = []
     for source_asset in sorted(snapshot.assets, key=asset_id):
-        generated = generated_by_id[asset_id(source_asset)]
+        generated = generated_by_unit[synthesis_unit_id(source_asset)]
         expected_fingerprint = generation_fingerprint(source_asset)
         if generated.generation_fingerprint != expected_fingerprint:
             raise ValueError("generated asset fingerprint mismatch")
@@ -1100,7 +1254,7 @@ def verify_manifest(manifest: dict, work_dir: Path) -> None:
 
 def _upload_objects(manifest: dict, work_dir: Path) -> tuple[UploadObject, ...]:
     source_sha = manifest["source"]["snapshotSha256"]
-    objects = [
+    candidates = [
         UploadObject(
             key=asset["s3Key"],
             body_path=audio_path_for(
@@ -1129,6 +1283,27 @@ def _upload_objects(manifest: dict, work_dir: Path) -> tuple[UploadObject, ...]:
         )
         for asset in manifest["assets"]
     ]
+    # 매니페스트 행은 자산마다 하나지만 공유 단어는 여러 행이 같은 키를 가리킨다. 키를
+    # 그대로 두면 같은 객체를 N번 올리려다 --if-none-match가 412로 막는다. 합치되,
+    # 합쳐지는 행들이 정말 같은 소리인지 확인하고 다르면 멈춘다 — 조용히 덮으면 어느
+    # 표현의 소리가 올라갔는지 알 수 없게 된다.
+    objects: list[UploadObject] = []
+    by_key: dict[str, UploadObject] = {}
+    for candidate in candidates:
+        seen = by_key.get(candidate.key)
+        if seen is None:
+            by_key[candidate.key] = candidate
+            objects.append(candidate)
+            continue
+        if (
+            seen.content_length != candidate.content_length
+            or seen.metadata.get("audio-sha256") != candidate.metadata.get("audio-sha256")
+        ):
+            raise ValueError(
+                f"manifest rows disagree on the audio behind {candidate.key}: "
+                f"{seen.metadata.get('audio-sha256')} vs "
+                f"{candidate.metadata.get('audio-sha256')}"
+            )
     manifest_body = canonical_manifest_bytes(manifest)
     digest = manifest_sha256(manifest)
     objects.append(
@@ -1769,36 +1944,6 @@ def publish_be_manifest(
 
 # 2: entry에 published(공용 자리 실물 확인 결과)가 생겼다. V126 허용 목록이 이 값을
 # 믿고 만들어지므로, 그 필드가 없는 옛 색인은 받지 않는다.
-WORD_POOL_SCHEMA_VERSION = 2
-WORD_POOL_ISSUE = "LAN-475"
-WORD_POOL_SEGMENT = "word"
-# 풀 QA가 재합성으로 교체한 객체에 남기는 표시. 교체본은 원본 옛 키와 내용이 달라지는 것이
-# 정상이므로, 백필의 원본 대조가 이걸 보고 불일치를 오탐으로 올리지 않는다.
-WORD_POOL_REPLACED_MARKER = "replaced-by"
-WORD_POOL_REPLACED_VALUE = "lan-475-pool-qa"
-
-LEGACY_WORD_KEY_PATTERN = re.compile(
-    rf"^{re.escape(KEY_PREFIX)}/(?P<expression_id>\d+)/(?P<accent_locale>[A-Z]{{2}}_[A-Z]{{2}})"
-    r"/word/(?P<word_order>\d+)/(?P<fingerprint>[0-9a-f]{64})\.mp3$"
-)
-SHARED_WORD_KEY_PATTERN = re.compile(
-    rf"^{re.escape(KEY_PREFIX)}/{WORD_POOL_SEGMENT}"
-    r"/(?P<accent_locale>[A-Z]{2}_[A-Z]{2})/(?P<fingerprint>[0-9a-f]{64})\.mp3$"
-)
-
-
-def shared_word_key(accent_locale: str, fingerprint: str) -> str:
-    """(억양, 해시) 하나가 차지하는 공용 단어 키를 돌려준다.
-
-    표현 id 자리에 숫자가 아닌 `word`가 들어가므로 옛 키와 섞이지 않는다.
-
-    :param accent_locale: 억양 로케일 (EN_US·EN_GB·EN_AU)
-    :param fingerprint: 생성 계약 sha256
-    :return: `content/expression-pronunciation-audio/word/{억양}/{해시}.mp3`
-    """
-    return f"{KEY_PREFIX}/{WORD_POOL_SEGMENT}/{accent_locale}/{fingerprint}.mp3"
-
-
 def word_fingerprint(accent_locale: str, text: str) -> str:
     """단어 텍스트로부터 해시를 계산한다 (표현 id·순서와 무관함을 드러낸다)."""
     return generation_fingerprint(
@@ -2448,9 +2593,10 @@ def fetch_word_pool_audio(
     | 3. sha 일치 | 같다 | 물을 필요 없음 | 그대로 쓴다 |
     | 4. sha 불일치 | 다르다 | prior_state로 확인 | 앞선 실행의 미게시 수정본이면 쓰고(`local_fix`), 아니면 원인별로 거부 |
 
-    출처 확인은 `prior_state`의 기록이 **같은 fingerprint·같은 sha**를 들고 있고
-    `generationId`가 `s3-recovered`가 아닌 것으로 한다(4번). 2번은 내용 대조가 불가능하므로
-    fingerprint·sha 일치만 본다.
+    출처 확인은 `prior_state`의 기록이 **같은 sha**를 들고 있고 `generationId`가
+    `s3-recovered`가 아닌 것으로 한다(4번). 2번은 내용 대조가 불가능하므로 sha 일치만 본다.
+    fingerprint는 따로 보지 않는다 — 기록을 찾는 키(합성 단위 id)에 이미 들어 있어서
+    다른 색인의 기록이 여기로 딸려올 수 없다.
 
     :param entries: 단어 텍스트가 채워진 풀 항목
     :param work_dir: mp3를 둘 작업 폴더
@@ -2466,7 +2612,7 @@ def fetch_word_pool_audio(
 
     def fetch_one(entry: WordPoolEntry) -> FetchedPoolObject:
         asset = word_pool_asset(entry)
-        key_id = asset_id(asset)
+        key_id = synthesis_unit_id(asset)
         path = audio_path_for(work_dir, asset)
         head = _head_key(bucket, entry.target_key, aws_runner)
         key = entry.target_key
@@ -2518,13 +2664,6 @@ def fetch_word_pool_audio(
                     f"local clip differs from S3 and this tool has no record of it: "
                     f"{path} — 다른 배치의 작업 폴더를 재사용했을 수 있다. "
                     f"새 --work-dir을 쓰거나 이 파일을 지울 것"
-                )
-            if previous.generation_fingerprint != entry.fingerprint:
-                raise ValueError(
-                    f"local clip belongs to a different pool entry: {path} "
-                    f"(기록 {previous.generation_fingerprint} != 색인 {entry.fingerprint}) "
-                    f"— 한 작업 폴더에서 서로 다른 색인을 번갈아 돌렸을 수 있다. "
-                    f"색인마다 --work-dir을 나눌 것"
                 )
             if previous.audio_sha256 != local_sha:
                 raise ValueError(
@@ -2650,7 +2789,10 @@ def main(argv: list[str] | None = None) -> int:
     generate_parser.add_argument("--work-dir", required=True, type=Path)
     generate_parser.add_argument(
         "--reuse-s3-bucket",
-        help="이미 이 버킷에 게시된 키는 합성하지 않고 내려받아 재사용한다",
+        help=(
+            "이미 이 버킷에 게시된 키는 합성하지 않고 내려받아 재사용한다. "
+            "단어는 (억양, 단어) 공용 자리를 보므로 새 배치에서도 대부분 적중한다 — 권장"
+        ),
     )
     generate_parser.add_argument(
         "--workers",
@@ -2730,7 +2872,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="내용이 바뀐 기존 키를 충돌 대신 덮어쓴다 (QA 교체용, 게시 후 CloudFront 무효화 필요)",
     )
-    for s3_parser in (upload_parser, be_parser, reference_parser, pool_parser):
+    for s3_parser in (upload_parser, be_parser, reference_parser, pool_parser, generate_parser):
         s3_parser.add_argument(
             "--boto3",
             action="store_true",
@@ -2756,8 +2898,15 @@ def main(argv: list[str] | None = None) -> int:
             args.work_dir,
             reuse_bucket=args.reuse_s3_bucket,
             max_workers=args.workers,
+            aws_runner=Boto3AwsRunner() if args.boto3 else subprocess.run,
+            progress=print,
         )
         print(f"completed={len(generated)}, failed=0")
+        if args.reuse_s3_bucket is None:
+            print(
+                "NOTE: --reuse-s3-bucket을 주면 공용 자리에 이미 있는 단어는 합성하지 "
+                "않는다. LAN-471 배치 기준 단어 16,167개 중 새로 필요한 것은 984개였다"
+            )
     elif args.command == "verify":
         if not args.source and not args.manifest:
             parser.error("verify requires --source, --manifest, or both")

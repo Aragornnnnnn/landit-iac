@@ -31,6 +31,7 @@ from scripts.expression_pronunciation_audio import (
     canonical_manifest_bytes,
     check_accent_pronunciation,
     generate_assets,
+    generation_contract,
     generation_fingerprint,
     load_source,
     manifest_sha256,
@@ -49,6 +50,7 @@ from scripts.expression_pronunciation_audio import (
     publish_word_pool_index,
     s3_key,
     shared_word_key,
+    speech_text,
     validate_source,
     WORD_POOL_REPLACED_MARKER,
     WORD_POOL_REPLACED_VALUE,
@@ -1874,6 +1876,77 @@ class Boto3CopyObjectTests(unittest.TestCase):
         client.copy_object.assert_called_once_with(
             Bucket="b", Key="target", CopySource="b/source", MetadataDirective="COPY"
         )
+
+
+class SpeechTextTests(unittest.TestCase):
+    def asset(self, kind, text, word_order=None):
+        return SourceAsset(
+            expression_id=7, accent_locale="EN_US", kind=kind,
+            word_order=word_order, text=text,
+        )
+
+    def test_expression_without_terminal_punctuation_gets_a_period(self):
+        # 조각형 표현은 TTS가 문장을 이어가려다 다음 단어의 첫 소리를 흘린다.
+        self.assertEqual(speech_text(self.asset("expression", "hang out with")),
+                         "hang out with.")
+        self.assertEqual(speech_text(self.asset("expression", "turn left")), "turn left.")
+
+    def test_question_intonation_is_preserved(self):
+        # 물음표로 끝나는 표현이 103개 있다. 마침표로 바꾸면 평서문이 된다.
+        for text in ("Have you got a minute?", "Do you mind ~ing?", "No way!", "Here it is."):
+            self.assertEqual(speech_text(self.asset("expression", text)), text)
+
+    def test_words_and_sentences_are_untouched(self):
+        self.assertEqual(speech_text(self.asset("word", "the", word_order=1)), "the")
+        self.assertEqual(speech_text(self.asset("word", "a,", word_order=1)), "a,")
+        self.assertEqual(
+            speech_text(self.asset("sentence", "There's nothing like it.")),
+            "There's nothing like it.",
+        )
+
+    def test_resynthesis_variants_survive(self):
+        # 재합성은 쉼표 변형을 만든다. 그걸 마침표로 덮어쓰면 그 실험이 무의미해진다.
+        self.assertEqual(speech_text(self.asset("expression", "hang out with,")),
+                         "hang out with,")
+
+    def test_applying_twice_changes_nothing(self):
+        once = speech_text(self.asset("expression", "hang out with"))
+        self.assertEqual(speech_text(self.asset("expression", once)), once)
+
+    def test_the_s3_key_still_comes_from_the_raw_text(self):
+        # 키가 말하는 입력을 따라가면 기존 객체 전부를 못 알아본다.
+        asset = self.asset("expression", "hang out with")
+        spoken = self.asset("expression", "hang out with.")
+        self.assertNotEqual(speech_text(asset), asset.text)
+        self.assertNotEqual(generation_fingerprint(asset), generation_fingerprint(spoken))
+        self.assertEqual(generation_contract(asset)["text"], "hang out with")
+
+    def test_published_expression_fingerprints_do_not_move(self):
+        # 표현 10번 "can't wait to"의 실제 S3 키. 이 값이 바뀌면 기존 자산이 전부 고아가 된다.
+        asset = SourceAsset(expression_id=10, accent_locale="EN_US", kind="expression",
+                            word_order=None, text="can't wait to")
+        self.assertEqual(
+            generation_fingerprint(asset),
+            "9ec8aa58bcd055d670747f4341a0dda23175ab03d8fe67e536a09e5f5a970fe1",
+        )
+
+    def test_synthesize_sends_the_speech_text(self):
+        seen = {}
+
+        requester = Mock(
+            return_value=SpeechHttpResult(
+                status=200,
+                headers={"Content-Type": "audio/mpeg", "x-generation-id": "gen-1"},
+                body=b"mp3-bytes",
+            )
+        )
+        client = OpenRouterSpeechClient("key", requester=requester, sleep=Mock())
+
+        client.synthesize(self.asset("expression", "hang out with"))
+
+        payload = requester.call_args.args[0]
+        self.assertEqual(payload["input"], "hang out with.")
+        seen.update(payload)
 
 
 if __name__ == "__main__":

@@ -193,6 +193,39 @@ def asset_id(asset: SourceAsset) -> str:
     return f"{asset.expression_id}/{asset.accent_locale}/{asset.kind}{suffix}"
 
 
+# 표현 음성은 "hang out with"처럼 문법적으로 끝나지 않은 조각인 경우가 많다. 그대로 읽히면
+# TTS가 문장을 이어가려다 다음 단어의 첫 소리를 흘려서 잡음 꼬리가 붙는다 (배치 1·2 실측:
+# 조각형 표현의 19%, 그 밖의 1.3%). 같은 텍스트도 억양에 따라 붙기도 안 붙기도 해 확률적이므로,
+# 어떤 텍스트가 걸릴지 고르는 대신 **끝을 알리는 부호를 항상 붙여 유발 조건을 없앤다.**
+#
+# 이미 문장부호로 끝나면 건드리지 않는다. 물음표로 끝나는 표현이 103개 있는데(`Have you got a
+# minute?`) 마침표로 바꾸면 의문문 억양이 평서문이 된다. 재합성이 붙이는 쉼표 변형도 그대로 둬야
+# 그 실험이 유지된다. 그래서 판단 기준은 "종결부호"가 아니라 "부호로 끝나는가"이고, 이 함수는
+# 몇 번 적용해도 같은 결과를 낸다.
+#
+# 근거: 이미 꼬리가 난 51개에서 마침표 45/51 통과 vs 원문 재생성 29/51. 멀쩡한 표현 60개로는
+# 마침표 46/60 vs 원문 재생성 44/60으로 차이가 없어 해롭지 않음을 확인했다 (2026-09-25).
+# 이 부호로 끝나면 부르는 쪽이 이미 끝맺음을 정한 것으로 보고 손대지 않는다.
+EXPLICIT_ENDINGS = (".", "?", "!", ",", ";", ":")
+
+
+def speech_text(asset: SourceAsset) -> str:
+    """TTS에 실제로 보낼 문자열. 생성 계약(S3 키)은 asset.text 그대로를 쓴다.
+
+    말하는 입력과 내용 식별자를 분리한다. 같은 (억양, 원문)은 항상 같은 입력을 만들므로
+    키와 소리의 대응은 그대로 유지된다.
+
+    :param asset: 합성할 자산
+    :return: 표현 음성이면서 부호로 끝나지 않으면 마침표를 붙인 텍스트, 그 밖에는 원문 그대로
+    """
+    if asset.kind != KIND_EXPRESSION:
+        return asset.text
+    stripped = asset.text.rstrip()
+    if not stripped or stripped.endswith(EXPLICIT_ENDINGS):
+        return asset.text
+    return stripped + "."
+
+
 def generation_contract(asset: SourceAsset) -> dict[str, str]:
     return {
         "model": MODEL,
@@ -325,7 +358,8 @@ class OpenRouterSpeechClient:
     def synthesize(self, asset: SourceAsset) -> SpeechResponse:
         payload = {
             "model": MODEL,
-            "input": asset.text,
+            # 생성 계약(키)은 원문 기준이고, 말하는 입력만 speech_text가 다듬는다.
+            "input": speech_text(asset),
             "voice": VOICE_BY_LOCALE[asset.accent_locale],
             "response_format": RESPONSE_FORMAT,
         }

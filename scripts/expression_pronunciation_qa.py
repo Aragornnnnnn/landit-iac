@@ -765,7 +765,10 @@ def run_adjudication(
     """
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assets = {item["assetId"]: item for item in payload["assets"]}
+    # check는 보고서에 단위 id(단어는 `word/{억양}/{해시}`)를 쓴다. 예전 보고서는 자산 id를
+    # 썼으므로 둘 다 받는다. 같은 단위의 자산은 같은 파일을 쓰므로 대표 하나면 충분하다.
     by_id = {epa.asset_id(a): a for a in snapshot.assets}
+    by_id.update({epa.synthesis_unit_id(a): a for a in epa.dedupe_synthesis_units(snapshot.assets)})
 
     targets = [item for item in payload["assets"] if not item["passed"]]
     passed_pool = [item for item in payload["assets"] if item["passed"]]
@@ -773,15 +776,21 @@ def run_adjudication(
         # 합격 표본도 함께 물어 "Whisper는 통과시켰지만 실제로는 불량"인 비율을 잰다.
         rng = random.Random(seed)
         targets += rng.sample(passed_pool, min(sample_passed, len(passed_pool)))
+    # 소스에서 찾지 못한 id를 "응답 없음"으로 세면 판정을 한 번도 묻지 않은 채 미해결로
+    # 남는다(LAN-568에서 단어 74개가 이렇게 빠졌다). 보고서와 소스가 어긋난 것이므로 멈춘다.
+    unknown = [item["assetId"] for item in targets if item["assetId"] not in by_id]
+    if unknown:
+        raise ValueError(
+            f"report assets not found in --source ({len(unknown)}): {unknown[:5]} — "
+            "같은 소스로 만든 보고서인지 확인할 것"
+        )
 
     lock = threading.Lock()
     done = 0
     errors = 0
 
     def judge(item: dict) -> tuple[dict, Adjudication | None]:
-        asset = by_id.get(item["assetId"])
-        if asset is None:
-            return item, None
+        asset = by_id[item["assetId"]]
         try:
             verdict = adjudicator(
                 api_key,

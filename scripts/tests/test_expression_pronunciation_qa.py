@@ -671,6 +671,61 @@ class AdjudicationTests(unittest.TestCase):
             self.assertEqual(summary["passedSampleJudged"], 2)
             self.assertEqual(summary["passedSampleDefects"], 2)
 
+    def test_unit_id_report_judges_word_clips(self):
+        """check가 쓰는 단위 id(`word/{억양}/{해시}`) 보고서에서도 단어를 판정한다 (LAN-568)."""
+        snapshot = load_snapshot(make_source_payload())
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            report = work_dir / "qa.json"
+            rows = [
+                {
+                    "assetId": qa_epa.synthesis_unit_id(asset),
+                    "text": asset.text,
+                    "kind": asset.kind,
+                    "accentLocale": asset.accent_locale,
+                    "passed": False,
+                    "attempts": 1,
+                    "firstReason": "transcript mismatch",
+                    "lastReason": "transcript mismatch",
+                    "lastTranscript": "x",
+                    "lastRmsDbfs": -20.0,
+                    "audioSha256": "sha",
+                }
+                for asset in qa_epa.dedupe_synthesis_units(snapshot.assets)
+            ]
+            self.assertTrue(any(row["kind"] == qa_epa.KIND_WORD for row in rows))
+            report.write_text(json.dumps({"schemaVersion": 1, "summary": {}, "assets": rows}))
+            judged_paths = []
+
+            def judge(api_key, path, *args, **kwargs):
+                judged_paths.append(path)
+                return Adjudication(True, "ok", "none")
+
+            summary = run_adjudication(
+                report, work_dir, snapshot, "key", workers=2,
+                adjudicator=judge, progress=lambda m: None,
+            )
+            self.assertEqual(summary["unresolved"], 0)
+            self.assertEqual(summary["geminiSaysClean"], len(rows))
+            self.assertEqual(len(judged_paths), len(rows))
+
+    def test_report_asset_missing_from_source_stops(self):
+        """소스에 없는 id를 '응답 없음'으로 조용히 세지 않고 멈춘다."""
+        snapshot = load_snapshot(make_source_payload())
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp)
+            report = self.build_report(work_dir, snapshot)
+            payload = json.loads(report.read_text())
+            payload["assets"][0]["assetId"] = "word/EN_US/" + "0" * 64
+            payload["assets"][0]["passed"] = False
+            report.write_text(json.dumps(payload))
+            with self.assertRaisesRegex(ValueError, "not found in --source"):
+                run_adjudication(
+                    report, work_dir, snapshot, "key", workers=2,
+                    adjudicator=lambda *a, **k: Adjudication(True, "ok", "none"),
+                    progress=lambda m: None,
+                )
+
     def test_request_failure_is_unresolved_not_clean(self):
         snapshot = load_snapshot(make_source_payload())
         with tempfile.TemporaryDirectory() as tmp:

@@ -4,18 +4,24 @@
 # words = 기준 데이터 words에 BE 매니페스트의 단어별 audioUrl을 order로 붙인 배열.
 # 적재 전에 writing_expression의 표현·대표 문장이 음성을 만든 원문과 같은지 대조하고, 다르면
 # 마이그레이션을 멈춘다 (임포트 API의 "문장이 DB와 다릅니다" 검증을 옮긴 것, V95와 같은 방식).
+# 그 기대 원문(--expressions)이 음성의 출처와 같은지도 SQL을 만들기 전에 확인한다: TTS 매니페스트
+# (게시본)의 문장·표현 원문, BE 매니페스트의 URL, 기준 데이터의 문장이 모두 한 소스를 가리켜야 한다.
 #
 # 사용법:
 #   python3 scripts/build_pronunciation_asset_sql.py --issue LAN-601 \
-#       --be-manifest work/be-manifest.json --reference-dir work/reference-uploaded \
+#       --tts-manifest work/manifest.json --be-manifest work/be-manifest.json \
+#       --reference-dir work/reference-uploaded \
 #       --expressions work/expressions.json --header work/header.sql --out V137__....sql
 from __future__ import annotations
 
 import argparse
 import json
 from pathlib import Path
+import re
 
 ACCENT_LOCALES = ("EN_US", "EN_GB", "EN_AU")
+# 표현 텍스트에 이 문자가 있으면 발화 불가능한 패턴형이라 표현 음성이 없다 (landit-ai build_tts_source.py와 같은 규칙).
+TEMPLATED_EXPRESSION = re.compile(r"[~가-힣()+]")
 
 
 def sql_literal(value: str | None) -> str:
@@ -122,10 +128,59 @@ END
 $$;"""
 
 
-def build_sql(issue: str, header: str, be_manifest: dict, references: dict, expressions: list[dict]) -> str:
+def _url_matches_key(url: str | None, s3_key: str | None) -> bool:
+    if url is None or s3_key is None:
+        return url is None and s3_key is None
+    return url.endswith("/" + s3_key)
+
+
+def verify_provenance(
+    expressions: list[dict], tts_manifest: dict, be_manifest: dict, references: dict
+) -> None:
+    """기대 원문·BE URL·기준 데이터가 모두 음성을 만든 TTS 매니페스트와 같은 소스인지 확인한다."""
+    tts = {}
+    for asset in tts_manifest["assets"]:
+        tts[(asset["expressionId"], asset["accentLocale"], asset["kind"], asset.get("wordOrder"))] = asset
+    be = {(a["expressionId"], a["accentLocale"]): a for a in be_manifest["assets"]}
+    ids = {e["expressionId"] for e in expressions}
+    if {key[0] for key in tts} != ids or {key[0] for key in be} != ids:
+        raise ValueError("TTS/BE manifest expressions differ from the expression list")
+    for expression in expressions:
+        expression_id = expression["expressionId"]
+        for locale in ACCENT_LOCALES:
+            sentence = tts.get((expression_id, locale, "sentence", None))
+            spoken = tts.get((expression_id, locale, "expression", None))
+            be_asset = be.get((expression_id, locale))
+            reference = references.get((expression_id, locale))
+            if sentence is None or be_asset is None or reference is None:
+                raise ValueError(f"{expression_id}/{locale}: missing sentence, BE or reference entry")
+            if sentence["text"] != expression["sentenceText"] or reference["sentenceText"] != expression["sentenceText"]:
+                raise ValueError(f"{expression_id}/{locale}: sentence text differs from the audio source")
+            if spoken is None:
+                if not TEMPLATED_EXPRESSION.search(expression["expressionText"]):
+                    raise ValueError(f"{expression_id}/{locale}: expression audio is missing")
+            elif spoken["text"] != expression["expressionText"]:
+                raise ValueError(f"{expression_id}/{locale}: expression text differs from the audio source")
+            if not _url_matches_key(be_asset["sentenceAudioUrl"], sentence["s3Key"]) or not _url_matches_key(
+                be_asset["expressionAudioUrl"], spoken["s3Key"] if spoken else None
+            ):
+                raise ValueError(f"{expression_id}/{locale}: BE URL is not the published audio")
+            for word in be_asset["words"]:
+                tts_word = tts.get((expression_id, locale, "word", word["order"]))
+                if tts_word is None or not _url_matches_key(word["audioUrl"], tts_word["s3Key"]):
+                    raise ValueError(f"{expression_id}/{locale}/word-{word['order']}: BE URL is not the published audio")
+
+
+def build_sql(
+    issue: str,
+    header: str,
+    tts_manifest: dict,
+    be_manifest: dict,
+    references: dict,
+    expressions: list[dict],
+) -> str:
+    verify_provenance(expressions, tts_manifest, be_manifest, references)
     ids = [e["expressionId"] for e in expressions]
-    if {a["expressionId"] for a in be_manifest["assets"]} != set(ids):
-        raise ValueError("BE manifest expressions differ from the expression list")
     templated = sum(1 for a in be_manifest["assets"] if a["expressionAudioUrl"] is None)
     rows = ",\n".join(asset_rows(be_manifest, references))
     return "\n\n".join(
@@ -148,6 +203,7 @@ def build_sql(issue: str, header: str, be_manifest: dict, references: dict, expr
 def main() -> int:
     parser = argparse.ArgumentParser(description="발음 자산 Flyway SQL 생성")
     parser.add_argument("--issue", required=True)
+    parser.add_argument("--tts-manifest", required=True, type=Path, help="음성을 게시한 작업 매니페스트")
     parser.add_argument("--be-manifest", required=True, type=Path)
     parser.add_argument("--reference-dir", required=True, type=Path, help="{EN_US,EN_GB,EN_AU}.json (게시본)")
     parser.add_argument("--expressions", required=True, type=Path, help="[{expressionId, expressionText, sentenceText}]")
@@ -159,6 +215,7 @@ def main() -> int:
     sql = build_sql(
         args.issue,
         args.header.read_text(encoding="utf-8"),
+        json.loads(args.tts_manifest.read_text(encoding="utf-8")),
         json.loads(args.be_manifest.read_text(encoding="utf-8")),
         load_reference(args.reference_dir),
         expressions,

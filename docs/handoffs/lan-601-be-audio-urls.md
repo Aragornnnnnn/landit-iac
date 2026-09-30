@@ -1,6 +1,6 @@
 # LAN-601 시나리오 41~70 질문·표현 음원 인수인계 (LAN-391용)
 
-시나리오 41~70의 질문 음원 270개와 표현 발음 자산(표현 328개 × 3억양)을 S3에 게시했다(2026-09-30). LAN-391은 아래 id와 URL을 V135(질문)와 V136(표현) migration에 반영한다. 발음 자산 행(`expression_pronunciation_asset`)은 LAN-601이 LAN-391 머지 뒤 별도 migration으로 넣는다.
+시나리오 41~70의 질문 음원 270개와 표현 발음 자산(표현 328개 × 3억양)을 S3에 게시했다(2026-09-30). LAN-391은 아래 id와 URL을 V135(질문)와 V136(표현) migration에 반영하고, 발음 자산 migration도 같은 PR에 넣는다.
 
 ## LAN-391이 반영할 것
 
@@ -13,7 +13,11 @@
    | 400 (Day 50 · LEVEL_4_TO_5 · 3번) | Oh man, I need to clear my head. What should we do to cheer me up? | 아 진짜, 기분 전환이 필요해. 우리 뭐 하면서 기분 풀까? |
    | 419 (Day 58 · LEVEL_1 · 1번) | Wait, did I borrow a book from you? | 잠깐, 내가 너한테 책을 빌렸었나? |
 
-4. **행 순서 고정**: 두 파일의 INSERT 행 순서를 바꾸지 않는다. id는 행 순서로 채번했으며, 아래 해시 시점에서 행 순서와 원문을 다시 대조했다.
+4. **발음 자산 migration 포함**: [V137__insert_scenario_41_70_expression_pronunciation_assets.sql](lan-601/V137__insert_scenario_41_70_expression_pronunciation_assets.sql)을 V136 바로 다음 번호로 PR에 넣는다.
+   - `expression_pronunciation_asset` 984행(328표현 × 3억양)을 넣는다.
+   - 적재 전에 id 4001~4328의 표현과 대표 문장을 음성 원문과 대조하고, 다르면 멈춘다.
+   - 로컬 PostgreSQL 14(V60·V62·V63 스키마)에서 검증했다: 984행 적재, 표현 음성 NULL 186행(패턴 표현 62×3), 단어 audioUrl 누락 0, 억양 대조 102개, 재적용 가능(ON CONFLICT), 원문이 다르면 중단.
+5. **행 순서 고정**: 두 파일의 INSERT 행 순서를 바꾸지 않는다. id는 행 순서로 채번했으며, 아래 해시 시점에서 행 순서와 원문을 다시 대조했다.
 
 ## id 채번 근거
 

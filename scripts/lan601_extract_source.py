@@ -165,12 +165,19 @@ def scenario_ids_and_days(sql: str) -> tuple[dict[int, int], dict[int, str], dic
 def extract_questions(sql: str, start_id: int) -> list[QuestionRow]:
     scenario_id_by_day, character_by_day, day_by_scenario_id = scenario_ids_and_days(sql)
 
-    # scenario_question 컬럼: scenario_id, display_order, question_level_group, ...
+    columns = insert_columns(sql, "scenario_question")
+    question_rows = insert_values(sql, "scenario_question")
     question_keys = [
-        (scenario_day(row[0], day_by_scenario_id), sql_string(row[2]), int(row[1]))
-        for row in insert_values(sql, "scenario_question")
+        (
+            scenario_day(row[columns.index("scenario_id")], day_by_scenario_id),
+            sql_string(row[columns.index("question_level_group")]),
+            int(row[columns.index("display_order")]),
+        )
+        for row in question_rows
     ]
-    # scenario_question_language_variant 컬럼: scenario_question_id, target, base, question_text, ...
+    ensure_explicit_ids_follow_row_order(columns, question_rows, start_id, "scenario_question")
+    variant_columns = insert_columns(sql, "scenario_question_language_variant")
+    text_index = variant_columns.index("question_text")
     text_by_key: dict[tuple[int, str, int], str] = {}
     for row in insert_values(sql, "scenario_question_language_variant"):
         match = VARIANT_KEY.search(row[0])
@@ -181,7 +188,7 @@ def extract_questions(sql: str, start_id: int) -> list[QuestionRow]:
         key = (day, match.group(3), int(match.group(4)))
         if key in text_by_key:
             raise ValueError(f"duplicate question variant: {key}")
-        text_by_key[key] = sql_string(row[3])
+        text_by_key[key] = sql_string(row[text_index])
 
     if len(set(question_keys)) != len(question_keys):
         raise ValueError("scenario_question contains a duplicate (day, level, order)")
@@ -202,20 +209,36 @@ def extract_questions(sql: str, start_id: int) -> list[QuestionRow]:
     ]
 
 
+def ensure_explicit_ids_follow_row_order(
+    columns: list[str], rows: list[list[str]], start_id: int, table: str
+) -> None:
+    """id를 명시한 SQL이면 그 값이 채번 규칙(시작 번호 + 행 순서)과 같아야 한다."""
+    if "id" not in columns:
+        return
+    explicit_ids = [int(row[columns.index("id")]) for row in rows]
+    if explicit_ids != list(range(start_id, start_id + len(rows))):
+        raise ValueError(f"{table} explicit ids do not follow row order from {start_id}")
+
+
 def extract_expressions(
     sql: str, start_id: int, day_by_scenario_id: dict[int, int] | None = None
 ) -> list[ExpressionRow]:
-    # writing_expression 컬럼: scenario_id(0), ..., display_order(5), target_expression_text(6),
-    # ..., representative_sentence_text(12)
+    columns = insert_columns(sql, "writing_expression")
+    rows = insert_values(sql, "writing_expression")
+    ensure_explicit_ids_follow_row_order(columns, rows, start_id, "writing_expression")
+
+    def field(row: list[str], name: str) -> str:
+        return row[columns.index(name)]
+
     return [
         ExpressionRow(
             expression_id=start_id + index,
-            day=scenario_day(row[0], day_by_scenario_id),
-            display_order=int(row[5]),
-            expression_text=sql_string(row[6]),
-            sentence_text=sql_string(row[12]),
+            day=scenario_day(field(row, "scenario_id"), day_by_scenario_id),
+            display_order=int(field(row, "display_order")),
+            expression_text=sql_string(field(row, "target_expression_text")),
+            sentence_text=sql_string(field(row, "representative_sentence_text")),
         )
-        for index, row in enumerate(insert_values(sql, "writing_expression"))
+        for index, row in enumerate(rows)
     ]
 
 

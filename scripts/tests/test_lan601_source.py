@@ -233,5 +233,17 @@ class Lan601FixedIdFormatTests(unittest.TestCase):
         self.assertEqual([44, 41], [e.day for e in expressions])
 
 
+    def test_explicit_ids_must_follow_row_order(self) -> None:
+        # LAN-391 최종본은 id를 명시한다. 채번 규칙과 다르면 음원 키가 어긋나므로 멈춘다.
+        sql = FIXED_ID_SQL.replace(
+            "(scenario_id, display_order", "(id, scenario_id, display_order"
+        ).replace("  (44, 1, 'LEVEL_1'", "  (365, 44, 1, 'LEVEL_1'").replace(
+            "  (41, 1, 'LEVEL_4_TO_5'", "  (367, 41, 1, 'LEVEL_4_TO_5'"
+        )
+
+        with self.assertRaisesRegex(ValueError, "explicit ids do not follow row order"):
+            extract_questions(sql, start_id=365)
+
+
 if __name__ == "__main__":
     unittest.main()

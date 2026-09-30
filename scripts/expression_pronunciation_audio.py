@@ -209,6 +209,28 @@ def asset_id(asset: SourceAsset) -> str:
 EXPLICIT_ENDINGS = (".", "?", "!", ",", ";", ":")
 
 
+# TTS가 화면 표기대로는 제대로 못 읽는 단어. 읽기 입력만 바꾸고 화면 표기와 생성 계약(S3 키)은
+# 원문 그대로 둔다. LAN-601 실측 (사람 청취 확인, 2026-09-30):
+# - "JIYU KIM"은 J-I-Y-U로 한 글자씩 읽혔고, "Jiyu Kim"은 3억양 모두 "지유 킴"으로 읽혔다.
+# - "sikhye"는 "sake"·"CK"처럼 읽혔고, "shik-hyeh"는 "식혜"에 가깝게 읽혔다.
+# - "bulgogi"는 "불고지"로 읽혔다. 문장 속과 호주 단어는 "bul go ki", 미국·영국 단어는
+#   "bulgokee"가 "불고기"에 가장 가까웠다.
+SPOKEN_SPELLING_OVERRIDES = {
+    "JIYU": "Jiyu",
+    "KIM": "Kim",
+    "sikhye": "shik-hyeh",
+    "bulgogi": "bul go ki",
+}
+# (원문, 종류, 억양)별로 위 기본 치환과 다르게 읽혀야 하는 경우.
+SPOKEN_SPELLING_BY_KIND_AND_ACCENT = {
+    ("bulgogi", "word", "EN_US"): "bulgokee",
+    ("bulgogi", "word", "EN_GB"): "bulgokee",
+}
+_SPOKEN_SPELLING_PATTERN = re.compile(
+    r"\b(" + "|".join(map(re.escape, SPOKEN_SPELLING_OVERRIDES)) + r")\b"
+)
+
+
 def speech_text(asset: SourceAsset) -> str:
     """TTS에 실제로 보낼 문자열. 생성 계약(S3 키)은 asset.text 그대로를 쓴다.
 
@@ -216,13 +238,20 @@ def speech_text(asset: SourceAsset) -> str:
     키와 소리의 대응은 그대로 유지된다.
 
     :param asset: 합성할 자산
-    :return: 표현 음성이면서 부호로 끝나지 않으면 마침표를 붙인 텍스트, 그 밖에는 원문 그대로
+    :return: 철자 읽기 치환을 적용하고, 표현 음성이면서 부호로 끝나지 않으면 마침표를 붙인 텍스트
     """
+    text = _SPOKEN_SPELLING_PATTERN.sub(
+        lambda match: SPOKEN_SPELLING_BY_KIND_AND_ACCENT.get(
+            (match.group(1), asset.kind, asset.accent_locale),
+            SPOKEN_SPELLING_OVERRIDES[match.group(1)],
+        ),
+        asset.text,
+    )
     if asset.kind != KIND_EXPRESSION:
-        return asset.text
-    stripped = asset.text.rstrip()
+        return text
+    stripped = text.rstrip()
     if not stripped or stripped.endswith(EXPLICIT_ENDINGS):
-        return asset.text
+        return text
     return stripped + "."
 
 

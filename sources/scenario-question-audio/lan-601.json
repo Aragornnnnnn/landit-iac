@@ -1,0 +1,2169 @@
+{
+  "schemaVersion": 1,
+  "environment": "production",
+  "issue": "LAN-601",
+  "targetLocale": "EN",
+  "baseLocale": "KR",
+  "assets": [
+    {
+      "scenarioId": 41,
+      "scenarioQuestionId": 365,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "Hi! What sport do you like?"
+    },
+    {
+      "scenarioId": 41,
+      "scenarioQuestionId": 366,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "We are the tennis club. Do you have a question?"
+    },
+    {
+      "scenarioId": 41,
+      "scenarioQuestionId": 367,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "We have a party this Friday. Do you want to come?"
+    },
+    {
+      "scenarioId": 41,
+      "scenarioQuestionId": 368,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "Hey! Are you planning to join a club this semester? What kind of clubs do you enjoy?"
+    },
+    {
+      "scenarioId": 41,
+      "scenarioQuestionId": 369,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "We're the tennis club. We play every Friday afternoon, and it costs five dollars a month. Is there anything you want to ask?"
+    },
+    {
+      "scenarioId": 41,
+      "scenarioQuestionId": 370,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "We're having a welcome party for new members this Friday. Would you like to join us?"
+    },
+    {
+      "scenarioId": 41,
+      "scenarioQuestionId": 371,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "Hey! Are you looking to join a club this semester? What kind of clubs are you into?"
+    },
+    {
+      "scenarioId": 41,
+      "scenarioQuestionId": 372,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "We're the tennis club! We play every Friday afternoon, and the dues are five dollars a month — total beginners are welcome too. Anything you want to ask?"
+    },
+    {
+      "scenarioId": 41,
+      "scenarioQuestionId": 373,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "We're having a welcome party for new members this Friday — what do you say, wanna come?"
+    },
+    {
+      "scenarioId": 42,
+      "scenarioQuestionId": 374,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "There are so many foods! Which one is good?"
+    },
+    {
+      "scenarioId": 42,
+      "scenarioQuestionId": 375,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "I can't eat spicy food. Is this one spicy?"
+    },
+    {
+      "scenarioId": 42,
+      "scenarioQuestionId": 376,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "How do I eat this? Show me!"
+    },
+    {
+      "scenarioId": 42,
+      "scenarioQuestionId": 377,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "There are so many dishes here. Which one would you pick for me, and why?"
+    },
+    {
+      "scenarioId": 42,
+      "scenarioQuestionId": 378,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "I'm not good with spicy food. Is this dish hot?"
+    },
+    {
+      "scenarioId": 42,
+      "scenarioQuestionId": 379,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "How am I supposed to eat this? Do I mix everything, or eat each thing on its own?"
+    },
+    {
+      "scenarioId": 42,
+      "scenarioQuestionId": 380,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "There are so many options! What's the best thing here? You pick for me."
+    },
+    {
+      "scenarioId": 42,
+      "scenarioQuestionId": 381,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "I'm not great with spicy food… is this one really hot? Recommend me something mild."
+    },
+    {
+      "scenarioId": 42,
+      "scenarioQuestionId": 382,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "Wait, how do I eat this? Am I supposed to mix everything together?"
+    },
+    {
+      "scenarioId": 43,
+      "scenarioQuestionId": 383,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "Next week is Marco's birthday. Do you want a party?"
+    },
+    {
+      "scenarioId": 43,
+      "scenarioQuestionId": 384,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "We need a cake and balloons. Which one do you want?"
+    },
+    {
+      "scenarioId": 43,
+      "scenarioQuestionId": 385,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "Marco can't know! How do we bring him to the room?"
+    },
+    {
+      "scenarioId": 43,
+      "scenarioQuestionId": 386,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "Marco's birthday is next week. I want to plan a surprise party for him. What do you think?"
+    },
+    {
+      "scenarioId": 43,
+      "scenarioQuestionId": 387,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "We need a cake, some decorations, and someone to invite his friends. Which part can you take?"
+    },
+    {
+      "scenarioId": 43,
+      "scenarioQuestionId": 388,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "How can we get Marco to the room without making him suspicious? Do you have any ideas?"
+    },
+    {
+      "scenarioId": 43,
+      "scenarioQuestionId": 389,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "It's Marco's birthday next week — let's throw him a surprise party! What do you think?"
+    },
+    {
+      "scenarioId": 43,
+      "scenarioQuestionId": 390,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "So we need a cake, decorations, and someone to invite his friends. Which one do you want to take?"
+    },
+    {
+      "scenarioId": 43,
+      "scenarioQuestionId": 391,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "Okay, last thing — how do we get Marco to the room without him noticing anything?"
+    },
+    {
+      "scenarioId": 44,
+      "scenarioQuestionId": 392,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "I did very badly on my test. I feel so sad."
+    },
+    {
+      "scenarioId": 44,
+      "scenarioQuestionId": 393,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "Did you ever do badly, too? Tell me more."
+    },
+    {
+      "scenarioId": 44,
+      "scenarioQuestionId": 394,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "I want to feel happy again. What can we do today?"
+    },
+    {
+      "scenarioId": 44,
+      "scenarioQuestionId": 395,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "I did terribly on my midterm. Almost nothing I studied was on the test."
+    },
+    {
+      "scenarioId": 44,
+      "scenarioQuestionId": 396,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "Have you ever done badly on an important test? How did you deal with it?"
+    },
+    {
+      "scenarioId": 44,
+      "scenarioQuestionId": 397,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "I want to forget about it for a while. What should we do together this afternoon?"
+    },
+    {
+      "scenarioId": 44,
+      "scenarioQuestionId": 398,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "I totally bombed my midterm… none of the stuff I studied was on it."
+    },
+    {
+      "scenarioId": 44,
+      "scenarioQuestionId": 399,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "Have you ever bombed a test? What did you do to get over it?"
+    },
+    {
+      "scenarioId": 44,
+      "scenarioQuestionId": 400,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "Oh man, I need to clear my head. What should we do to cheer me up?"
+    },
+    {
+      "scenarioId": 45,
+      "scenarioQuestionId": 401,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "Let's travel this vacation! Where do you want to go?"
+    },
+    {
+      "scenarioId": 45,
+      "scenarioQuestionId": 402,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "I want to save money. How much can we use?"
+    },
+    {
+      "scenarioId": 45,
+      "scenarioQuestionId": 403,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "We need a room too. How many days should we go?"
+    },
+    {
+      "scenarioId": 45,
+      "scenarioQuestionId": 404,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "Let's travel together this vacation! Where would you like to go, and why there?"
+    },
+    {
+      "scenarioId": 45,
+      "scenarioQuestionId": 405,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "How much money should we plan for? I'm trying not to use too much this time."
+    },
+    {
+      "scenarioId": 45,
+      "scenarioQuestionId": 406,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "How many days should we stay? And would a hostel be okay for you?"
+    },
+    {
+      "scenarioId": 45,
+      "scenarioQuestionId": 407,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "Let's go on a trip together this break! Where do you wanna go?"
+    },
+    {
+      "scenarioId": 45,
+      "scenarioQuestionId": 408,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "How much are you thinking for the budget? I kind of need to save this time."
+    },
+    {
+      "scenarioId": 45,
+      "scenarioQuestionId": 409,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "How many days should we go for? And is a hostel okay with you?"
+    },
+    {
+      "scenarioId": 46,
+      "scenarioQuestionId": 410,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "Coachella tickets are on sale! Do you want to go with me?"
+    },
+    {
+      "scenarioId": 46,
+      "scenarioQuestionId": 411,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "Tickets are 400 dollars. Is the weekend in two weeks okay?"
+    },
+    {
+      "scenarioId": 46,
+      "scenarioQuestionId": 412,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "Do you want to camp or stay in a hotel?"
+    },
+    {
+      "scenarioId": 46,
+      "scenarioQuestionId": 413,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "Coachella tickets just went on sale! Do you want to go together?"
+    },
+    {
+      "scenarioId": 46,
+      "scenarioQuestionId": 414,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "Which weekend works better for you, One or Two? And how should we pay for them?"
+    },
+    {
+      "scenarioId": 46,
+      "scenarioQuestionId": 415,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "For a place to stay, would you rather camp or find a hotel nearby?"
+    },
+    {
+      "scenarioId": 46,
+      "scenarioQuestionId": 416,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "Coachella tickets just went on sale!! We have to go together!"
+    },
+    {
+      "scenarioId": 46,
+      "scenarioQuestionId": 417,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "Which weekend works for you, One or Two? Let's split the tickets when we book."
+    },
+    {
+      "scenarioId": 46,
+      "scenarioQuestionId": 418,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "For the stay — camping or a hotel nearby? Oh, or we could just take the early morning bus."
+    },
+    {
+      "scenarioId": 47,
+      "scenarioQuestionId": 419,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "Wait, did I borrow a book from you?"
+    },
+    {
+      "scenarioId": 47,
+      "scenarioQuestionId": 420,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "Oh no, I forgot! Can you wait a few days?"
+    },
+    {
+      "scenarioId": 47,
+      "scenarioQuestionId": 421,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "chloe",
+      "questionText": "I can bring it tomorrow. When do you need it?"
+    },
+    {
+      "scenarioId": 47,
+      "scenarioQuestionId": 422,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "Wait, did I borrow something from you? Which book was it?"
+    },
+    {
+      "scenarioId": 47,
+      "scenarioQuestionId": 423,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "I'm really sorry, I completely forgot! But it's not in my room right now. Can it wait a few days?"
+    },
+    {
+      "scenarioId": 47,
+      "scenarioQuestionId": 424,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "chloe",
+      "questionText": "When do you need it by? I'll buy you a coffee and bring the book after class tomorrow. Is that okay?"
+    },
+    {
+      "scenarioId": 47,
+      "scenarioQuestionId": 425,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "Wait, did I borrow something from you? Which book was it?"
+    },
+    {
+      "scenarioId": 47,
+      "scenarioQuestionId": 426,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "Oh no, I'm so sorry — I completely forgot! But I don't think it's in my room right now…"
+    },
+    {
+      "scenarioId": 47,
+      "scenarioQuestionId": 427,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "chloe",
+      "questionText": "When do you need it by? Tell you what — I'll buy you a coffee, and I'll bring the book after class tomorrow. Would that work?"
+    },
+    {
+      "scenarioId": 48,
+      "scenarioQuestionId": 428,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Hi, can you tell me about yourself?"
+    },
+    {
+      "scenarioId": 48,
+      "scenarioQuestionId": 429,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Did you work at a cafe before?"
+    },
+    {
+      "scenarioId": 48,
+      "scenarioQuestionId": 430,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "How many days can you work? Tell me your start day."
+    },
+    {
+      "scenarioId": 48,
+      "scenarioQuestionId": 431,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Hi, you must be here for the interview. Could you tell me a little about yourself?"
+    },
+    {
+      "scenarioId": 48,
+      "scenarioQuestionId": 432,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Have you worked in a cafe or in customer service? What would you do when the shop gets really busy?"
+    },
+    {
+      "scenarioId": 48,
+      "scenarioQuestionId": 433,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "How many hours a week can you work? The pay starts at twelve dollars an hour, and when could you start?"
+    },
+    {
+      "scenarioId": 48,
+      "scenarioQuestionId": 434,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Hi, you must be here for the interview. Could you introduce yourself briefly?"
+    },
+    {
+      "scenarioId": 48,
+      "scenarioQuestionId": 435,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Have you worked in a cafe or in customer service before? And when it gets really busy during rush hour, how would you deal with it?"
+    },
+    {
+      "scenarioId": 48,
+      "scenarioQuestionId": 436,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "How many hours a week can you do? The pay starts at twelve dollars an hour — when could you start?"
+    },
+    {
+      "scenarioId": 49,
+      "scenarioQuestionId": 437,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Hello, this is the clinic. What is the problem?"
+    },
+    {
+      "scenarioId": 49,
+      "scenarioQuestionId": 438,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "How many days, and do you have a fever?"
+    },
+    {
+      "scenarioId": 49,
+      "scenarioQuestionId": 439,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "We have today or tomorrow. What time is good?"
+    },
+    {
+      "scenarioId": 49,
+      "scenarioQuestionId": 440,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Thank you for calling the clinic. What kind of symptoms are you having?"
+    },
+    {
+      "scenarioId": 49,
+      "scenarioQuestionId": 441,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "When did it start, and has it changed at all since then?"
+    },
+    {
+      "scenarioId": 49,
+      "scenarioQuestionId": 442,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "I have an opening today at four or tomorrow at ten — which one works better for you? And do you have insurance?"
+    },
+    {
+      "scenarioId": 49,
+      "scenarioQuestionId": 443,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Thanks for calling the clinic. What symptoms are you having?"
+    },
+    {
+      "scenarioId": 49,
+      "scenarioQuestionId": 444,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "When did it start? Any fever along with the cough?"
+    },
+    {
+      "scenarioId": 49,
+      "scenarioQuestionId": 445,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "We have an opening today at four or tomorrow at ten — which works for you? And do you have insurance? Without it, the visit is sixty dollars."
+    },
+    {
+      "scenarioId": 50,
+      "scenarioQuestionId": 446,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Welcome! Do you study or work here?"
+    },
+    {
+      "scenarioId": 50,
+      "scenarioQuestionId": 447,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "What is this account for?"
+    },
+    {
+      "scenarioId": 50,
+      "scenarioQuestionId": 448,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "I need your passport. When do you need your card?"
+    },
+    {
+      "scenarioId": 50,
+      "scenarioQuestionId": 449,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Welcome! Are you here for work or for study, and how long are you planning to stay?"
+    },
+    {
+      "scenarioId": 50,
+      "scenarioQuestionId": 450,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "What will you mainly use the account for? I'll recommend the one that fits you best."
+    },
+    {
+      "scenarioId": 50,
+      "scenarioQuestionId": 451,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "I'll need your passport and proof of address — do you have those with you? And when do you need your card by?"
+    },
+    {
+      "scenarioId": 50,
+      "scenarioQuestionId": 452,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Welcome! Opening an account, I see. May I ask what brings you here — the purpose and length of your stay?"
+    },
+    {
+      "scenarioId": 50,
+      "scenarioQuestionId": 453,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "What will you mainly be using the account for? I'll recommend the one that fits you best."
+    },
+    {
+      "scenarioId": 50,
+      "scenarioQuestionId": 454,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "I'll need your passport, student ID, and proof of address — do you have them with you? Also, when do you need your debit card by? I'll find the best way to get it to you."
+    },
+    {
+      "scenarioId": 51,
+      "scenarioQuestionId": 455,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "Okay, I can carry it. What time will it come?"
+    },
+    {
+      "scenarioId": 51,
+      "scenarioQuestionId": 456,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "Can I take it and sign your name?"
+    },
+    {
+      "scenarioId": 51,
+      "scenarioQuestionId": 457,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "I go out at six. It may come after that. Should I ask our neighbor?"
+    },
+    {
+      "scenarioId": 51,
+      "scenarioQuestionId": 458,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "Sure, I can get it for you. What time is it coming, and is there anything I should know?"
+    },
+    {
+      "scenarioId": 51,
+      "scenarioQuestionId": 459,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "Do you need to be there yourself, or can I just take it and sign your name?"
+    },
+    {
+      "scenarioId": 51,
+      "scenarioQuestionId": 460,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "One problem — I have to go out at six. What should we do if it still hasn't come?"
+    },
+    {
+      "scenarioId": 51,
+      "scenarioQuestionId": 461,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "Sure, I can grab it for you. What time is it supposed to arrive, and is there anything I should know — like if it's heavy or fragile?"
+    },
+    {
+      "scenarioId": 51,
+      "scenarioQuestionId": 462,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "Does the courier need you there in person, or can I just take it and put your name down?"
+    },
+    {
+      "scenarioId": 51,
+      "scenarioQuestionId": 463,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "One thing though — I have plans at six and need to head out. What should we do if it hasn't arrived by then?"
+    },
+    {
+      "scenarioId": 52,
+      "scenarioQuestionId": 464,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "Let's stay calm. Where did you have your phone last?"
+    },
+    {
+      "scenarioId": 52,
+      "scenarioQuestionId": 465,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "Maybe we can't find it today. What should we do first?"
+    },
+    {
+      "scenarioId": 52,
+      "scenarioQuestionId": 466,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "Your phone has important things. How can we keep them safe?"
+    },
+    {
+      "scenarioId": 52,
+      "scenarioQuestionId": 467,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "Let's stay calm and think about where we went. I'm calling your phone now — when did you use it last?"
+    },
+    {
+      "scenarioId": 52,
+      "scenarioQuestionId": 468,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "What if we can't find it today? What do you think we should take care of first?"
+    },
+    {
+      "scenarioId": 52,
+      "scenarioQuestionId": 469,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "Is there anything important on your phone? How can we protect your accounts?"
+    },
+    {
+      "scenarioId": 52,
+      "scenarioQuestionId": 470,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "Okay, let's stay calm and retrace our steps. I'll call your phone right now — and is it connected to any other device we could use to track it?"
+    },
+    {
+      "scenarioId": 52,
+      "scenarioQuestionId": 471,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "What if we can't find it today? We should get ahead of the worst case — what do you think we need to do first?"
+    },
+    {
+      "scenarioId": 52,
+      "scenarioQuestionId": 472,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "I told the cafe to call me if it turns up. By the way, is there anything important on your phone? How can we protect your accounts and data?"
+    },
+    {
+      "scenarioId": 53,
+      "scenarioQuestionId": 473,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "Oh no, the printer is not working! What should we do?"
+    },
+    {
+      "scenarioId": 53,
+      "scenarioQuestionId": 474,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "Let's use another computer. Can you use a USB or email it?"
+    },
+    {
+      "scenarioId": 53,
+      "scenarioQuestionId": 475,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "It will print in ten minutes. Can you come with me to tell the office?"
+    },
+    {
+      "scenarioId": 53,
+      "scenarioQuestionId": 476,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "The printer keeps showing a paper error, and our deadline is really close. What should we try first?"
+    },
+    {
+      "scenarioId": 53,
+      "scenarioQuestionId": 477,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "Moving your file to another computer might be faster. What's the easiest way for me to get it?"
+    },
+    {
+      "scenarioId": 53,
+      "scenarioQuestionId": 478,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "The printout will be ready in about ten minutes. Should we go tell the office it's broken?"
+    },
+    {
+      "scenarioId": 53,
+      "scenarioQuestionId": 479,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "Oh no — the printer's showing a paper error and the deadline's coming up fast. What should we try first?"
+    },
+    {
+      "scenarioId": 53,
+      "scenarioQuestionId": 480,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "Let's use the lab computer next door. Can you get me the file — USB, or email it over?"
+    },
+    {
+      "scenarioId": 53,
+      "scenarioQuestionId": 481,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "It'll print in about ten minutes. Want to come with me to report the printer at the office after?"
+    },
+    {
+      "scenarioId": 54,
+      "scenarioQuestionId": 482,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Sorry, the lockers are full. How big is your bag?"
+    },
+    {
+      "scenarioId": 54,
+      "scenarioQuestionId": 483,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Do you want the near shop or the cheaper shop?"
+    },
+    {
+      "scenarioId": 54,
+      "scenarioQuestionId": 484,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "You need this ticket for your bag. Any questions?"
+    },
+    {
+      "scenarioId": 54,
+      "scenarioQuestionId": 485,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "I'm afraid all the lockers are full right now. What time will you need your bag, and what size is it?"
+    },
+    {
+      "scenarioId": 54,
+      "scenarioQuestionId": 486,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "There's a storage shop right outside the station for £8, and a cheaper one a short walk away for £4. Which fits your plans better?"
+    },
+    {
+      "scenarioId": 54,
+      "scenarioQuestionId": 487,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "You'll need this ticket to get your bag back. Is there anything else you'd like to know?"
+    },
+    {
+      "scenarioId": 54,
+      "scenarioQuestionId": 488,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Right, the lockers are all full at the moment. Let me find you an alternative. First — what time will you be back for your bag, and how big is it?"
+    },
+    {
+      "scenarioId": 54,
+      "scenarioQuestionId": 489,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "There's a storage shop right nearby that's a bit pricey, and a cheaper one about ten minutes away. Which works better with your plans?"
+    },
+    {
+      "scenarioId": 54,
+      "scenarioQuestionId": 490,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "You'll need this claim ticket when you pick it up. Anything else you'd like to know about storing or collecting your bag?"
+    },
+    {
+      "scenarioId": 55,
+      "scenarioQuestionId": 491,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "Wait, this is not our food. What should we do?"
+    },
+    {
+      "scenarioId": 55,
+      "scenarioQuestionId": 492,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "They can bring our food in one hour. Is that okay?"
+    },
+    {
+      "scenarioId": 55,
+      "scenarioQuestionId": 493,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "We will wait one hour. What can we do now?"
+    },
+    {
+      "scenarioId": 55,
+      "scenarioQuestionId": 494,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "Wait, this isn't what we ordered. What should we do about it?"
+    },
+    {
+      "scenarioId": 55,
+      "scenarioQuestionId": 495,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "They can deliver the right food in an hour, or refund us right away. Which one should we pick?"
+    },
+    {
+      "scenarioId": 55,
+      "scenarioQuestionId": 496,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "Either way, we'll be waiting a while. What should we do while we wait?"
+    },
+    {
+      "scenarioId": 55,
+      "scenarioQuestionId": 497,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "Wait, this isn't what we ordered. What should we do?"
+    },
+    {
+      "scenarioId": 55,
+      "scenarioQuestionId": 498,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "Support says they can redeliver within an hour, or give us a full refund right away. I'm starving, but the refund is instant… which should we go with?"
+    },
+    {
+      "scenarioId": 55,
+      "scenarioQuestionId": 499,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "Either way it'll take a while. What should we do about dinner in the meantime?"
+    },
+    {
+      "scenarioId": 56,
+      "scenarioQuestionId": 500,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Please spell your passport name. Where are you going?"
+    },
+    {
+      "scenarioId": 56,
+      "scenarioQuestionId": 501,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Sorry, the name on your ticket is wrong. You need a new ticket. Is a more expensive seat okay?"
+    },
+    {
+      "scenarioId": 56,
+      "scenarioQuestionId": 502,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "There is a seat for half price. But you must wait seven more hours. Which one do you want?"
+    },
+    {
+      "scenarioId": 56,
+      "scenarioQuestionId": 503,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Let me find your booking. Where are you flying to, and how is your name written on your passport?"
+    },
+    {
+      "scenarioId": 56,
+      "scenarioQuestionId": 504,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "I'm sorry — our rules don't allow a name change, so you'll need to buy the ticket again. Only business class is left. Is that all right?"
+    },
+    {
+      "scenarioId": 56,
+      "scenarioQuestionId": 505,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Another airline flies to the same city thirty minutes later for a lower price. Which one would you like?"
+    },
+    {
+      "scenarioId": 56,
+      "scenarioQuestionId": 506,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Let me pull up your booking first. Could you tell me your destination and the exact name printed on your passport?"
+    },
+    {
+      "scenarioId": 56,
+      "scenarioQuestionId": 507,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "I'm afraid our fare rules don't allow a name correction on an issued ticket — you'd have to rebook. The only fare class still open on that route is business. Shall I go ahead?"
+    },
+    {
+      "scenarioId": 56,
+      "scenarioQuestionId": 508,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Oh, one more thing — there's a seat on a later flight at about half the price, but it leaves seven hours after this one. Which one would you like to go with?"
+    },
+    {
+      "scenarioId": 57,
+      "scenarioQuestionId": 509,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "The weather will be nice this weekend. Where should we go?"
+    },
+    {
+      "scenarioId": 57,
+      "scenarioQuestionId": 510,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "I have sandwiches and a blanket. What will you bring?"
+    },
+    {
+      "scenarioId": 57,
+      "scenarioQuestionId": 511,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "It may rain that day. What should we do then?"
+    },
+    {
+      "scenarioId": 57,
+      "scenarioQuestionId": 512,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "The weather should be great this weekend. Where do you think we should have our picnic?"
+    },
+    {
+      "scenarioId": 57,
+      "scenarioQuestionId": 513,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "I'm bringing sandwiches and a blanket. What would you like to bring?"
+    },
+    {
+      "scenarioId": 57,
+      "scenarioQuestionId": 514,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "They say it might rain that day, though. What should we do then?"
+    },
+    {
+      "scenarioId": 57,
+      "scenarioQuestionId": 515,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "The weather looks perfect this weekend. Where should we go for our picnic? Do you know any good spots?"
+    },
+    {
+      "scenarioId": 57,
+      "scenarioQuestionId": 516,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "I'll bring sandwiches and a blanket. What are you going to bring?"
+    },
+    {
+      "scenarioId": 57,
+      "scenarioQuestionId": 517,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "And just in case it rains — what should we do instead?"
+    },
+    {
+      "scenarioId": 58,
+      "scenarioQuestionId": 518,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "Let's exercise together after class! What sport do you like?"
+    },
+    {
+      "scenarioId": 58,
+      "scenarioQuestionId": 519,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "Why do you want to exercise?"
+    },
+    {
+      "scenarioId": 58,
+      "scenarioQuestionId": 520,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "When and where can we meet?"
+    },
+    {
+      "scenarioId": 58,
+      "scenarioQuestionId": 521,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "Let's work out together after class! What kind of exercise do you enjoy the most?"
+    },
+    {
+      "scenarioId": 58,
+      "scenarioQuestionId": 522,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "People exercise for different reasons. What do you hope to gain from it?"
+    },
+    {
+      "scenarioId": 58,
+      "scenarioQuestionId": 523,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "Then let's plan it. What time and place would be easiest for you?"
+    },
+    {
+      "scenarioId": 58,
+      "scenarioQuestionId": 524,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "Let's work out together after class! What kind of exercise do you want to do?"
+    },
+    {
+      "scenarioId": 58,
+      "scenarioQuestionId": 525,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "My goal is to build muscle. What about you — what do you want to get out of it?"
+    },
+    {
+      "scenarioId": 58,
+      "scenarioQuestionId": 526,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "Cool, let's meet up then. Fair warning — I go pretty hard, so you might be walking home on shaky legs. When and where works for you?"
+    },
+    {
+      "scenarioId": 59,
+      "scenarioQuestionId": 527,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "We need three nature photos. Do you like the sea or mountains?"
+    },
+    {
+      "scenarioId": 59,
+      "scenarioQuestionId": 528,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "Nice! When and where should we take them?"
+    },
+    {
+      "scenarioId": 59,
+      "scenarioQuestionId": 529,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "marco",
+      "questionText": "Do you have a camera? You can use mine."
+    },
+    {
+      "scenarioId": 59,
+      "scenarioQuestionId": 530,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "For class we have to turn in three photos of scenery. What kind of scenery do you like best?"
+    },
+    {
+      "scenarioId": 59,
+      "scenarioQuestionId": 531,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "Nice. When and where should we take them so they look their best?"
+    },
+    {
+      "scenarioId": 59,
+      "scenarioQuestionId": 532,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "marco",
+      "questionText": "Do you have a camera? If not, I can lend you mine."
+    },
+    {
+      "scenarioId": 59,
+      "scenarioQuestionId": 533,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "So we need to submit three photos of our favorite scenery. What kind of scenery do you love most?"
+    },
+    {
+      "scenarioId": 59,
+      "scenarioQuestionId": 534,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "Nice. When and where should we shoot to really capture that? I heard the light is best around golden hour."
+    },
+    {
+      "scenarioId": 59,
+      "scenarioQuestionId": 535,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "marco",
+      "questionText": "Then let's meet at six the day after tomorrow. And for the other spots — I know just the place. Trust me and follow my lead. Sound good?"
+    },
+    {
+      "scenarioId": 60,
+      "scenarioQuestionId": 536,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Your coupon needs five more dollars. What would you like to do?"
+    },
+    {
+      "scenarioId": 60,
+      "scenarioQuestionId": 537,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Spend twenty more dollars today. Then you get a fifteen dollar coupon next time. Do you want to buy more?"
+    },
+    {
+      "scenarioId": 60,
+      "scenarioQuestionId": 538,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "All done! Do you want points today?"
+    },
+    {
+      "scenarioId": 60,
+      "scenarioQuestionId": 539,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "The coupon is valid, but you're a little under the minimum. Would you rather add a small item or pay without the discount?"
+    },
+    {
+      "scenarioId": 60,
+      "scenarioQuestionId": 540,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "One more thing — spend forty dollars today and you'll get a fifty-dollar coupon next time. Would you like to add anything?"
+    },
+    {
+      "scenarioId": 60,
+      "scenarioQuestionId": 541,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "All set! Would you like to use your membership today, and do you need a receipt?"
+    },
+    {
+      "scenarioId": 60,
+      "scenarioQuestionId": 542,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Let me check… ah, the coupon's valid, but you're four dollars short of the minimum. You could add something small, or you'd have to pay full price without the coupon — what would you like to do?"
+    },
+    {
+      "scenarioId": 60,
+      "scenarioQuestionId": 543,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Oh, and just so you know — if you add forty dollars to your purchase today, you get a fifty-dollar coupon for next time. Would you like to add anything?"
+    },
+    {
+      "scenarioId": 60,
+      "scenarioQuestionId": 544,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "All done! Would you like to earn points on this purchase, and do you need your receipt?"
+    },
+    {
+      "scenarioId": 61,
+      "scenarioQuestionId": 545,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Okay, I can help you. What happened here?"
+    },
+    {
+      "scenarioId": 61,
+      "scenarioQuestionId": 546,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "You must put a sticker on fruit yourself. Do you have another problem?"
+    },
+    {
+      "scenarioId": 61,
+      "scenarioQuestionId": 547,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "I will watch your things. Can you get the sticker?"
+    },
+    {
+      "scenarioId": 61,
+      "scenarioQuestionId": 548,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Of course, let me have a look. What were you doing when the trouble started?"
+    },
+    {
+      "scenarioId": 61,
+      "scenarioQuestionId": 549,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Ah, I see. Fruit needs a special sticker before you pay. Is anything else giving you trouble?"
+    },
+    {
+      "scenarioId": 61,
+      "scenarioQuestionId": 550,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Don't worry, your things are safe with me here. Could you quickly go and get that sticker?"
+    },
+    {
+      "scenarioId": 61,
+      "scenarioQuestionId": 551,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Sure, let me take a look. This machine acts up all the time. What were you doing when it froze?"
+    },
+    {
+      "scenarioId": 61,
+      "scenarioQuestionId": 552,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Ah, I see — for fruit, you need to weigh it and print the sticker back where you picked it up. Is anything else giving you trouble?"
+    },
+    {
+      "scenarioId": 61,
+      "scenarioQuestionId": 553,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "No worries — I'll watch your things here at the checkout while you go. Could you quickly pop over and grab the sticker?"
+    },
+    {
+      "scenarioId": 62,
+      "scenarioQuestionId": 554,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "We have an action movie and a cartoon tonight. Which one?"
+    },
+    {
+      "scenarioId": 62,
+      "scenarioQuestionId": 555,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "We have seven or nine o'clock. How many tickets?"
+    },
+    {
+      "scenarioId": 62,
+      "scenarioQuestionId": 556,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Okay! Do you want popcorn or a drink?"
+    },
+    {
+      "scenarioId": 62,
+      "scenarioQuestionId": 557,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "We're showing an action movie and an animated one tonight. Which one sounds better to you?"
+    },
+    {
+      "scenarioId": 62,
+      "scenarioQuestionId": 558,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "The seven o'clock is almost full, so you'd be sitting up front. The nine o'clock still has plenty of good seats — which works better?"
+    },
+    {
+      "scenarioId": 62,
+      "scenarioQuestionId": 559,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "One ticket, then. We have all kinds of snacks here — what do you like to have during a movie?"
+    },
+    {
+      "scenarioId": 62,
+      "scenarioQuestionId": 560,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "We've got an action movie and an animated one showing tonight. What are you in the mood for?"
+    },
+    {
+      "scenarioId": 62,
+      "scenarioQuestionId": 561,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "The seven o'clock is almost full, so you'd be sitting near the front. The nine o'clock still has plenty of good seats. Which works better for you?"
+    },
+    {
+      "scenarioId": 62,
+      "scenarioQuestionId": 562,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "That's one ticket, then. We've got all kinds of snacks here — what do you usually go for when you watch a movie?"
+    },
+    {
+      "scenarioId": 63,
+      "scenarioQuestionId": 563,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Your seat is that way. Which team do you like?"
+    },
+    {
+      "scenarioId": 63,
+      "scenarioQuestionId": 564,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Is this your first game? Ask me anything."
+    },
+    {
+      "scenarioId": 63,
+      "scenarioQuestionId": 565,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "People here eat meat pies. Do you want one?"
+    },
+    {
+      "scenarioId": 63,
+      "scenarioQuestionId": 566,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Here's your seat — up those stairs in block C. So which team are you here for today?"
+    },
+    {
+      "scenarioId": 63,
+      "scenarioQuestionId": 567,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Is this your first match here? Is there anything you want to know before it starts?"
+    },
+    {
+      "scenarioId": 63,
+      "scenarioQuestionId": 568,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "At halftime most fans eat a meat pie here. Would you like one?"
+    },
+    {
+      "scenarioId": 63,
+      "scenarioQuestionId": 569,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Let me see your ticket… you're up those stairs, block C. So, which team are you here to cheer for today?"
+    },
+    {
+      "scenarioId": 63,
+      "scenarioQuestionId": 570,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "First time at a stadium here? When we score, everyone jumps up and sings — the words are on the big screen, so just join in. Anything you're curious about before kickoff?"
+    },
+    {
+      "scenarioId": 63,
+      "scenarioQuestionId": 571,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "At halftime everyone grabs a meat pie — it's tradition. Fancy trying one?"
+    },
+    {
+      "scenarioId": 64,
+      "scenarioQuestionId": 572,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "What is in the box?"
+    },
+    {
+      "scenarioId": 64,
+      "scenarioQuestionId": 573,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Do you want fast mail or slow mail?"
+    },
+    {
+      "scenarioId": 64,
+      "scenarioQuestionId": 574,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Do you want insurance for four pounds?"
+    },
+    {
+      "scenarioId": 64,
+      "scenarioQuestionId": 575,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "What's in the package? Is there anything I should be careful with?"
+    },
+    {
+      "scenarioId": 64,
+      "scenarioQuestionId": 576,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Express takes about a week for 25 pounds, and standard takes three weeks for 12. How soon do you want it delivered?"
+    },
+    {
+      "scenarioId": 64,
+      "scenarioQuestionId": 577,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Would you like to add insurance for four pounds? I also need to write down the value of the items."
+    },
+    {
+      "scenarioId": 64,
+      "scenarioQuestionId": 578,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "What's in the package? Anything fragile I should know about?"
+    },
+    {
+      "scenarioId": 64,
+      "scenarioQuestionId": 579,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Express takes about a week at twenty-five pounds; standard takes three weeks at twelve. When does it need to get there?"
+    },
+    {
+      "scenarioId": 64,
+      "scenarioQuestionId": 580,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Since it's gifts, would you like to add insurance for four pounds? And I'll need a rough value for the customs form — about how much is everything worth?"
+    },
+    {
+      "scenarioId": 65,
+      "scenarioQuestionId": 581,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Yes, you order here. Light beer or dark beer?"
+    },
+    {
+      "scenarioId": 65,
+      "scenarioQuestionId": 582,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Okay! A pint is bigger. Do you want a pint or a half?"
+    },
+    {
+      "scenarioId": 65,
+      "scenarioQuestionId": 583,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "That is twelve pounds. Do you want to pay now or later?"
+    },
+    {
+      "scenarioId": 65,
+      "scenarioQuestionId": 584,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Yes, you order and pay here at the bar first. Tell me what you normally drink and I'll find you something similar."
+    },
+    {
+      "scenarioId": 65,
+      "scenarioQuestionId": 585,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Good choice — pint or half? Our fish and chips is famous, if you're eating."
+    },
+    {
+      "scenarioId": 65,
+      "scenarioQuestionId": 586,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "That's twelve pounds forty. You can pay each time, or leave your card and pay for everything when you leave — which do you prefer?"
+    },
+    {
+      "scenarioId": 65,
+      "scenarioQuestionId": 587,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Yes, you order and pay here at the bar first. What do you usually drink back home? We've got light, crisp lagers and rich, hoppy ales on tap — I'll find you something similar."
+    },
+    {
+      "scenarioId": 65,
+      "scenarioQuestionId": 588,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Good choice. Pint or half? And are you eating? The fish and chips here is famous."
+    },
+    {
+      "scenarioId": 65,
+      "scenarioQuestionId": 589,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "That'll be twelve pounds forty. You can pay as you go, or if you're planning on a few, I can start you a tab — you leave your card and settle up when you leave. How would you like to do it?"
+    },
+    {
+      "scenarioId": 66,
+      "scenarioQuestionId": 590,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "What kind of tea do you like? I can help."
+    },
+    {
+      "scenarioId": 66,
+      "scenarioQuestionId": 591,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "The scones come with cream and jam. Which goes first?"
+    },
+    {
+      "scenarioId": 66,
+      "scenarioQuestionId": 592,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Your cup is empty. Would you like more tea?"
+    },
+    {
+      "scenarioId": 66,
+      "scenarioQuestionId": 593,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "What kind of tea do you usually enjoy — floral, strong, or fruity? If it's your first time, I can recommend a few."
+    },
+    {
+      "scenarioId": 66,
+      "scenarioQuestionId": 594,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "The scones come with clotted cream and jam. Do you put jam first or cream first? I can show you how we do it here."
+    },
+    {
+      "scenarioId": 66,
+      "scenarioQuestionId": 595,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "How is everything so far? Would you like a refill — the same one, or shall I bring the menu again?"
+    },
+    {
+      "scenarioId": 66,
+      "scenarioQuestionId": 596,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Lovely! What kind of tea do you usually enjoy — floral, strong, fruity? If it's your first afternoon tea, I can recommend a few."
+    },
+    {
+      "scenarioId": 66,
+      "scenarioQuestionId": 597,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Here's a tip — the scones come with clotted cream and jam. Would you like me to show you the proper way to eat them?"
+    },
+    {
+      "scenarioId": 66,
+      "scenarioQuestionId": 598,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "How is everything? Would you like a refill — same tea, or something different this time?"
+    },
+    {
+      "scenarioId": 67,
+      "scenarioQuestionId": 599,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Hi, welcome! What do you want for your hair today?"
+    },
+    {
+      "scenarioId": 67,
+      "scenarioQuestionId": 600,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "How much should I cut, and your bangs too?"
+    },
+    {
+      "scenarioId": 67,
+      "scenarioQuestionId": 601,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "All done! Do you like it?"
+    },
+    {
+      "scenarioId": 67,
+      "scenarioQuestionId": 602,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Hi, welcome in! What would you like me to do with your hair today?"
+    },
+    {
+      "scenarioId": 67,
+      "scenarioQuestionId": 603,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "How much should I cut off? And do you want me to do the front as well?"
+    },
+    {
+      "scenarioId": 67,
+      "scenarioQuestionId": 604,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "All done — take a look! How does it look to you, and is there anything you'd like me to fix?"
+    },
+    {
+      "scenarioId": 67,
+      "scenarioQuestionId": 605,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Hi, welcome in! So what are we doing with your hair today?"
+    },
+    {
+      "scenarioId": 67,
+      "scenarioQuestionId": 606,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Got it. How much length should I take off, and do you want me to trim your bangs while I'm at it?"
+    },
+    {
+      "scenarioId": 67,
+      "scenarioQuestionId": 607,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "All done — take a look! How do you like it? Anything you want me to touch up?"
+    },
+    {
+      "scenarioId": 68,
+      "scenarioQuestionId": 608,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "That team needs one more person. Do you want to play?"
+    },
+    {
+      "scenarioId": 68,
+      "scenarioQuestionId": 609,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "The quiz has music and sports. Which one is easy for you?"
+    },
+    {
+      "scenarioId": 68,
+      "scenarioQuestionId": 610,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Now we need a team name. What is your idea?"
+    },
+    {
+      "scenarioId": 68,
+      "scenarioQuestionId": 611,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Quiz night starts soon and that team is one person short. Would you like to play with them?"
+    },
+    {
+      "scenarioId": 68,
+      "scenarioQuestionId": 612,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "The topics are music, sports, and general knowledge. Which one suits you best?"
+    },
+    {
+      "scenarioId": 68,
+      "scenarioQuestionId": 613,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Entry is two pounds, and the winning team drinks free. So, what name should your team use?"
+    },
+    {
+      "scenarioId": 68,
+      "scenarioQuestionId": 614,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Hey, are you here on your own? Quiz night's about to start and that team over there needs one more — want to join in?"
+    },
+    {
+      "scenarioId": 68,
+      "scenarioQuestionId": 615,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "The rounds are music, sports, and general knowledge. What are you good at? Your new team will want to know."
+    },
+    {
+      "scenarioId": 68,
+      "scenarioQuestionId": 616,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "It's two pounds to enter, and the winners drink for free. Now the big question — what should your team be called?"
+    },
+    {
+      "scenarioId": 69,
+      "scenarioQuestionId": 617,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Let me check your card. How did you travel today?"
+    },
+    {
+      "scenarioId": 69,
+      "scenarioQuestionId": 618,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "You paid too much. I will return the extra money. Where are you going now?"
+    },
+    {
+      "scenarioId": 69,
+      "scenarioQuestionId": 619,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "You can buy a day pass. How often do you ride?"
+    },
+    {
+      "scenarioId": 69,
+      "scenarioQuestionId": 620,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "What's the problem? Tell me how you traveled today, and I'll look at your card."
+    },
+    {
+      "scenarioId": 69,
+      "scenarioQuestionId": 621,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "You paid more than you should have. I'll return the difference now. Where are you heading?"
+    },
+    {
+      "scenarioId": 69,
+      "scenarioQuestionId": 622,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "How many days are you staying, and how often will you use the subway? There may be a cheaper option for you."
+    },
+    {
+      "scenarioId": 69,
+      "scenarioQuestionId": 623,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "What seems to be the trouble? Take your time — walk me through how you've been traveling today, and I'll check your card."
+    },
+    {
+      "scenarioId": 69,
+      "scenarioQuestionId": 624,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "You're right — you were overcharged. I'll refund the difference right away. Where are you trying to get to at the moment?"
+    },
+    {
+      "scenarioId": 69,
+      "scenarioQuestionId": 625,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "How much longer are you in London, and how often will you be riding? Depending on that, a day pass could save you money — what would you like to do?"
+    },
+    {
+      "scenarioId": 70,
+      "scenarioQuestionId": 626,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "I can show you a good hiking path! How many hours can you walk today?"
+    },
+    {
+      "scenarioId": 70,
+      "scenarioQuestionId": 627,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "It may rain later. Lake path or hill path?"
+    },
+    {
+      "scenarioId": 70,
+      "scenarioQuestionId": 628,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_1",
+      "characterId": "teddy",
+      "questionText": "Good choice! What is in your bag today?"
+    },
+    {
+      "scenarioId": 70,
+      "scenarioQuestionId": 629,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Great! Do you hike a lot? And how long do you want to be out today?"
+    },
+    {
+      "scenarioId": 70,
+      "scenarioQuestionId": 630,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "There's a flat trail around the lake, and a harder one up a hill with a lookout at the top. Rain is coming this afternoon. Which one would you prefer?"
+    },
+    {
+      "scenarioId": 70,
+      "scenarioQuestionId": 631,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_2_TO_3",
+      "characterId": "teddy",
+      "questionText": "Good choice. What did you bring today? I'll tell you if something is missing."
+    },
+    {
+      "scenarioId": 70,
+      "scenarioQuestionId": 632,
+      "displayOrder": 1,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Sure! Do you hike often, and how many hours are you up for today?"
+    },
+    {
+      "scenarioId": 70,
+      "scenarioQuestionId": 633,
+      "displayOrder": 2,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "There's an easy lakeside loop, and a steep hill route with an amazing lookout — but rain's expected this afternoon. Which sounds right for you?"
+    },
+    {
+      "scenarioId": 70,
+      "scenarioQuestionId": 634,
+      "displayOrder": 3,
+      "questionLevelGroup": "LEVEL_4_TO_5",
+      "characterId": "teddy",
+      "questionText": "Good pick. What have you got with you today — water, snacks, anything else? I'll tell you if you're missing anything."
+    }
+  ]
+}

@@ -209,6 +209,18 @@ def asset_id(asset: SourceAsset) -> str:
 EXPLICIT_ENDINGS = (".", "?", "!", ",", ";", ":")
 
 
+# 화면에는 대문자로 적지만 TTS가 철자를 한 글자씩 읽는 고유명사. 읽기 입력만 바꾸고 화면
+# 표기와 생성 계약(S3 키)은 원문 그대로 둔다. LAN-601 실측: "JIYU KIM"은 J-I-Y-U로 읽혔고,
+# "Jiyu Kim"은 3억양 모두 "지유 킴"으로 읽혔다 (사람 청취 확인, 2026-09-30).
+SPOKEN_SPELLING_OVERRIDES = {
+    "JIYU": "Jiyu",
+    "KIM": "Kim",
+}
+_SPOKEN_SPELLING_PATTERN = re.compile(
+    r"\b(" + "|".join(map(re.escape, SPOKEN_SPELLING_OVERRIDES)) + r")\b"
+)
+
+
 def speech_text(asset: SourceAsset) -> str:
     """TTS에 실제로 보낼 문자열. 생성 계약(S3 키)은 asset.text 그대로를 쓴다.
 
@@ -216,13 +228,16 @@ def speech_text(asset: SourceAsset) -> str:
     키와 소리의 대응은 그대로 유지된다.
 
     :param asset: 합성할 자산
-    :return: 표현 음성이면서 부호로 끝나지 않으면 마침표를 붙인 텍스트, 그 밖에는 원문 그대로
+    :return: 철자 읽기 치환을 적용하고, 표현 음성이면서 부호로 끝나지 않으면 마침표를 붙인 텍스트
     """
+    text = _SPOKEN_SPELLING_PATTERN.sub(
+        lambda match: SPOKEN_SPELLING_OVERRIDES[match.group(1)], asset.text
+    )
     if asset.kind != KIND_EXPRESSION:
-        return asset.text
-    stripped = asset.text.rstrip()
+        return text
+    stripped = text.rstrip()
     if not stripped or stripped.endswith(EXPLICIT_ENDINGS):
-        return asset.text
+        return text
     return stripped + "."
 
 

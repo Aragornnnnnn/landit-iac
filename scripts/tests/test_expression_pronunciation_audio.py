@@ -1923,6 +1923,21 @@ class SpeechTextTests(unittest.TestCase):
         self.assertEqual(speech_text(self.asset("expression", "hang out with,")),
                          "hang out with,")
 
+    def test_spelled_out_names_are_spoken_as_words(self):
+        # 대문자 JIYU KIM은 TTS가 한 글자씩 읽는다. 읽기 입력만 바꾸고 키는 원문 기준이다.
+        sentence = "It's Seoul. My passport says JIYU KIM, so the booking must have a typo."
+        self.assertEqual(
+            speech_text(self.asset("sentence", sentence)),
+            "It's Seoul. My passport says Jiyu Kim, so the booking must have a typo.",
+        )
+        self.assertEqual(speech_text(self.asset("word", "JIYU", word_order=6)), "Jiyu")
+        self.assertEqual(speech_text(self.asset("word", "KIM,", word_order=7)), "Kim,")
+        self.assertEqual(generation_contract(self.asset("sentence", sentence))["text"], sentence)
+
+    def test_spelling_overrides_leave_other_words_alone(self):
+        for text in ("Kim is here.", "KIMCHI", "My name is Jiyu.", "ASKIM"):
+            self.assertEqual(speech_text(self.asset("sentence", text)), text)
+
     def test_applying_twice_changes_nothing(self):
         once = speech_text(self.asset("expression", "hang out with"))
         self.assertEqual(speech_text(self.asset("expression", once)), once)

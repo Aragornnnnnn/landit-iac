@@ -1934,6 +1934,31 @@ class SpeechTextTests(unittest.TestCase):
         self.assertEqual(speech_text(self.asset("word", "KIM,", word_order=7)), "Kim,")
         self.assertEqual(generation_contract(self.asset("sentence", sentence))["text"], sentence)
 
+    def test_korean_food_names_use_readable_spelling(self):
+        self.assertEqual(
+            speech_text(self.asset("sentence", "Wash it down with some cool sikhye.")),
+            "Wash it down with some cool shik-hyeh.",
+        )
+        self.assertEqual(speech_text(self.asset("word", "sikhye", word_order=6)), "shik-hyeh")
+
+    def test_bulgogi_spelling_depends_on_kind_and_accent(self):
+        def spoken(kind, locale, text, word_order=None):
+            asset = SourceAsset(
+                expression_id=7, accent_locale=locale, kind=kind,
+                word_order=word_order, text=text,
+            )
+            return speech_text(asset)
+
+        sentence = "Go with the bulgogi — it's always a crowd-pleaser."
+        for locale in ("EN_US", "EN_GB", "EN_AU"):
+            self.assertEqual(
+                spoken("sentence", locale, sentence),
+                "Go with the bul go ki — it's always a crowd-pleaser.",
+            )
+        self.assertEqual(spoken("word", "EN_US", "bulgogi", 4), "bulgokee")
+        self.assertEqual(spoken("word", "EN_GB", "bulgogi", 4), "bulgokee")
+        self.assertEqual(spoken("word", "EN_AU", "bulgogi", 4), "bul go ki")
+
     def test_spelling_overrides_leave_other_words_alone(self):
         for text in ("Kim is here.", "KIMCHI", "My name is Jiyu.", "ASKIM"):
             self.assertEqual(speech_text(self.asset("sentence", text)), text)

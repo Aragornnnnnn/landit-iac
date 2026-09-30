@@ -25,9 +25,10 @@ EXPRESSION_COUNT = 328
 SCENARIO_COUNT = 30
 FIRST_SCENARIO_ID = 41
 LEVEL_GROUPS = ("LEVEL_1", "LEVEL_2_TO_3", "LEVEL_4_TO_5")
-SCENARIO_DAY = re.compile(r"display_order\s*=\s*(\d+)")
+# 시나리오 참조는 두 형식을 받는다: display_order 서브쿼리(초기본) 또는 고정 id 리터럴(최신본).
+SCENARIO_REFERENCE = re.compile(r"(display_order|id)\s*=\s*(\d+)")
 VARIANT_KEY = re.compile(
-    r"s\.display_order\s*=\s*(\d+)\s+AND\s+sq\.question_level_group\s*=\s*'(\w+)'"
+    r"s\.(display_order|id)\s*=\s*(\d+)\s+AND\s+sq\.question_level_group\s*=\s*'(\w+)'"
     r"\s+AND\s+sq\.display_order\s*=\s*(\d+)"
 )
 
@@ -119,24 +120,54 @@ def sql_string(field: str) -> str:
     return field[1:-1].replace("''", "'")
 
 
-def scenario_day(field: str) -> int:
-    match = SCENARIO_DAY.search(field)
+def insert_columns(sql: str, table: str) -> list[str]:
+    """`INSERT INTO {table} (컬럼, ...)`의 컬럼 이름 목록을 돌려준다."""
+    match = re.search(rf"INSERT INTO {table}\s*\(([^)]*)\)", sql)
     if match is None:
-        raise ValueError(f"scenario display_order not found: {field[:80]}")
-    return int(match.group(1))
+        raise ValueError(f"INSERT INTO {table} columns not found")
+    return [name.strip() for name in match.group(1).split(",")]
+
+
+def scenario_day(field: str, day_by_scenario_id: dict[int, int] | None = None) -> int:
+    """시나리오 참조 필드에서 Day(display_order)를 얻는다. 고정 id면 id→Day로 바꾼다."""
+    if field.isdigit():
+        if day_by_scenario_id is None:
+            raise ValueError(f"scenario id literal needs an id→day map: {field}")
+        return day_by_scenario_id[int(field)]
+    match = SCENARIO_REFERENCE.search(field)
+    if match is None:
+        raise ValueError(f"scenario reference not found: {field[:80]}")
+    if match.group(1) == "id":
+        if day_by_scenario_id is None:
+            raise ValueError(f"scenario id reference needs an id→day map: {field[:80]}")
+        return day_by_scenario_id[int(match.group(2))]
+    return int(match.group(2))
+
+
+def scenario_ids_and_days(sql: str) -> tuple[dict[int, int], dict[int, str], dict[int, int]]:
+    """(Day→scenario id, Day→캐릭터, scenario id→Day). id 컬럼이 없으면 행 순서로 41부터 부여한다."""
+    columns = insert_columns(sql, "scenario")
+    rows = insert_values(sql, "scenario")
+    day_index = columns.index("display_order")
+    character_index = columns.index("character_id")
+    scenario_id_by_day: dict[int, int] = {}
+    character_by_day: dict[int, str] = {}
+    for index, row in enumerate(rows):
+        day = int(row[day_index])
+        scenario_id_by_day[day] = (
+            int(row[columns.index("id")]) if "id" in columns else FIRST_SCENARIO_ID + index
+        )
+        character_by_day[day] = sql_string(row[character_index])
+    day_by_scenario_id = {scenario_id: day for day, scenario_id in scenario_id_by_day.items()}
+    return scenario_id_by_day, character_by_day, day_by_scenario_id
 
 
 def extract_questions(sql: str, start_id: int) -> list[QuestionRow]:
-    scenario_rows = insert_values(sql, "scenario")
-    # scenario 컬럼: category_id, ai_role, character_id, ..., display_order(6)
-    character_by_day = {int(row[6]): sql_string(row[2]) for row in scenario_rows}
-    scenario_id_by_day = {
-        int(row[6]): FIRST_SCENARIO_ID + index for index, row in enumerate(scenario_rows)
-    }
+    scenario_id_by_day, character_by_day, day_by_scenario_id = scenario_ids_and_days(sql)
 
     # scenario_question 컬럼: scenario_id, display_order, question_level_group, ...
     question_keys = [
-        (scenario_day(row[0]), sql_string(row[2]), int(row[1]))
+        (scenario_day(row[0], day_by_scenario_id), sql_string(row[2]), int(row[1]))
         for row in insert_values(sql, "scenario_question")
     ]
     # scenario_question_language_variant 컬럼: scenario_question_id, target, base, question_text, ...
@@ -145,7 +176,9 @@ def extract_questions(sql: str, start_id: int) -> list[QuestionRow]:
         match = VARIANT_KEY.search(row[0])
         if match is None:
             raise ValueError(f"variant key not found: {row[0][:80]}")
-        key = (int(match.group(1)), match.group(2), int(match.group(3)))
+        reference = int(match.group(2))
+        day = day_by_scenario_id[reference] if match.group(1) == "id" else reference
+        key = (day, match.group(3), int(match.group(4)))
         if key in text_by_key:
             raise ValueError(f"duplicate question variant: {key}")
         text_by_key[key] = sql_string(row[3])
@@ -169,13 +202,15 @@ def extract_questions(sql: str, start_id: int) -> list[QuestionRow]:
     ]
 
 
-def extract_expressions(sql: str, start_id: int) -> list[ExpressionRow]:
+def extract_expressions(
+    sql: str, start_id: int, day_by_scenario_id: dict[int, int] | None = None
+) -> list[ExpressionRow]:
     # writing_expression 컬럼: scenario_id(0), ..., display_order(5), target_expression_text(6),
     # ..., representative_sentence_text(12)
     return [
         ExpressionRow(
             expression_id=start_id + index,
-            day=scenario_day(row[0]),
+            day=scenario_day(row[0], day_by_scenario_id),
             display_order=int(row[5]),
             expression_text=sql_string(row[6]),
             sentence_text=sql_string(row[12]),
@@ -241,11 +276,13 @@ def main() -> int:
     parser.add_argument("--out-dir", required=True, type=Path)
     args = parser.parse_args()
 
-    questions = extract_questions(
-        args.question_sql.read_text(encoding="utf-8"), args.question_start_id
-    )
+    question_sql = args.question_sql.read_text(encoding="utf-8")
+    questions = extract_questions(question_sql, args.question_start_id)
+    _, _, day_by_scenario_id = scenario_ids_and_days(question_sql)
     expressions = extract_expressions(
-        args.expression_sql.read_text(encoding="utf-8"), args.expression_start_id
+        args.expression_sql.read_text(encoding="utf-8"),
+        args.expression_start_id,
+        day_by_scenario_id,
     )
     validate(questions, expressions)
 

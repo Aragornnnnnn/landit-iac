@@ -7,6 +7,7 @@ from scripts.lan601_extract_source import (
     extract_expressions,
     extract_questions,
     insert_values,
+    scenario_ids_and_days,
 )
 from scripts.scenario_question_audio import (
     SourceAsset,
@@ -178,6 +179,58 @@ class Lan601ExtractTests(unittest.TestCase):
                 for e in expressions
             ],
         )
+
+
+FIXED_ID_SQL = """
+INSERT INTO scenario
+  (id, category_id, ai_role, character_id, difficulty, first_speaker, thumbnail_url,
+   display_order, status, created_at, updated_at, total_question_count)
+VALUES
+  -- 기획서 항목 42 / DB scenario 41 / Day 41
+  (41, 2, '친구', 'teddy', 'EASY', 'AI', 'https://cdn/41.webp', 41, 'ACTIVE', now(), now(), 3),
+  (44, 3, '부원', 'chloe', 'EASY', 'AI', 'https://cdn/44.webp', 44, 'ACTIVE', now(), now(), 3);
+
+INSERT INTO scenario_question
+  (scenario_id, display_order, question_level_group, response_demand, status, created_at, updated_at)
+VALUES
+  (44, 1, 'LEVEL_1', 'LOW', 'ACTIVE', now(), now()),
+  (41, 1, 'LEVEL_4_TO_5', 'HIGH', 'ACTIVE', now(), now());
+
+INSERT INTO scenario_question_language_variant
+  (scenario_question_id, target_locale, base_locale, question_text, question_translation,
+   required_response_element, audio_url, status, created_at, updated_at, inner_thought, inner_thought_type)
+VALUES
+  ((SELECT sq.id FROM scenario_question sq JOIN scenario s ON s.id = sq.scenario_id
+    WHERE s.id = 41 AND sq.question_level_group = 'LEVEL_4_TO_5' AND sq.display_order = 1),
+   'EN', 'KR', 'Which route?', '어느 길?', 'Pick.', NULL, 'ACTIVE', now(), now(), NULL, NULL),
+  ((SELECT sq.id FROM scenario_question sq JOIN scenario s ON s.id = sq.scenario_id
+    WHERE s.id = 44 AND sq.question_level_group = 'LEVEL_1' AND sq.display_order = 1),
+   'EN', 'KR', 'Hi!', '안녕', 'Say hi.', NULL, 'ACTIVE', now(), now(), NULL, NULL);
+"""
+
+
+class Lan601FixedIdFormatTests(unittest.TestCase):
+    # LAN-391 최신본은 scenario id를 Day와 같게 고정하고 리터럴 id로 참조한다.
+    def test_fixed_scenario_ids_are_read_from_the_id_column(self) -> None:
+        questions = extract_questions(FIXED_ID_SQL, start_id=365)
+
+        self.assertEqual(
+            [(365, 44, 44, "chloe", "Hi!"), (366, 41, 41, "teddy", "Which route?")],
+            [
+                (q.scenario_question_id, q.scenario_id, q.day, q.character_id, q.question_text)
+                for q in questions
+            ],
+        )
+
+    def test_expressions_resolve_literal_scenario_ids_to_days(self) -> None:
+        _, _, day_by_scenario_id = scenario_ids_and_days(FIXED_ID_SQL)
+        sql = EXPRESSION_SQL.replace(
+            "(SELECT id FROM scenario WHERE display_order = 44)", "44"
+        ).replace("(SELECT id FROM scenario WHERE display_order = 41)", "41")
+
+        expressions = extract_expressions(sql, 4001, day_by_scenario_id)
+
+        self.assertEqual([44, 41], [e.day for e in expressions])
 
 
 if __name__ == "__main__":

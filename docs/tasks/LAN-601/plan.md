@@ -84,3 +84,21 @@
    - 반영본에는 명시 id, URL, setval이 들어간다.
    - 로컬 PostgreSQL에 표현 1000개 → LAN-391 → 발음 자산 순서로 적용해 검증한다.
 6. **발음 자산 migration PR**: LAN-391 PR 머지 후 올린다.
+
+## LAN-391 원문 수정 요청 (2026-09-30 사용자 승인)
+
+TTS가 "Ugh", "Hmm" 같은 비단어 감탄사를 6회 재합성 내내 빠뜨렸다("Oh", "Hey", "Ah"는 정상). 자막과 음성이 어긋나지 않도록 원문을 바꾸고, 음원은 새 원문으로 생성·검수를 마쳤다. LAN-391은 V135의 두 행을 아래처럼 고친다.
+
+| 질문 id | 기존 question_text | 새 question_text | 새 question_translation (제안) |
+| --- | --- | --- | --- |
+| 400 (Day 44 · LEVEL_4_TO_5 · 3번) | Ugh, I need to clear my head. What should we do to cheer me up? | Oh man, I need to clear my head. What should we do to cheer me up? | 아 진짜, 기분 전환이 필요해. 우리 뭐 하면서 기분 풀까? |
+| 419 (Day 47 · LEVEL_1 · 1번) | Hmm, did I borrow a book from you? | Wait, did I borrow a book from you? | 잠깐, 내가 너한테 책을 빌렸었나? |
+
+`sources/scenario-question-audio/lan-601.json`은 이 두 행만 추출 결과와 다르다.
+
+## 질문 음원 검수 결과
+
+- 전체 270개를 무음 검사, Whisper(small.en) 전사 대조, 불합격분 Gemini 재판정 순서로 검수했다.
+- 첫 판정 불량은 30개였다. 이 중 4개(540, 542, 543, 580)는 숫자 표기 차이로 생긴 오탐이다.
+- 나머지 26개는 재합성해 24개가 해결됐다. 남은 2개(400, 419)는 원문을 수정한 뒤 1회에 통과했다.
+- 음량은 보정하지 않는다. 캐릭터별 중앙값은 chloe -25.3, marco -25.0, teddy -20.4 LUFS로, 기존 LAN-405와 같은 패턴이다.

@@ -220,6 +220,10 @@ SPOKEN_SPELLING_OVERRIDES = {
     "KIM": "Kim",
     "sikhye": "shik-hyeh",
     "bulgogi": "bul go ki",
+    # 프리톡 4329~6000 실측 (2026-10-06): "BYOB"는 미국 보이스가 "five", 호주가 "BOD"로 읽었다.
+    "BYOB": "B Y O B",
+    # 호주 보이스가 단독 "90s"를 "in teas"로 읽었다. "nineties"는 3/3 "90s"로 들렸다 (사람 청취 확인).
+    "90s": "nineties",
 }
 # (원문, 종류, 억양)별로 위 기본 치환과 다르게 읽혀야 하는 경우.
 SPOKEN_SPELLING_BY_KIND_AND_ACCENT = {

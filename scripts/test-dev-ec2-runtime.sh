@@ -125,8 +125,13 @@ if rg -q 'LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS=9999999' "${TEST_DIR}/user-dat
   echo 'develop API must not hardcode the free-talk speaking limit.' >&2
   exit 1
 fi
-if ! rg -q 'LANDIT_REWARD_ENABLED LANDIT_REWARD_CAPTURE_ENABLED LANDIT_REWARD_PRODUCTS' "${TEST_DIR}/user-data.sh"; then
+if ! rg -q 'LANDIT_REWARD_ENABLED LANDIT_REWARD_CAPTURE_ENABLED LANDIT_REWARD_PRODUCTS_JSON' "${TEST_DIR}/user-data.sh"; then
   echo 'develop API must load the reward flags and product list from SSM.' >&2
+  exit 1
+fi
+# LANDIT_REWARD_PRODUCTS는 Spring이 landit.reward.products(List)에도 바인딩해 기동이 깨진다. 이름 그대로 주입하면 안 된다.
+if rg -q 'LANDIT_REWARD_PRODUCTS( |$)' "${TEST_DIR}/user-data.sh"; then
+  echo 'develop API must not inject LANDIT_REWARD_PRODUCTS; use LANDIT_REWARD_PRODUCTS_JSON.' >&2
   exit 1
 fi
 awk '
@@ -167,7 +172,7 @@ values.update(LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION="Bearer lan477-test$secret
               LANDIT_SUBSCRIPTION_LAUNCHED_AT="2026-09-11T14:44:00+09:00",
               LANDIT_TRIAL_REMINDER_ANNUAL_PRODUCT_IDS="com.saynow.app.premium.yearly,com.saynow.app.premium.yearly:yearly")
 values.update(LANDIT_REWARD_ENABLED="true", LANDIT_REWARD_CAPTURE_ENABLED="false",
-              LANDIT_REWARD_PRODUCTS='[{"appId":"app1","store":"APP_STORE","productId":"com.saynow.app.premium.quarterly","months":3}]')
+              LANDIT_REWARD_PRODUCTS_JSON='[{"appId":"app1","store":"APP_STORE","productId":"com.saynow.app.premium.quarterly","months":3}]')
 (directory / "ssm.json").write_text(json.dumps({"Parameters": [
     {"Name": "/landit/develop/" + name, "Value": value} for name, value in values.items()
 ]}))
@@ -217,7 +222,8 @@ for parameter in json.loads((directory / "ssm.json").read_text())["Parameters"]:
 assert json.loads(json.loads(ai_values["JEV_ENABLED_WORKFLOWS"])) == ["E1", "E2", "E3", "E4", "E7", "E10", "E13"]
 # 환급 상품 JSON 배열도 Compose env_file 인용 해제 뒤 BE가 그대로 파싱할 수 있어야 한다.
 api_values = dict(line.split("=", 1) for line in api.read_text().splitlines())
-assert json.loads(json.loads(api_values["LANDIT_REWARD_PRODUCTS"]))[0]["months"] == 3
+assert json.loads(json.loads(api_values["LANDIT_REWARD_PRODUCTS_JSON"]))[0]["months"] == 3
+assert "LANDIT_REWARD_PRODUCTS=" not in api.read_text(), "the bare name collides with landit.reward.products"
 assert not any("LANDIT_REWARD" in line for line in (directory / "runtime/ai.env").read_text().splitlines())
 (directory / "api-before.env").write_bytes(api.read_bytes())
 response = json.loads((directory / "ssm.json").read_text())

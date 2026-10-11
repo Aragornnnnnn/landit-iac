@@ -285,3 +285,9 @@ variable "revenuecat_apply_sandbox_events" {
   type        = bool
   default     = true
 }
+
+variable "reward_configuration_enabled" {
+  description = "Inject reward flags and the existing product JSON parameter into the API container."
+  type        = bool
+  default     = false
+}

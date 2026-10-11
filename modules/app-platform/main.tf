@@ -1543,7 +1543,11 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_TRIAL_REMINDER_ANNUAL_PRODUCT_IDS", valueFrom = "${local.ssm_path}/LANDIT_TRIAL_REMINDER_ANNUAL_PRODUCT_IDS" },
         { name = "LANDIT_SUBSCRIPTION_LAUNCHED_AT", valueFrom = "${local.ssm_path}/LANDIT_SUBSCRIPTION_LAUNCHED_AT" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_BE_SENTRY_DSN" }
-        ], var.ai_internal_token_enabled ? [
+        ], var.reward_configuration_enabled ? [
+        { name = "LANDIT_REWARD_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_REWARD_ENABLED" },
+        { name = "LANDIT_REWARD_CAPTURE_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_REWARD_CAPTURE_ENABLED" },
+        { name = "LANDIT_REWARD_PRODUCTS_JSON", valueFrom = "${local.ssm_path}/LANDIT_REWARD_PRODUCTS" }
+        ] : [], var.ai_internal_token_enabled ? [
         { name = "LANDIT_AI_INTERNAL_TOKEN", valueFrom = "${local.ssm_path}/LANDIT_AI_INTERNAL_TOKEN" }
         ] : [], var.grafana_otlp_enabled ? [
         { name = "OTEL_EXPORTER_OTLP_HEADERS", valueFrom = "${local.ssm_path}/LANDIT_GRAFANA_CLOUD_OTLP_HEADERS" }

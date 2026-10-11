@@ -34,9 +34,10 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_MEMORY_USE_ENABLED` | `String` | backend 프리톡 장기기억 검색 기능 사용 여부, 기본값 `false` |
 | `/landit/{environment}/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION` | `SecureString` | API의 RevenueCat 웹훅 Authorization 검증값, develop EC2 env와 prod ECS secrets로 주입 |
 | `/landit/{environment}/LANDIT_SUBSCRIPTION_LAUNCHED_AT` | `String` | API의 유료 기능 제한 도입 시각, 오프셋을 포함한 ISO 8601 형식. develop EC2 env와 prod ECS secrets로 주입 |
-| `/landit/{environment}/LANDIT_REWARD_ENABLED` | `String` | 환급 챌린지 적립 계산·조회 사용 여부, 기본값 `false`. 현재 develop EC2 env에만 주입하고 prod ECS에는 연결하지 않는다 |
-| `/landit/{environment}/LANDIT_REWARD_CAPTURE_ENABLED` | `String` | 환급 활성화 전 결제·학습 근거 사전 수집 여부, 기본값 `false`. develop EC2 env에만 주입 |
-| `/landit/{environment}/LANDIT_REWARD_PRODUCTS_JSON` | `String` | 환급 대상 3·6개월 상품 JSON 배열(`appId`, `store`, `productId`, `months`). develop EC2 env에만 주입. 이름을 `LANDIT_REWARD_PRODUCTS`로 쓰면 Spring이 `landit.reward.products`(List)에도 바인딩해 API 기동이 실패한다 |
+| `/landit/{environment}/LANDIT_REWARD_ENABLED` | `String` | 환급 챌린지 적립 계산·조회 사용 여부, 기본값 `false`. develop EC2 env와 prod ECS API secrets로 주입한다 |
+| `/landit/{environment}/LANDIT_REWARD_CAPTURE_ENABLED` | `String` | 환급 활성화 전 결제·학습 근거 사전 수집 여부, 기본값 `false`. develop EC2 env와 prod ECS API secrets로 주입한다 |
+| `/landit/develop/LANDIT_REWARD_PRODUCTS_JSON` | `String` | 환급 대상 3·6개월 상품 JSON 배열(`appId`, `store`, `productId`, `months`). develop EC2 env에만 주입. 이름을 `LANDIT_REWARD_PRODUCTS`로 쓰면 Spring이 `landit.reward.products`(List)에도 바인딩해 API 기동이 실패한다 |
+| `/landit/prod/LANDIT_REWARD_PRODUCTS` | `String` | 기존 운영 상품 JSON 경로를 유지하며 ECS에는 `LANDIT_REWARD_PRODUCTS_JSON`으로 매핑한다. bare 이름으로 주입하지 않는다 |
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS` | `String` | backend access token 만료시간, 초 단위 |
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS` | `String` | backend refresh token 만료시간, 초 단위 |
 | `/landit/{environment}/LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES` | `String` | Google OIDC audience allowlist |
@@ -66,6 +67,14 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 `{environment}`는 `develop` 또는 `prod`만 사용합니다.
 
 `LANDIT_SUBSCRIPTION_LAUNCHED_AT`은 SSM에 먼저 등록한 뒤 API에 연결합니다. 운영은 ECS task definition 반영 후 해당 리비전으로 API를 배포해야 하며, 이후 SSM 값만 변경해도 새 API task가 시작되어야 반영됩니다.
+
+## 운영 환급 설정.
+
+운영 API는 `reward_configuration_enabled=true`로 활성화·사전 수집 플래그와 상품 목록을 SSM에서 주입한다. SSM 값은 Terraform 밖에서 관리하며 AI Worker에는 전달하지 않는다. 상품 목록의 기존 SSM 이름은 `LANDIT_REWARD_PRODUCTS`지만 컨테이너 이름은 반드시 `LANDIT_REWARD_PRODUCTS_JSON`이어야 한다. bare 이름은 Spring의 `landit.reward.products` 목록 바인딩과 충돌한다.
+
+운영 선반영 값은 `LANDIT_REWARD_ENABLED=true`, `LANDIT_REWARD_CAPTURE_ENABLED=false`다. BE는 enabled가 true이면 결제·학습 근거 수집도 수행하므로 capture를 함께 켤 필요가 없다. 세 파라미터를 먼저 준비하고 현재 이미지 digest를 보존한 Terraform plan·apply로 API를 재기동한다. 이후 BE 환급 버전의 정상 배포와 해당 DB 마이그레이션이 완료되면 별도 환경 설정 없이 활성화된다. 기존 구버전은 환급 설정을 사용하지 않는다.
+
+BE 배포는 현재 서비스의 task definition 설정을 보존한다. 기능을 중지하려면 SSM `LANDIT_REWARD_ENABLED=false`로 변경하고 API를 새로 배포한다. 사전 수집도 중지하려면 `LANDIT_REWARD_CAPTURE_ENABLED=false`를 유지한다. SSM 변경은 실행 중 task에 자동 반영되지 않는다. 상품 4개 매핑, 실제 실행 revision·digest, ALB target health와 `/actuator/health`를 확인하며 실결제·학습 적립 검증은 BE 환급 버전 배포 후 별도로 수행한다.
 
 ## 프리톡 한도
 

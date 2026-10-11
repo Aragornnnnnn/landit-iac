@@ -32,6 +32,7 @@ module "app_platform" {
   api_health_check_grace_period_seconds = var.api_health_check_grace_period_seconds
   ai_health_check_grace_period_seconds  = var.ai_health_check_grace_period_seconds
 
+  reward_configuration_enabled    = true
   revenuecat_apply_sandbox_events = var.revenuecat_apply_sandbox_events
   ai_internal_token_enabled       = var.ai_internal_token_enabled
   ai_internal_auth_enabled        = var.ai_internal_auth_enabled

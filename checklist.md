@@ -1,5 +1,11 @@
 # Checklist
 
+## 2026-10-11 RevenueCat SSM 등록과 연결
+
+- [x] develop/prod에 프로젝트 ID와 API 키를 등록하고 메타데이터를 확인한다.
+- [x] develop EC2 환경 파일 생성 경로와 prod ECS 새 revision에 연결한다.
+- [x] 연결 설정을 검증한다. 재배포는 사용자가 진행한다.
+
 ## 2026-10-11 LAN-637 운영 환급 설정 선반영.
 
 - [x] 최신 main과 운영 API의 이미지·환경 설정, BE 환급 설정 계약을 확인한다.

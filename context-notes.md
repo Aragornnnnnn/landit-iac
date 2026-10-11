@@ -1,5 +1,17 @@
 # Context Notes
 
+## 2026-10-11 RevenueCat SSM 등록과 연결
+
+- 사용자가 이슈 번호 없이 즉시 두 환경의 SSM 등록과 연결을 요청했다. 재배포는 제외한다.
+- 프로젝트 ID는 String, API 키는 SecureString으로 Terraform 밖에서 등록한다. 값은 파일과 검증 출력에 남기지 않는다.
+- 실제 develop은 EC2, prod는 ECS다. EC2 환경 파일 생성 경로를 갱신하고 ECS는 새 task definition만 등록한다.
+- 등록 검증 결과 develop 프로젝트 ID는 version 2, 나머지 세 parameter는 version 1이다.
+- develop `/opt/landit/bin/runtime-env`의 API 목록에 두 이름을 추가하고 `/run/landit/api.env`에서 두 이름과 권한 0600을 확인했다. 컨테이너를 재시작하지 않았다.
+- prod `prod-landit-api:28`은 현재 서비스 revision 27에서 두 SSM 참조만 추가했다. 비교 검증에서 다른 변경이 없으며 서비스 revision 27과 deployment ID가 그대로임을 확인했다.
+- 현재 BE 배포 스크립트는 서비스의 기존 revision을 복사한다. 사용자는 prod 재배포 때 revision 28을 명시적으로 사용해야 한다. 일반 force deployment나 기존 CI 재실행만으로는 새 연결을 가져오지 않는다.
+- `terraform fmt -recursive`, `terraform fmt -recursive -check`, dev/prod `terraform validate`, `git diff --check`, `bash scripts/test-dev-ec2-runtime.sh`가 통과했다. runtime 테스트의 rollback 오류 출력은 실패 경로 검증이며 종료 코드는 0이다.
+- Terraform plan/apply는 실행하지 않았다. 이번 운영 반영은 재배포를 제외한 SSM 등록, EC2 파일 갱신, ECS revision 등록으로 제한했다. 실제 애플리케이션 API 호출은 재배포 후 검증해야 한다.
+
 ## 2026-10-11 LAN-637 운영 환급 설정 선반영.
 
 - 사용자가 IaC 수정과 운영 ECS 반영을 명시적으로 요청했다. BE 기능 이미지 배포와 DB 변경은 이번 범위가 아니다.

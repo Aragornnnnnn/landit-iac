@@ -29,6 +29,8 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_SECRET` | `SecureString` | backend 자체 token signing secret |
 | `/landit/{environment}/LANDIT_AI_CLIENT_MODE` | `String` | backend AI client mode |
 | `/landit/{environment}/LANDIT_AI_BASE_URL` | `String` | backend에서 호출하는 AI service base URL |
+| `/landit/{environment}/LANDIT_REVENUECAT_PROJECT_ID` | `String` | backend RevenueCat 프로젝트 ID |
+| `/landit/{environment}/LANDIT_REVENUECAT_API_SECRET_KEY` | `SecureString` | backend RevenueCat API 인증 키 |
 | `/landit/{environment}/LANDIT_AI_INTERNAL_TOKEN` | `SecureString` | BE 전용 AI 호출 토큰. 개발 optional 주입, 운영 BE→AI 순차 주입은 [배포 절차](deployment-safety.md)를 따른다. |
 | `/landit/{environment}/LANDIT_MEMORY_WRITE_ENABLED` | `String` | backend 장기기억 저장 기능 사용 여부, 기본값 `false` |
 | `/landit/{environment}/LANDIT_MEMORY_USE_ENABLED` | `String` | backend 프리톡 장기기억 검색 기능 사용 여부, 기본값 `false` |
@@ -150,6 +152,8 @@ SSM parameter를 생성해도 ECS container environment에 자동으로 들어�
 장기기억 V1 parameter인 `LANDIT_MEMORY_WRITE_ENABLED`와 `LANDIT_MEMORY_USE_ENABLED`는 이 저장소가 SSM 리소스를 소유하지 않으므로 Terraform으로 생성하지 않습니다. ECS API task definition은 두 이름을 읽도록 연결되어 있으며, 출시 전 `/landit/develop`과 `/landit/prod`에 두 parameter를 `false`로 선행 생성하고 이름·타입·버전만 확인합니다. 기능을 켤 때만 운영 승인 후 SSM 값을 변경하고 API를 새로 배포합니다.
 
 기존 parameter의 값만 바꾸는 경우도 running task에는 자동 반영되지 않습니다. ECS secret은 container 시작 시점에 주입되므로, 값 변경 후에는 ECS service 새 deployment가 필요합니다.
+
+재배포를 사용자가 별도로 수행할 때는 SSM 참조를 추가한 ECS revision만 먼저 등록할 수 있습니다. 이 경우 배포 시 해당 revision을 명시해야 합니다. 현재 서비스 revision을 복사하는 배포 스크립트나 force deployment는 미적용 revision의 새 참조를 자동으로 가져오지 않습니다. develop EC2는 `/opt/landit/bin/runtime-env`의 API 목록에 이름을 추가하고 다음 배포 시 환경 파일을 다시 생성합니다.
 
 ## 운영 장기기억 USE 활성화와 복구
 

@@ -38,6 +38,12 @@ EXPECTED_BATCH_CONTRACTS = {
         "character_question_counts": {"chloe": 18, "marco": 48, "teddy": 174},
         "question_level_groups": {"LEVEL_1", "LEVEL_2_TO_3"},
     },
+    "LAN-601": {
+        "scenario_count": 30,
+        "question_count": 270,
+        "character_question_counts": {"chloe": 63, "marco": 63, "teddy": 144},
+        "question_level_groups": {"LEVEL_1", "LEVEL_2_TO_3", "LEVEL_4_TO_5"},
+    },
 }
 MODEL = "deepgram/aura-2"
 RESPONSE_FORMAT = "mp3"

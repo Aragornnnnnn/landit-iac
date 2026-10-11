@@ -34,10 +34,10 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_MEMORY_USE_ENABLED` | `String` | backend 프리톡 장기기억 검색 기능 사용 여부, 기본값 `false` |
 | `/landit/{environment}/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION` | `SecureString` | API의 RevenueCat 웹훅 Authorization 검증값, develop EC2 env와 prod ECS secrets로 주입 |
 | `/landit/{environment}/LANDIT_SUBSCRIPTION_LAUNCHED_AT` | `String` | API의 유료 기능 제한 도입 시각, 오프셋을 포함한 ISO 8601 형식. develop EC2 env와 prod ECS secrets로 주입 |
-| `/landit/{environment}/LANDIT_REWARD_ENABLED` | `String` | 환급 챌린지 적립 계산·조회 사용 여부, 기본값 `false`. develop EC2 env와 prod ECS API secrets로 주입한다 |
-| `/landit/{environment}/LANDIT_REWARD_CAPTURE_ENABLED` | `String` | 환급 활성화 전 결제·학습 근거 사전 수집 여부, 기본값 `false`. develop EC2 env와 prod ECS API secrets로 주입한다 |
-| `/landit/develop/LANDIT_REWARD_PRODUCTS_JSON` | `String` | 환급 대상 3·6개월 상품 JSON 배열(`appId`, `store`, `productId`, `months`). develop EC2 env에만 주입. 이름을 `LANDIT_REWARD_PRODUCTS`로 쓰면 Spring이 `landit.reward.products`(List)에도 바인딩해 API 기동이 실패한다 |
-| `/landit/prod/LANDIT_REWARD_PRODUCTS` | `String` | 기존 운영 상품 JSON 경로를 유지하며 ECS에는 `LANDIT_REWARD_PRODUCTS_JSON`으로 매핑한다. bare 이름으로 주입하지 않는다 |
+| `/landit/{environment}/LANDIT_REWARD_ENABLED` | `String` | 환급 챌린지 적립 계산·조회 사용 여부, 기본값 `false`. develop EC2 env와 prod ECS API secrets로 주입한다. |
+| `/landit/{environment}/LANDIT_REWARD_CAPTURE_ENABLED` | `String` | 환급 활성화 전 결제·학습 근거 사전 수집 여부, 기본값 `false`. develop EC2 env와 prod ECS API secrets로 주입한다. |
+| `/landit/develop/LANDIT_REWARD_PRODUCTS_JSON` | `String` | 환급 대상 3·6개월 상품 JSON 배열(`appId`, `store`, `productId`, `months`). develop EC2 env에만 주입. 이름을 `LANDIT_REWARD_PRODUCTS`로 쓰면 Spring이 `landit.reward.products`(List)에도 바인딩해 API 기동이 실패한다. |
+| `/landit/prod/LANDIT_REWARD_PRODUCTS` | `String` | 기존 운영 상품 JSON 경로를 유지하며 ECS에는 `LANDIT_REWARD_PRODUCTS_JSON`으로 매핑한다. bare 이름으로 주입하지 않는다. |
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS` | `String` | backend access token 만료시간, 초 단위 |
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS` | `String` | backend refresh token 만료시간, 초 단위 |
 | `/landit/{environment}/LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES` | `String` | Google OIDC audience allowlist |

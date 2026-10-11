@@ -1,5 +1,13 @@
 # Checklist
 
+## 2026-10-11 LAN-637 운영 환급 설정 선반영.
+
+- [x] 최신 main과 운영 API의 이미지·환경 설정, BE 환급 설정 계약을 확인한다.
+- [x] 운영 환급 SSM 주입과 등록값을 준비하고 문서를 갱신한다.
+- [x] Terraform fmt·validate·saved plan에서 환급 외 변경이 없는지 검증한다.
+- [x] 승인된 범위의 운영 apply 후 ECS·ALB·health와 이미지 보존을 확인한다.
+- [x] 변경과 검증 결과를 커밋하고 PR로 남긴다.
+
 ## 2026-09-06 LAN-418 production Worker CPU·메모리 증설
 
 - [x] 실제 production Worker 1024MiB와 origin/main의 512MiB 차이를 확인한다.

@@ -1,5 +1,23 @@
 # Context Notes
 
+## 2026-10-11 LAN-637 운영 환급 설정 선반영.
+
+- 사용자가 IaC 수정과 운영 ECS 반영을 명시적으로 요청했다. BE 기능 이미지 배포와 DB 변경은 이번 범위가 아니다.
+- 운영 API revision 26은 환급 설정을 주입하지 않는다. 상품 목록 SSM은 존재하며 활성화·사전 수집 SSM은 없다.
+- 최신 BE develop은 `LANDIT_REWARD_PRODUCTS_JSON`을 읽는다. 기존 SSM `LANDIT_REWARD_PRODUCTS`를 이 이름으로 매핑하고 bare 이름은 주입하지 않는다.
+- 운영 `LANDIT_REWARD_ENABLED=true`, `LANDIT_REWARD_CAPTURE_ENABLED=false`를 준비한다. enabled가 true이면 수집도 수행한다.
+- 현재 API·AI 이미지 digest와 기존 설정을 보존한 saved plan을 검토한 뒤 운영 API만 반영한다. 적용 뒤 안정화·health·이미지 일치를 확인한다.
+- 공통 모듈은 `reward_configuration_enabled=false`가 기본이며 운영 root만 true를 전달한다. 기존 prod 상품 SSM 경로를 재사용하고 개발의 `_JSON` SSM 경로는 유지한다.
+- `terraform fmt -recursive -check`, dev·prod `terraform validate`, Push 계약·dev EC2 runtime·이미지 보존 단위 테스트 4개가 통과했다. runtime 테스트의 health 실패 문구는 의도한 rollback fixture다.
+- 전체 plan에는 기존 AI 이미지 state 차이가 있어 적용하지 않았다. API service 대상 saved plan은 API task definition 교체와 service revision 변경만 포함했다. live task와 정규화 대조로 환급 SSM 3개 외 컨테이너 변경 없음, 이미지·CPU·메모리·역할 보존을 확인했다.
+- 운영 SSM ENABLED=true와 CAPTURE_ENABLED=false를 String/Standard version 1로 생성하고 재조회 일치를 확인했다. 기존 상품 SSM version 1의 4개 매핑은 변경하지 않았다.
+- apply 직전 실행 이미지·revision 일치 검사를 통과하고 API 대상 saved plan을 적용했다. `1 added, 1 changed, 1 destroyed`는 task definition 교체와 service 변경이며 `skip_destroy=true`로 과거 revision은 보존한다. 새 revision은 27이다.
+- 적용 후 전체 plan에는 기존 AI task definition·service의 이미지/state 차이만 남고 API·환급 관련 변경은 없다. 이 AI 차이는 적용하지 않았다.
+- 운영 API revision 27은 desired/running 1/1, pending 0, failed task 0, rollout COMPLETED로 안정화됐다. 새 ALB target은 healthy이며 공개 `/actuator/health`는 HTTP 200 UP이다. 이전 revision 26은 ACTIVE로 보존됐다.
+- 실제 API image digest는 적용 전과 같으며 AI의 task ARN·deployment ID·image digest도 동일하다. 새 BE의 `serviceVersion`은 기존 운영 SHA와 같고 Spring 기동은 202.494초에 완료됐다. 기동 오류는 없었다.
+- 환급 관련 BE 코드와 DB 마이그레이션 배포, 실제 결제·학습 적립 검증은 수행하지 않았다. 현재 구버전은 환급 설정을 소비하지 않으며 해당 BE 버전 배포 뒤 기능이 활성화된다.
+- 변경은 `feat/LAN-637`에 커밋하고 SSH push를 검증했다. PR #55를 생성했으며 main 병합은 수행하지 않았다. 다음 main 기준 Terraform apply 전에 이 PR을 병합해 운영 설정이 제거되지 않도록 해야 한다.
+
 ## 2026-09-06 LAN-418 production Worker CPU·메모리 증설
 
 - production Worker 메모리 1024MiB 변경 커밋 `0588228`은 PR #23 병합 후 기존 `feat/LAN-418` 브랜치에서 추가돼 main에 반영되지 않았다.

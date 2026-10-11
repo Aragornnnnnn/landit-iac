@@ -315,6 +315,144 @@ class SentryDiscordRelayTests(unittest.TestCase):
             context.invoked_function_arn,
         )
 
+    def build_embed(self, event):
+        payload = json.loads(self.valid_event()["body"])
+        payload["data"]["event"].update(event)
+        return relay.build_discord_payload(payload)["embeds"][0]
+
+    def fields(self, embed):
+        return {field["name"]: field["value"] for field in embed["fields"]}
+
+    def test_ai_alert_shows_cause_request_and_app_location(self):
+        embed = self.build_embed({
+            "project": "ai-prod",
+            "title": "APITimeoutError: Request timed out.",
+            "exception": {"values": [
+                {"type": "ReadTimeout", "value": "The read operation timed out"},
+                {"type": "APITimeoutError", "value": "Request timed out.", "stacktrace": {"frames": [
+                    {"filename": "app/handler.py", "function": "analyze", "lineno": 20, "in_app": True},
+                    {"filename": "app/provider.py", "function": "generate", "lineno": 42, "in_app": True},
+                    {"filename": "openai/client.py", "function": "request", "lineno": 1000, "in_app": False},
+                ]}},
+            ]},
+            "request": {"method": "POST", "url": "http://ai.landit.im/api/v1/pronunciation/analyze"},
+            "tags": [["provider", "openai"], ["error_code", "AI_GENERATION_FAILED"]],
+            "timestamp": 0.5,
+            "release": "abc123",
+            "event_id": "event123",
+            "contexts": {"trace": {"trace_id": "trace123"}},
+        })
+        fields = self.fields(embed)
+        self.assertIn("[AI]", embed["title"])
+        self.assertEqual("ReadTimeout: The read operation timed out\n→ APITimeoutError: Request timed out.", fields["예외 (원인 → 최종)"])
+        self.assertEqual("POST http://ai.landit.im/api/v1/pronunciation/analyze", fields["요청"])
+        stack = fields["앱 호출 위치 (오류 지점부터)"]
+        self.assertLess(stack.index("generate"), stack.index("analyze"))
+        self.assertIn("app/provider.py:42", stack)
+        self.assertNotIn("openai/client.py", stack)
+        self.assertIn("provider: openai", fields["처리 정보"])
+        self.assertEqual("abc123", fields["릴리스"])
+        self.assertIn("trace: trace123", fields["추적 ID"])
+        self.assertEqual("1970-01-01T00:00:00.500000+00:00", embed["timestamp"])
+
+    def test_be_api_event_and_webhook_show_same_stack(self):
+        raw_exception = {"values": [{"type": "IllegalStateException", "value": "failure", "stacktrace": {"frames": [
+            {"filename": "Controller.java", "function": "submit", "lineno": 30, "in_app": True},
+            {"filename": "Service.java", "function": "save", "lineno": 80, "in_app": True},
+        ]}}]}
+        api_exception = json.loads(json.dumps(raw_exception).replace('"lineno"', '"lineNo"').replace('"in_app"', '"inApp"'))
+        request_data = {"method": "POST", "url": "https://api.landit.im/api/v1/sessions"}
+        webhook = self.build_embed({"exception": raw_exception, "request": request_data})
+        api = self.build_embed({"entries": [
+            {"type": "exception", "data": api_exception},
+            {"type": "request", "data": request_data},
+        ]})
+        self.assertEqual(webhook, api)
+        self.assertIn("Service.java:80", self.fields(api)["앱 호출 위치 (오류 지점부터)"])
+
+    def test_library_only_stack_uses_inner_cause_throw_site(self):
+        embed = self.build_embed({"exception": {"values": [
+            {"type": "ReadTimeout", "stacktrace": {"frames": [
+                {"filename": "httpcore/sync.py", "function": "read", "lineno": 126},
+                {"filename": "httpcore/exceptions.py", "function": "map_exceptions", "lineno": 14},
+            ]}},
+            {"type": "APITimeoutError", "stacktrace": {"frames": [
+                {"filename": "openai/client.py", "function": "request", "lineno": 1000},
+            ]}},
+        ]}})
+        stack = self.fields(embed)["호출 경로 (오류 지점부터)"]
+        self.assertLess(stack.index("map_exceptions"), stack.index("read"))
+        self.assertNotIn("openai/client.py", stack)
+
+    def test_missing_request_and_stack_are_explicit(self):
+        fields = self.fields(self.build_embed({}))
+        self.assertEqual("요청 경로 미수집", fields["요청"])
+        self.assertEqual("스택 미수집", fields["호출 경로 (오류 지점부터)"])
+        self.assertEqual("IllegalStateException: 테스트 장애", fields["예외 (원인 → 최종)"])
+        self.assertNotIn("릴리스", fields)
+
+    def test_endpoint_tag_is_used_without_guessing_http_method(self):
+        for tags in ({"endpoint": "/api/analyze?token=secret"}, [{"key": "endpoint", "value": "/api/analyze?token=secret"}]):
+            with self.subTest(tags=tags):
+                fields = self.fields(self.build_embed({"tags": tags, "transaction": "analyze_job"}))
+                self.assertEqual("/api/analyze", fields["요청"])
+                self.assertIn("transaction: analyze_job", fields["처리 정보"])
+
+    def test_sensitive_request_and_stack_data_are_not_forwarded(self):
+        url = "https://username:password@api.landit.im/path?token=querysecret#fragmentsecret"
+        embed = self.build_embed({
+            "title": "Failure " + url,
+            "request": {"url": url, "method": "POST", "data": "bodysecret", "headers": {"Authorization": "headersecret"}, "cookies": "cookiesecret"},
+            "user": {"email": "usersecret@example.com"},
+            "exception": {"values": [{"type": "Error", "value": "Bearer bearer-secret " + url, "stacktrace": {"frames": [
+                {"filename": "app/client.py", "function": "call```", "lineno": 12, "in_app": True, "vars": {"key": "localsecret"}, "context_line": "sourcesecret"},
+            ]}}]},
+            "extra": {"payload": "extrasecret"},
+            "tags": {"private": "tagsecret"},
+        })
+        rendered = json.dumps(embed)
+        for secret in ("username", "password", "querysecret", "fragmentsecret", "bodysecret", "headersecret", "cookiesecret", "usersecret", "bearer-secret", "localsecret", "sourcesecret", "extrasecret", "tagsecret"):
+            self.assertNotIn(secret, rendered)
+        self.assertEqual("POST https://api.landit.im/path", self.fields(embed)["요청"])
+        self.assertEqual(2, self.fields(embed)["앱 호출 위치 (오류 지점부터)"].count("```"))
+
+    def test_long_multibyte_event_stays_within_discord_limits(self):
+        long_text = "오류😀" * 6000
+        embed = self.build_embed({
+            "title": long_text, "project": long_text, "environment": long_text, "level": long_text,
+            "release": {"version": long_text}, "event_id": long_text,
+            "request": {"url": "https://example.com/" + long_text, "method": "POST"},
+            "tags": {key: long_text for key in ("workflow", "provider", "model", "error_code", "status_code")},
+            "transaction": long_text, "contexts": {"trace": {"trace_id": long_text}},
+            "exception": {"values": [{"type": str(index), "value": long_text, "stacktrace": {"frames": [
+                {"filename": long_text, "function": str(frame), "lineno": frame, "in_app": True} for frame in range(100)
+            ]}} for index in range(10)]},
+        })
+        units = lambda value: len(value.encode("utf-16-le")) // 2
+        self.assertLessEqual(units(embed["title"]), 256)
+        self.assertLessEqual(len(embed["fields"]), 25)
+        total = units(embed["title"]) + units(embed["description"])
+        for field in embed["fields"]:
+            self.assertTrue(field["value"])
+            self.assertLessEqual(units(field["value"]), 1024)
+            total += units(field["name"]) + units(field["value"])
+        self.assertLessEqual(total, 6000)
+        self.assertIn("9:", self.fields(embed)["예외 (원인 → 최종)"])
+
+    def test_malformed_optional_details_do_not_break_alert(self):
+        for value in (None, "invalid", 42, [], [None, "invalid"]):
+            with self.subTest(value=value):
+                embed = self.build_embed({"request": value, "exception": value, "entries": value, "tags": value, "contexts": value, "timestamp": "not-a-date"})
+                self.assertEqual("요청 경로 미수집", self.fields(embed)["요청"])
+                self.assertNotIn("timestamp", embed)
+
+    def test_invalid_request_url_does_not_break_alert(self):
+        for url in ("https://[invalid", "javascript:alert(1)"):
+            with self.subTest(url=url):
+                embed = self.build_embed({"request": {"url": url}, "web_url": url})
+                self.assertNotIn("url", embed)
+                self.assertEqual("요청 경로 미수집", self.fields(embed)["요청"])
+
 
 if __name__ == "__main__":
     unittest.main()

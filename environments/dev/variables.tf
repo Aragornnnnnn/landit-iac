@@ -147,6 +147,12 @@ variable "worker_desired_count" {
   default     = 1
 }
 
+variable "expression_review_schedule_enabled" {
+  description = "Whether development expression review quizzes run daily at 08:00 Asia/Seoul."
+  type        = bool
+  default     = true
+}
+
 variable "review_reminder_schedule_expression" {
   description = "EventBridge Scheduler expression for development review reminders."
   type        = string

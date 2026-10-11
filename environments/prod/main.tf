@@ -44,6 +44,7 @@ module "app_platform" {
   api_desired_count               = var.api_desired_count
   worker_desired_count            = var.worker_desired_count
 
+  expression_review_schedule_enabled  = var.expression_review_schedule_enabled
   review_reminder_schedule_expression = var.review_reminder_schedule_expression
   review_reminder_schedule_enabled    = var.review_reminder_schedule_enabled
 

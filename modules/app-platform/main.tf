@@ -1541,6 +1541,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_FREE_TALK_CONTEXT_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_FREE_TALK_CONTEXT_ENABLED" },
         { name = "LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION", valueFrom = "${local.ssm_path}/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION" },
         { name = "LANDIT_TRIAL_REMINDER_ANNUAL_PRODUCT_IDS", valueFrom = "${local.ssm_path}/LANDIT_TRIAL_REMINDER_ANNUAL_PRODUCT_IDS" },
+        { name = "LANDIT_SUBSCRIPTION_LAUNCHED_AT", valueFrom = "${local.ssm_path}/LANDIT_SUBSCRIPTION_LAUNCHED_AT" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_BE_SENTRY_DSN" }
         ], var.ai_internal_token_enabled ? [
         { name = "LANDIT_AI_INTERNAL_TOKEN", valueFrom = "${local.ssm_path}/LANDIT_AI_INTERNAL_TOKEN" }

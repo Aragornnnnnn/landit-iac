@@ -30,7 +30,8 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_AI_CLIENT_MODE` | `String` | backend AI client mode |
 | `/landit/{environment}/LANDIT_AI_BASE_URL` | `String` | backend에서 호출하는 AI service base URL |
 | `/landit/{environment}/LANDIT_REVENUECAT_PROJECT_ID` | `String` | backend RevenueCat 프로젝트 ID |
-| `/landit/{environment}/LANDIT_REVENUECAT_API_SECRET_KEY` | `SecureString` | backend RevenueCat API 인증 키 |
+| `/landit/{environment}/LANDIT_REVENUECAT_API_SECRET_KEY` | `SecureString` | backend RevenueCat v2 조회 키. |
+| `/landit/{environment}/LANDIT_REVENUECAT_ENTITLEMENT_SECRET_KEY` | `SecureString` | LAN-659의 premium 부여·회수용 v1 Secret 키. 개발 EC2·운영 ECS API에만 주입하며 AI에는 전달하지 않는다. |
 | `/landit/{environment}/LANDIT_AI_INTERNAL_TOKEN` | `SecureString` | BE 전용 AI 호출 토큰. 개발 optional 주입, 운영 BE→AI 순차 주입은 [배포 절차](deployment-safety.md)를 따른다. |
 | `/landit/{environment}/LANDIT_MEMORY_WRITE_ENABLED` | `String` | backend 장기기억 저장 기능 사용 여부, 기본값 `false` |
 | `/landit/{environment}/LANDIT_MEMORY_USE_ENABLED` | `String` | backend 프리톡 장기기억 검색 기능 사용 여부, 기본값 `false` |

@@ -70,6 +70,8 @@ BE·AI는 같은 EC2에서 실행하고 Caddy가 `api-develop.landit.im`, `ai-de
 
 Vercel DNS는 EC2 Elastic IP를 가리킨다. 임시 도메인 `api-ec2-develop.landit.im`, `ai-ec2-develop.landit.im`은 검증용으로 유지한다. 배포 health check 실패 시 직전 이미지 SHA로 자동 복구한다.
 
+개발 환경의 08시 복습·20시 학습 알림은 기본 비활성화한다. 개발·운영에 같은 기기 토큰이 등록되어도 개발 자동 알림이 추가로 발송되지 않도록 `expression_review_schedule_enabled`와 `review_reminder_schedule_enabled`를 `false`로 유지한다.
+
 ## 주요 경로
 
 | 경로 | 역할 |

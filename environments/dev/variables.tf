@@ -150,7 +150,7 @@ variable "worker_desired_count" {
 variable "expression_review_schedule_enabled" {
   description = "Whether development expression review quizzes run daily at 08:00 Asia/Seoul."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "review_reminder_schedule_expression" {
@@ -162,7 +162,7 @@ variable "review_reminder_schedule_expression" {
 variable "review_reminder_schedule_enabled" {
   description = "Whether the development review reminder scheduler is enabled."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "alb_certificate_arn" {

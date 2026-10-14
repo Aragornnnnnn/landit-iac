@@ -47,6 +47,24 @@
 - config 파일, lockfile, generated file에는 역할 주석 규칙을 적용하지 않는다.
 - 기존 파일의 무관한 포맷, 주석, 구조는 바꾸지 않는다.
 
+## Code Review Rules
+
+- 리뷰는 한국어로 간결하게 작성하고, 변경으로 생긴 실제 결함·보안 문제·계약 위반·회귀에 근거와 영향을 적는다. 취향, formatter가 검사하는 형식, 범위 밖 리팩터링은 지적하지 않는다.
+- 변경된 Terraform root·module·workflow와 아래 규칙의 관련 범위를 검토한다. 다른 저장소의 계약은 접근 가능한 코드·명세로 비교하고, 확인하지 못한 내용은 사실로 단정하지 않는다.
+
+### 환경 분리와 변경 영향
+
+- `environments/dev`, `environments/prod`, `environments/shared`, `bootstrap/state-backend`의 backend key·변수·리소스 참조를 분리한다. 공통 module 변경은 모든 호출 환경의 영향을 확인하고, 개발 변경이 운영 리소스나 데이터에 적용되는 경로를 지적한다.
+- 삭제·교체·주소 변경·state 이동은 데이터 보존, downtime, 의존 리소스 영향을 확인한다. 기존 리소스를 유지할 수 있는 `moved`·명시적 이전 절차를 검토하고, plan 근거 없이 무중단 또는 안전한 적용을 단정하지 않는다.
+- Scheduler·SQS·이벤트 대상 변경은 환경, 중복 실행, 멱등성, 재시도·DLQ를 확인한다. 개발 자동 알림은 명시적인 요구 없이 활성화하지 않아야 하며, 운영과 같은 토큰으로 중복 발송하지 않도록 기본 비활성화를 유지한다.
+
+### 권한·공개 범위·실행 계약
+
+- IAM action·resource·trust policy, GitHub OIDC subject·audience의 권한 확대는 실제 호출에 필요한 최소 범위인지 확인한다. task role과 execution role을 구분하고, plan/apply 역할 및 environment 승인 경계를 보존한다.
+- Security Group·ALB·S3·CloudFront 변경은 의도하지 않은 외부 공개와 인증 우회를 확인한다. 공통 콘텐츠는 private S3와 CloudFront OAC 경계를 유지한다.
+- secret 값·실제 tfvars·plan·state가 저장소, 로그, 공개 artifact에 남지 않아야 한다. `sensitive` 표시는 state 저장을 막지 않으므로 SSM 값은 Terraform 밖에서 관리하는 원칙을 유지한다.
+- ECS·EC2의 환경 변수, SSM 경로, health check, SQS 메시지와 권한은 `Aragornnnnnn/landit-be`·`Aragornnnnnn/landit-ai`의 실행 계약과 맞아야 한다. 배포 순서와 이전 버전 호환성도 확인한다.
+
 ## Git / 검증
 
 - 작업에는 issue number가 필요하며, 없으면 사용자에게 issue number를 요청한다.

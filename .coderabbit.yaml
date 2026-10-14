@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Codex로 리뷰 규칙을 이전했으며 자동 리뷰 재활성화를 막는 설정만 유지합니다.
+reviews:
+  auto_review:
+    enabled: false
+    auto_incremental_review: false
+    labels: []
+    description_keyword: ""

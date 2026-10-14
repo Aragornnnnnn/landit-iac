@@ -83,3 +83,12 @@ Vercel DNS는 EC2 Elastic IP를 가리킨다. 임시 도메인 `api-ec2-develop.
 | `modules/app-platform` | ECS Fargate application platform module |
 | `.github/workflows/terraform.yml` | 수동 Terraform plan/apply workflow |
 | `docs/` | 개발자 가이드와 아키텍처 질문 |
+
+## 자동 코드 리뷰
+
+- 리뷰 규칙의 기준은 `AGENTS.md`의 `Code Review Rules`입니다. 경로별로 관련 규칙만 적용합니다.
+- [Codex 코드 리뷰 설정](https://chatgpt.com/settings/code-review)에서 이 저장소의 모든 PR에 일반 리뷰를 `푸시할 때마다`, 보안 리뷰를 `PR이 열릴 때` 실행하도록 설정합니다. PR이 없는 브랜치 push는 PR 리뷰 대상이 아닙니다.
+- 철저한 검토는 OFF로 두고, 추가 크레딧 사용도 끕니다. 실행 시점과 크레딧 설정은 웹 설정이며 `AGENTS.md`로 변경되지 않습니다.
+- 필요하면 PR 댓글의 `@codex review` 또는 `@codex security review`로 수동 리뷰를 요청합니다. 리뷰 지침은 테스트·브랜치 보호·사람의 승인을 대체하지 않습니다.
+- CodeRabbit 자동 리뷰는 사용하지 않습니다. `.coderabbit.yaml`은 자동·증분 리뷰와 label·본문 키워드 자동 실행을 끄는 최소 설정만 유지합니다. 파일 삭제만으로는 기본값 또는 상위 설정에 따라 리뷰가 다시 켜질 수 있습니다.
+- 기존 PR·작업 문서의 CodeRabbit 리뷰 기록은 과거 근거로 보존합니다. 다른 저장소를 문서에 언급하는 것만으로 Codex의 접근 권한이나 교차 저장소 분석이 설정되지는 않습니다.

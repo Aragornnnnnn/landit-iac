@@ -37,6 +37,7 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_MEMORY_USE_ENABLED` | `String` | backend 프리톡 장기기억 검색 기능 사용 여부, 기본값 `false` |
 | `/landit/{environment}/LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION` | `SecureString` | API의 RevenueCat 웹훅 Authorization 검증값, develop EC2 env와 prod ECS secrets로 주입 |
 | `/landit/{environment}/LANDIT_SUBSCRIPTION_LAUNCHED_AT` | `String` | API의 유료 기능 제한 도입 시각, 오프셋을 포함한 ISO 8601 형식. develop EC2 env와 prod ECS secrets로 주입 |
+| `/landit/{environment}/LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE` | `String` | 무료 사용자 표현 학습 1개 개방(LAN-704)의 기준 시각, 오프셋을 포함한 ISO 8601 형식(예 `2026-10-21T00:00:00+09:00`). 이 시각 이후 처음 완료한 오늘의 시나리오의 1번 표현이 체험 대상. 비어 있으면 체험이 꺼진 채 기존 잠금만 적용. develop EC2 env와 prod ECS secrets로 주입 |
 | `/landit/{environment}/LANDIT_REWARD_ENABLED` | `String` | 환급 챌린지 적립 계산·조회 사용 여부, 기본값 `false`. develop EC2 env와 prod ECS API secrets로 주입한다. |
 | `/landit/{environment}/LANDIT_REWARD_CAPTURE_ENABLED` | `String` | 환급 활성화 전 결제·학습 근거 사전 수집 여부, 기본값 `false`. develop EC2 env와 prod ECS API secrets로 주입한다. |
 | `/landit/develop/LANDIT_REWARD_PRODUCTS_JSON` | `String` | 환급 대상 3·6개월 상품 JSON 배열(`appId`, `store`, `productId`, `months`). develop EC2 env에만 주입. 이름을 `LANDIT_REWARD_PRODUCTS`로 쓰면 Spring이 `landit.reward.products`(List)에도 바인딩해 API 기동이 실패한다. |
@@ -70,6 +71,8 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 `{environment}`는 `develop` 또는 `prod`만 사용합니다.
 
 `LANDIT_SUBSCRIPTION_LAUNCHED_AT`은 SSM에 먼저 등록한 뒤 API에 연결합니다. 운영은 ECS task definition 반영 후 해당 리비전으로 API를 배포해야 하며, 이후 SSM 값만 변경해도 새 API task가 시작되어야 반영됩니다.
+
+`LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE`(LAN-707)도 같은 순서를 따릅니다. ECS task definition `secrets`가 참조하는 parameter가 없으면 새 task가 시작하지 못하므로, **이 변경을 apply하기 전에 develop·prod 두 환경에 값을 먼저 `put-parameter`합니다.** 값은 BE(LAN-704)와 FE 게이트 수정이 모두 올라간 날의 0시(`+09:00`)로 정하며, 그 전에는 빈 문자열이 아니라 아직 오지 않은 미래 시각을 넣어 체험을 닫아 둘 수 있습니다. API는 서버 시작 때 한 번 읽고 기동 로그에 활성 여부를 남깁니다.
 
 ## 운영 환급 설정.
 
@@ -188,7 +191,7 @@ SSM parameter를 생성해도 ECS container environment에 자동으로 들어�
 
 - SSM 값은 shell history, CI log, git diff에 남지 않는 방식으로 갱신합니다.
 - `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `LANDIT_AUTH_TOKEN_SECRET`, `LANDIT_BE_SENTRY_DSN`, `LANDIT_AI_SENTRY_DSN`, `LANDIT_GRAFANA_CLOUD_OTLP_HEADERS`, `LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`, `LANDIT_AI_INTERNAL_TOKEN`, `LANDIT_SENTRY_RELAY_AUTH_TOKEN`, `LANDIT_SENTRY_DISCORD_WEBHOOK_URL`, `OPENROUTER_API_KEY`는 `SecureString`으로만 관리합니다.
-- `LANDIT_CORS_ALLOWED_ORIGINS`, `LANDIT_AI_CLIENT_MODE`, `LANDIT_AI_BASE_URL`, `LANDIT_MEMORY_WRITE_ENABLED`, `LANDIT_MEMORY_USE_ENABLED`, `LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES`, `LANDIT_AUTH_OIDC_KAKAO_AUDIENCES`, `LANDIT_AUTH_OIDC_APPLE_AUDIENCES`, `LLM_PROVIDER`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`, `MESSAGE_FEEDBACK_MODEL`, `MESSAGE_FEEDBACK_REVIEW_ENABLED`은 secret이 아니므로 `String`으로 관리합니다.
+- `LANDIT_CORS_ALLOWED_ORIGINS`, `LANDIT_AI_CLIENT_MODE`, `LANDIT_AI_BASE_URL`, `LANDIT_SUBSCRIPTION_LAUNCHED_AT`, `LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE`, `LANDIT_MEMORY_WRITE_ENABLED`, `LANDIT_MEMORY_USE_ENABLED`, `LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES`, `LANDIT_AUTH_OIDC_KAKAO_AUDIENCES`, `LANDIT_AUTH_OIDC_APPLE_AUDIENCES`, `LLM_PROVIDER`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`, `MESSAGE_FEEDBACK_MODEL`, `MESSAGE_FEEDBACK_REVIEW_ENABLED`은 secret이 아니므로 `String`으로 관리합니다.
 - Terraform에서 secret 값을 직접 생성하거나 import하지 않습니다.
 - 값 변경 후에는 값 자체가 아니라 parameter name, type, version만 검증 기록에 남깁니다.
 - ECS task definition에 연결된 SSM 값은 task 재시작 또는 새 deployment 후에만 container environment에 반영됩니다.

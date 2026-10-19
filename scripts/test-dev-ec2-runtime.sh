@@ -173,6 +173,7 @@ values.update(LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION="Bearer lan477-test$secret
               LANDIT_REVENUECAT_API_SECRET_KEY="test-api$secret",
               LANDIT_REVENUECAT_ENTITLEMENT_SECRET_KEY="test-entitlement$secret",
               LANDIT_SUBSCRIPTION_LAUNCHED_AT="2026-09-11T14:44:00+09:00",
+              LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE="2026-10-21T00:00:00+09:00",
               LANDIT_TRIAL_REMINDER_ANNUAL_PRODUCT_IDS="com.saynow.app.premium.yearly,com.saynow.app.premium.yearly:yearly")
 values.update(LANDIT_REWARD_ENABLED="true", LANDIT_REWARD_CAPTURE_ENABLED="false",
               LANDIT_REWARD_PRODUCTS_JSON='[{"appId":"app1","store":"APP_STORE","productId":"com.saynow.app.premium.quarterly","months":3}]')
@@ -201,6 +202,7 @@ expected = {
     'LANDIT_REVENUECAT_API_SECRET_KEY="test-api$$secret"',
     'LANDIT_REVENUECAT_ENTITLEMENT_SECRET_KEY="test-entitlement$$secret"',
     'LANDIT_SUBSCRIPTION_LAUNCHED_AT="2026-09-11T14:44:00+09:00"',
+    'LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE="2026-10-21T00:00:00+09:00"',
     'LANDIT_AI_INTERNAL_TOKEN="lan474-token$$secret"',
     'LANDIT_REVENUECAT_APPLY_SANDBOX_EVENTS=true',
     'LANDIT_TRIAL_REMINDER_ANNUAL_PRODUCT_IDS="com.saynow.app.premium.yearly,com.saynow.app.premium.yearly:yearly"',

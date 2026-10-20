@@ -193,6 +193,7 @@ import json, pathlib, stat, sys
 directory = pathlib.Path(sys.argv[1])
 api = directory / "runtime/api.env"
 expected = {
+    'LANDIT_AI_ASSESSMENT_VERSION=text-score-v2.0',
     'LANDIT_FREE_TALK_CONTEXT_ENABLED="false"',
     'LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS="7200000"',
     'LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT="1000"',

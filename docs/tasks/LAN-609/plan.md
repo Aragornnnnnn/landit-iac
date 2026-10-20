@@ -18,6 +18,8 @@
 ## 배포 진행 중 관측.
 
 - 새 API는 17:41:36 KST 애플리케이션 시작을 완료했다. 기동 로그의 `APPLICATION FAILED TO START` 및 DB connection timeout은 없었고 공개 BE·AI health는 정상이다.
-- 두 API task가 공존하는 구간에서 별도 읽기 전용 DB 검증 연결 1회가 session pool 한도 15개로 거부됐다. 이 때문에 pool 설정을 임의 변경하지 않았으며 기존 task 종료 후 조회를 재검증한다.
+- 두 API task가 공존하는 구간에서 별도 읽기 전용 DB 검증 연결이 session pool 한도 15개로 거부됐다. 이 때문에 pool 설정을 임의 변경하지 않았으며 연결 정리 이후 동일한 읽기 전용 조회가 정상 복구됐다.
 - 적용 후 동일 입력의 전체 Terraform plan은 `No changes`다.
-- 아직 미완료: ECS rollout 완료, 기존 task 종료 이후 DB 재접속, 신규 실사용 평가의 v2 저장, 앱 실기기 표시. 합성 AI 응답은 이 항목들의 완료 증거로 사용하지 않는다.
+- 17:43:55 KST ECS rollout `COMPLETED`, desired/running 1, pending 0 및 실행 revision 39를 확인했다. 운영 API image digest는 그대로이며 AI revision 22·image digest·실행 task도 변경되지 않았다.
+- 이후 공개 API health `UP`, AI health `ok` 및 읽기 전용 운영 DB 재접속을 확인했다. 신규 task의 설정은 `LANDIT_AI_ASSESSMENT_VERSION=text-score-v2.0`이다. 이전 revision 38은 ACTIVE로 보존됐다.
+- 신규 실사용 평가의 v2 저장과 앱 실기기 표시는 아직 미확인이다. 전환 이후 새 평가가 아직 저장되지 않아 합성 AI 응답을 실사용 저장 검증으로 대체하지 않았다. 기존 이력 재평가나 사용자 계정의 테스트 세션 생성은 하지 않았다.

@@ -45,6 +45,31 @@ from scripts.expression_pronunciation_audio import (
     publish_reference,
     build_word_pool_index,
     execute_word_pool_backfill,
+    CLASS_EXPRESSION,
+    CLASS_LEGACY_WORD,
+    CLASS_MANIFESTS,
+    CLASS_OTHER,
+    CLASS_REFERENCE,
+    CLASS_SENTENCE,
+    CLASS_SHARED_WORD,
+    CLASS_WORD_POOL,
+    LEGACY_WORD_KEY_PATTERN,
+    PRUNE_LIST_KEY_PREFIX,
+    PrunePlan,
+    SHARED_WORD_KEY_PATTERN,
+    assert_prune_targets_are_legacy_word_keys,
+    assert_prune_targets_unreferenced,
+    audio_url_to_key,
+    build_prune_list,
+    classify_pronunciation_key,
+    count_pronunciation_keys,
+    describe_prune_targets,
+    execute_legacy_word_prune,
+    load_word_audio_keys,
+    plan_legacy_word_prune,
+    publish_prune_list,
+    verify_legacy_word_prune,
+    verify_shared_copies,
     load_generation_state,
     load_word_pool_index,
     load_word_texts,
@@ -1443,6 +1468,10 @@ class FakeS3:
         self.objects: dict[str, dict] = dict(objects or {})
         self.bodies: dict[str, bytes] = {}
         self.copies: list[tuple[str, str]] = []
+        # LAN-562: 호출 순서(게시가 삭제보다 먼저인지)와 삭제 배치를 검사한다
+        self.operations: list[tuple[str, str | None]] = []
+        self.delete_batches: list[list[str]] = []
+        self.delete_errors: dict[str, str] = {}
 
     def add_audio(self, key: str, body: bytes) -> None:
         self.objects[key] = audio_head(len(body), hashlib.sha256(body).hexdigest())
@@ -1455,8 +1484,25 @@ class FakeS3:
     def __call__(self, command, **kwargs):
         operation = command[2]
         key = self._option(command, "--key")
+        self.operations.append((operation, key))
         if operation == "head-bucket":
             return _CompletedCall(0, "{}")
+        if operation == "delete-objects":
+            spec_path = self._option(command, "--delete").removeprefix("file://")
+            spec = json.loads(Path(spec_path).read_text(encoding="utf-8"))
+            keys = [item["Key"] for item in spec["Objects"]]
+            self.delete_batches.append(keys)
+            deleted, errors = [], []
+            for item in keys:
+                if item in self.delete_errors:
+                    errors.append(
+                        {"Key": item, "Code": "AccessDenied", "Message": self.delete_errors[item]}
+                    )
+                    continue
+                self.objects.pop(item, None)
+                self.bodies.pop(item, None)
+                deleted.append({"Key": item})
+            return _CompletedCall(0, json.dumps({"Deleted": deleted, "Errors": errors}))
         if operation == "list-objects-v2":
             prefix = self._option(command, "--prefix")
             keys = [item for item in self.objects if item.startswith(prefix)]
@@ -2438,3 +2484,382 @@ class SharedClipAccentTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+def shared_key(locale: str, fingerprint: str) -> str:
+    return f"content/expression-pronunciation-audio/word/{locale}/{fingerprint}.mp3"
+
+
+def populated_prune_s3(expression_ids=(5, 900), locales=("EN_US", "EN_GB")) -> FakeS3:
+    """옛 단어 키·공용 사본·문장·표현·매니페스트·참조·풀 색인이 고루 있는 버킷."""
+    s3 = FakeS3()
+    prefix = "content/expression-pronunciation-audio"
+    for locale in locales:
+        for word in ("the", "take"):
+            fingerprint = word_fingerprint(locale, word)
+            s3.objects[shared_key(locale, fingerprint)] = audio_head(10, f"sha-{word}")
+            for order, expression_id in enumerate(expression_ids, start=1):
+                s3.objects[legacy_word_key(expression_id, locale, order, fingerprint)] = (
+                    audio_head(10, f"sha-{word}")
+                )
+        for expression_id in expression_ids:
+            s3.objects[f"{prefix}/{expression_id}/{locale}/sentence/{'a' * 64}.mp3"] = (
+                audio_head(20, "sha-sentence")
+            )
+            s3.objects[f"{prefix}/{expression_id}/{locale}/expression/{'b' * 64}.mp3"] = (
+                audio_head(20, "sha-expression")
+            )
+    s3.objects[f"{prefix}/manifests/be-{'c' * 64}.json"] = {"ContentLength": 1}
+    s3.objects[f"{prefix}/reference/EN_US-{'d' * 64}.json"] = {"ContentLength": 1}
+    s3.objects[f"{prefix}/word-pool/{'e' * 64}.json"] = {"ContentLength": 1}
+    return s3
+
+
+def prune_plan_for(s3: FakeS3) -> PrunePlan:
+    return plan_legacy_word_prune(list(s3.objects), "bucket")
+
+
+class PruneLegacyWordKeyPlanTests(unittest.TestCase):
+    def test_plan_targets_only_legacy_word_keys_and_counts_every_class(self):
+        s3 = populated_prune_s3()
+
+        plan = prune_plan_for(s3)
+
+        # 표현 2 × 억양 2 × 단어 2 = 8개 옛 키, 그 밖의 분류는 하나도 대상이 아니다
+        self.assertEqual(len(plan.targets), 8)
+        self.assertTrue(all(LEGACY_WORD_KEY_PATTERN.match(t.key) for t in plan.targets))
+        self.assertEqual(plan.targets, tuple(sorted(plan.targets, key=lambda t: t.key)))
+        self.assertEqual(
+            plan.key_counts,
+            {
+                CLASS_LEGACY_WORD: 8,
+                CLASS_SHARED_WORD: 4,
+                CLASS_SENTENCE: 4,
+                CLASS_EXPRESSION: 4,
+                CLASS_MANIFESTS: 1,
+                CLASS_REFERENCE: 1,
+                CLASS_WORD_POOL: 1,
+                CLASS_OTHER: 0,
+            },
+        )
+        self.assertEqual(len(plan.units), 4)
+
+    def test_every_target_points_at_its_shared_key(self):
+        plan = prune_plan_for(populated_prune_s3())
+
+        for target in plan.targets:
+            self.assertEqual(
+                target.shared_key, shared_word_key(target.accent_locale, target.fingerprint)
+            )
+
+    def test_protected_paths_in_a_target_list_stop_immediately(self):
+        prefix = "content/expression-pronunciation-audio"
+        protected = [
+            f"{prefix}/5/EN_US/sentence/{'a' * 64}.mp3",
+            f"{prefix}/5/EN_US/expression/{'a' * 64}.mp3",
+            f"{prefix}/manifests/be-{'a' * 64}.json",
+            f"{prefix}/reference/EN_US-{'a' * 64}.json",
+            f"{prefix}/word-pool/{'a' * 64}.json",
+            shared_key("EN_US", "a" * 64),
+            f"content/expressions/5/thumbnail.png",
+            f"{prefix}/5/EN_US/word/1/not-a-hash.mp3",
+        ]
+        good = legacy_word_key(5, "EN_US", 1, "a" * 64)
+
+        assert_prune_targets_are_legacy_word_keys([good])
+        for key in protected:
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                assert_prune_targets_are_legacy_word_keys([good, key])
+
+    def test_classifier_separates_new_shared_word_prefix_from_legacy_word_segment(self):
+        self.assertEqual(
+            classify_pronunciation_key(legacy_word_key(5, "EN_US", 1, "a" * 64)),
+            CLASS_LEGACY_WORD,
+        )
+        self.assertEqual(
+            classify_pronunciation_key(shared_key("EN_US", "a" * 64)), CLASS_SHARED_WORD
+        )
+        self.assertEqual(
+            classify_pronunciation_key("content/scenarios/1/cover.png"), CLASS_OTHER
+        )
+
+
+class PruneWordUrlSafetyTests(unittest.TestCase):
+    def test_urls_from_any_host_and_bare_keys_collapse_to_s3_keys(self):
+        key = shared_key("EN_US", "a" * 64)
+
+        self.assertEqual(audio_url_to_key(f"https://d19azau1un4t7r.cloudfront.net/{key}"), key)
+        self.assertEqual(audio_url_to_key(f"https://other.example.com/{key}"), key)
+        self.assertEqual(audio_url_to_key(f"/{key}"), key)
+        self.assertEqual(audio_url_to_key(key), key)
+
+    def test_url_file_skips_blank_and_comment_lines_but_refuses_to_be_empty(self):
+        path = Path(tempfile.mkdtemp()) / "urls.txt"
+        key = shared_key("EN_US", "a" * 64)
+        path.write_text(f"# dev\n\nhttps://cdn/{key}\n", encoding="utf-8")
+
+        self.assertEqual(load_word_audio_keys(path), frozenset({key}))
+
+        path.write_text("# nothing\n\n", encoding="utf-8")
+        with self.assertRaises(ValueError):
+            load_word_audio_keys(path)
+
+    def test_any_db_reference_to_a_target_stops_the_whole_run(self):
+        plan = prune_plan_for(populated_prune_s3())
+        clean = frozenset(target.shared_key for target in plan.targets)
+        dirty = clean | {plan.targets[3].key}
+
+        assert_prune_targets_unreferenced(plan, {"dev": clean, "prod": clean})
+        with self.assertRaises(RuntimeError) as raised:
+            assert_prune_targets_unreferenced(plan, {"dev": clean, "prod": dirty})
+        self.assertIn("prod", str(raised.exception))
+        self.assertIn(plan.targets[3].key, str(raised.exception))
+
+
+class PruneSharedCopyAndDescribeTests(unittest.TestCase):
+    def test_units_without_a_shared_copy_are_excluded_not_deleted(self):
+        s3 = populated_prune_s3()
+        missing = (
+            "EN_GB", word_fingerprint("EN_GB", "take")
+        )
+        del s3.objects[shared_key(*missing)]
+        plan = prune_plan_for(s3)
+
+        verified = verify_shared_copies(plan, aws_runner=s3, max_workers=2)
+
+        self.assertEqual(verified.excluded_units, (missing,))
+        self.assertEqual(len(verified.targets), 6)
+        self.assertFalse(
+            any((t.accent_locale, t.fingerprint) == missing for t in verified.targets)
+        )
+        self.assertEqual(verified.key_counts, plan.key_counts)
+
+    def test_describe_fills_size_and_sha_from_head(self):
+        s3 = populated_prune_s3()
+        plan = prune_plan_for(s3)
+
+        described = describe_prune_targets(plan, aws_runner=s3, max_workers=2)
+
+        self.assertEqual([t.key for t in described.targets], [t.key for t in plan.targets])
+        for target in described.targets:
+            self.assertEqual(target.content_length, 10)
+            self.assertTrue(target.audio_sha256.startswith("sha-"))
+
+    def test_describe_stops_when_a_target_vanished_since_listing(self):
+        s3 = populated_prune_s3()
+        plan = prune_plan_for(s3)
+        del s3.objects[plan.targets[0].key]
+
+        with self.assertRaises(RuntimeError) as raised:
+            describe_prune_targets(plan, aws_runner=s3, max_workers=1)
+        self.assertIn("vanished", str(raised.exception))
+
+
+class PruneListAndDeleteTests(unittest.TestCase):
+    def test_prune_list_records_keys_sizes_shas_and_counts(self):
+        s3 = populated_prune_s3()
+        plan = describe_prune_targets(prune_plan_for(s3), aws_runner=s3, max_workers=2)
+
+        prune_list = build_prune_list(plan, word_url_sources=["dev.txt", "prod.txt"])
+
+        self.assertEqual(prune_list["issue"], "LAN-562")
+        self.assertIn("버저닝이 없어", prune_list["notice"])
+        self.assertEqual(prune_list["summary"]["targets"], 8)
+        self.assertEqual(prune_list["summary"]["totalBytes"], 80)
+        self.assertEqual(prune_list["keyCountsBefore"][CLASS_LEGACY_WORD], 8)
+        self.assertEqual(prune_list["wordUrlSources"], ["dev.txt", "prod.txt"])
+        entry = prune_list["entries"][0]
+        self.assertEqual(
+            set(entry),
+            {"key", "contentLength", "audioSha256", "accentLocale", "fingerprint", "sharedKey"},
+        )
+        canonical_manifest_bytes(prune_list)  # 결정적 직렬화가 가능해야 한다
+
+    def test_dry_run_publishes_nothing_and_deletes_nothing(self):
+        s3 = populated_prune_s3()
+        plan = describe_prune_targets(prune_plan_for(s3), aws_runner=s3, max_workers=2)
+        prune_list = build_prune_list(plan, word_url_sources=[])
+        before = dict(s3.objects)
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            key = publish_prune_list(prune_list, "bucket", execute=False, aws_runner=s3)
+            deleted = execute_legacy_word_prune(plan, execute=False, aws_runner=s3)
+
+        self.assertTrue(key.startswith(PRUNE_LIST_KEY_PREFIX))
+        self.assertEqual(deleted, 0)
+        self.assertEqual(s3.objects, before)
+        self.assertEqual(s3.delete_batches, [])
+
+    def test_execute_deletes_in_batches_of_1000_after_the_list_is_published(self):
+        s3 = FakeS3()
+        fingerprint = word_fingerprint("EN_US", "the")
+        s3.objects[shared_key("EN_US", fingerprint)] = audio_head(10, "sha")
+        for expression_id in range(1, 1501):
+            s3.objects[legacy_word_key(expression_id, "EN_US", 1, fingerprint)] = (
+                audio_head(10, "sha")
+            )
+        plan = describe_prune_targets(prune_plan_for(s3), aws_runner=s3, max_workers=4)
+        prune_list = build_prune_list(plan, word_url_sources=[])
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            key = publish_prune_list(prune_list, "bucket", execute=True, aws_runner=s3)
+            deleted = execute_legacy_word_prune(plan, execute=True, aws_runner=s3)
+
+        self.assertEqual(deleted, 1500)
+        self.assertEqual([len(batch) for batch in s3.delete_batches], [1000, 500])
+        self.assertIn(key, s3.objects)
+        put_index = s3.operations.index(("put-object", key))
+        first_delete = next(
+            i for i, (op, _) in enumerate(s3.operations) if op == "delete-objects"
+        )
+        self.assertLess(put_index, first_delete)
+        self.assertEqual(
+            [k for k in s3.objects if LEGACY_WORD_KEY_PATTERN.match(k)], []
+        )
+        self.assertIn(shared_key("EN_US", fingerprint), s3.objects)
+
+    def test_execute_stops_at_the_first_batch_with_errors(self):
+        s3 = FakeS3()
+        fingerprint = word_fingerprint("EN_US", "the")
+        s3.objects[shared_key("EN_US", fingerprint)] = audio_head(10, "sha")
+        for expression_id in range(1, 1201):
+            s3.objects[legacy_word_key(expression_id, "EN_US", 1, fingerprint)] = (
+                audio_head(10, "sha")
+            )
+        plan = describe_prune_targets(prune_plan_for(s3), aws_runner=s3, max_workers=4)
+        s3.delete_errors[plan.targets[10].key] = "AccessDenied"
+
+        with self.assertRaises(RuntimeError) as raised:
+            execute_legacy_word_prune(plan, execute=True, aws_runner=s3)
+
+        self.assertIn("1 errors", str(raised.exception))
+        self.assertIn("deleted 0/1200 before failing", str(raised.exception))
+        self.assertEqual(len(s3.delete_batches), 1)
+
+    def test_post_delete_verification_expects_only_legacy_keys_to_drop(self):
+        s3 = populated_prune_s3()
+        plan = describe_prune_targets(prune_plan_for(s3), aws_runner=s3, max_workers=2)
+        with contextlib.redirect_stdout(io.StringIO()):
+            deleted = execute_legacy_word_prune(plan, execute=True, aws_runner=s3)
+
+        after = verify_legacy_word_prune(plan, deleted, aws_runner=s3)
+        self.assertEqual(after[CLASS_LEGACY_WORD], 0)
+        self.assertEqual(after[CLASS_SHARED_WORD], 4)
+
+        del s3.objects[next(k for k in s3.objects if "/sentence/" in k)]
+        with self.assertRaises(RuntimeError) as raised:
+            verify_legacy_word_prune(plan, deleted, aws_runner=s3)
+        self.assertIn("sentence: expected 4, found 3", str(raised.exception))
+
+    def test_post_delete_verification_ignores_the_list_this_run_published(self):
+        s3 = populated_prune_s3()
+        plan = describe_prune_targets(prune_plan_for(s3), aws_runner=s3, max_workers=2)
+        prune_list = build_prune_list(plan, word_url_sources=[])
+        with contextlib.redirect_stdout(io.StringIO()):
+            key = publish_prune_list(prune_list, "bucket", execute=True, aws_runner=s3)
+            deleted = execute_legacy_word_prune(plan, execute=True, aws_runner=s3)
+
+        with self.assertRaises(RuntimeError):
+            verify_legacy_word_prune(plan, deleted, aws_runner=s3)
+        after = verify_legacy_word_prune(plan, deleted, aws_runner=s3, ignore_keys=(key,))
+        self.assertEqual(after[CLASS_MANIFESTS], 1)
+
+
+class PruneCliTests(unittest.TestCase):
+    def setUp(self):
+        self.work = Path(tempfile.mkdtemp())
+        self.output = self.work / "prune-list.json"
+
+    def url_file(self, name: str, s3: FakeS3, extra: tuple[str, ...] = ()) -> Path:
+        path = self.work / name
+        lines = [
+            f"https://d19azau1un4t7r.cloudfront.net/{key}"
+            for key in s3.objects
+            if SHARED_WORD_KEY_PATTERN.match(key)
+        ]
+        path.write_text("\n".join([*lines, *extra]) + "\n", encoding="utf-8")
+        return path
+
+    def run_cli(self, s3, *extra, printed=None):
+        with contextlib.redirect_stdout(printed or io.StringIO()), unittest.mock.patch(
+            "scripts.expression_pronunciation_audio.subprocess.run", s3
+        ):
+            return main(
+                [
+                    "prune-legacy-word-keys",
+                    "--bucket",
+                    "bucket",
+                    "--output",
+                    str(self.output),
+                    *extra,
+                ]
+            )
+
+    def test_dry_run_writes_the_list_and_touches_nothing(self):
+        s3 = populated_prune_s3()
+        before = dict(s3.objects)
+        printed = io.StringIO()
+
+        code = self.run_cli(s3, printed=printed)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(s3.objects, before)
+        self.assertEqual(s3.delete_batches, [])
+        prune_list = json.loads(self.output.read_text(encoding="utf-8"))
+        self.assertEqual(prune_list["summary"]["targets"], 8)
+        self.assertIn("WARNING: --word-urls 없이", printed.getvalue())
+        self.assertIn("dry-run", printed.getvalue())
+
+    def test_execute_requires_both_environment_url_files(self):
+        s3 = populated_prune_s3()
+        dev = self.url_file("dev.txt", s3)
+
+        with self.assertRaises(SystemExit):
+            self.run_cli(s3, "--word-urls", str(dev), "--execute")
+        self.assertEqual(s3.delete_batches, [])
+
+    def test_execute_end_to_end_leaves_shared_sentence_expression_objects_intact(self):
+        s3 = populated_prune_s3()
+        dev = self.url_file("dev.txt", s3)
+        prod = self.url_file("prod.txt", s3)
+        printed = io.StringIO()
+
+        code = self.run_cli(
+            s3, "--word-urls", str(dev), "--word-urls", str(prod), "--execute",
+            "--expect-count", "8", printed=printed,
+        )
+
+        self.assertEqual(code, 0)
+        remaining = count_pronunciation_keys(s3.objects)
+        self.assertEqual(remaining[CLASS_LEGACY_WORD], 0)
+        self.assertEqual(remaining[CLASS_SHARED_WORD], 4)
+        self.assertEqual(remaining[CLASS_SENTENCE], 4)
+        self.assertEqual(remaining[CLASS_EXPRESSION], 4)
+        self.assertEqual(remaining[CLASS_REFERENCE], 1)
+        self.assertEqual(remaining[CLASS_WORD_POOL], 1)
+        # 삭제 목록이 S3에 하나 더 올라가 manifests는 2가 된다
+        self.assertEqual(remaining[CLASS_MANIFESTS], 2)
+        self.assertIn("deleted=8", printed.getvalue())
+        self.assertIn("after: legacyWord=0", printed.getvalue())
+
+    def test_expect_count_mismatch_stops_before_any_check(self):
+        s3 = populated_prune_s3()
+        printed = io.StringIO()
+
+        code = self.run_cli(s3, "--expect-count", "69531", printed=printed)
+
+        self.assertEqual(code, 1)
+        self.assertIn("STOP", printed.getvalue())
+        self.assertFalse(self.output.exists())
+
+    def test_a_db_still_referencing_a_target_stops_the_run(self):
+        s3 = populated_prune_s3()
+        target = next(k for k in s3.objects if LEGACY_WORD_KEY_PATTERN.match(k))
+        dev = self.url_file("dev.txt", s3)
+        prod = self.url_file("prod.txt", s3, extra=(f"https://cdn/{target}",))
+
+        with self.assertRaises(RuntimeError) as raised:
+            self.run_cli(s3, "--word-urls", str(dev), "--word-urls", str(prod), "--execute")
+
+        self.assertIn("prod.txt", str(raised.exception))
+        self.assertEqual(s3.delete_batches, [])
+        self.assertIn(target, s3.objects)

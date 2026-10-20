@@ -256,8 +256,10 @@ data "aws_iam_policy_document" "terraform" {
     content {
       sid     = "PassTargetRuntimeRoles"
       actions = ["iam:PassRole"]
+      # worker task definition도 Terraform이 교체하므로 worker task role 전달 권한이 필요하다(LAN-707 apply 실패).
       resources = [
         "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-api-task",
+        "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-worker-task",
         "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-ecs-execution"
       ]
 

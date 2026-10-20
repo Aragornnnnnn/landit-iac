@@ -74,6 +74,12 @@ locals {
     "s3:GetLifecycleConfiguration",
     "s3:ListAllMyBuckets",
     "scheduler:GetSchedule",
+    "scheduler:GetScheduleGroup",
+    "scheduler:ListTagsForResource",
+    "ses:GetConfigurationSet",
+    "ses:GetConfigurationSetEventDestinations",
+    "ses:GetEmailIdentity",
+    "ses:ListTagsForResource",
     "sqs:GetQueueAttributes",
     "sqs:GetQueueUrl",
     "sqs:ListQueueTags",
@@ -148,7 +154,9 @@ locals {
       "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:document/develop-${var.project_name}-ec2-deploy"
     ]
     production = [
-      "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/prod-${var.project_name}-cluster/prod-${var.project_name}-api"
+      "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/prod-${var.project_name}-cluster/prod-${var.project_name}-api",
+      # worker task definition도 Terraform이 소유하므로 교체 뒤 서비스 갱신 권한이 필요하다(LAN-707 apply 실패).
+      "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/prod-${var.project_name}-cluster/prod-${var.project_name}-worker"
     ]
   }
 

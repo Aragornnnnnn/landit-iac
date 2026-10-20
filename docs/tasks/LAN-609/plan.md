@@ -23,3 +23,14 @@
 - 17:43:55 KST ECS rollout `COMPLETED`, desired/running 1, pending 0 및 실행 revision 39를 확인했다. 운영 API image digest는 그대로이며 AI revision 22·image digest·실행 task도 변경되지 않았다.
 - 이후 공개 API health `UP`, AI health `ok` 및 읽기 전용 운영 DB 재접속을 확인했다. 신규 task의 설정은 `LANDIT_AI_ASSESSMENT_VERSION=text-score-v2.0`이다. 이전 revision 38은 ACTIVE로 보존됐다.
 - 신규 실사용 평가의 v2 저장과 앱 실기기 표시는 아직 미확인이다. 전환 이후 새 평가가 아직 저장되지 않아 합성 AI 응답을 실사용 저장 검증으로 대체하지 않았다. 기존 이력 재평가나 사용자 계정의 테스트 세션 생성은 하지 않았다.
+
+## 개발 서버 활성화.
+
+- 2026-10-20 사용자 요청에 따라 개발 EC2의 BE runtime env에 `LANDIT_AI_ASSESSMENT_VERSION=text-score-v2.0`을 추가한다. 개발 배포 때마다 같은 설정을 재생성하며 SSM secret은 추가하지 않는다.
+- 개발 ECS는 비활성 상태이므로 EC2 Compose 실행 경로만 변경한다. 기존 평가 이력과 AI 컨테이너는 유지한다.
+- `test-dev-ec2-runtime.sh`, `test-dev-ec2-contract.sh`, `test-dev-ec2-cleanup.sh`, `terraform fmt -recursive -check`, 개발 root `terraform validate`, `git diff --check` 통과. runtime 검증에는 실제 생성된 API env의 평가 버전 확인을 추가했다.
+- 전체 development plan은 EC2 교체 없이 SSM 배포 문서 변경과 문서 참조로 인한 IAM policy 재계산만 포함한다. 실행 중인 runtime 스크립트의 hash가 plan의 이전 스크립트와 일치하고 변경은 평가 버전 한 줄이다.
+- 저장 plan을 적용하고 배포 문서 기본 버전 23을 확인했다. 현재 BE image digest를 그대로 지정해 API만 재배포를 시작했다. 배포 후 상태는 아래에 기록한다.
+- 18:03 KST 개발 API 배포 성공을 확인했다. 독립 SSM 재조회에서 실행 컨테이너에 `text-score-v2.0`이 설정됐으며 BE image digest, AI image digest와 AI 컨테이너가 모두 보존됐다. 공개 BE health `UP`, AI health `ok`다.
+- 개발 AI 합성 발화 3개 요청은 HTTP 200, `text-score-v2.0`과 78·90·85 등 1점 단위 점수를 반환했다. 합성 결과는 저장하지 않았으며 실제 사용자 평가 저장·실기기 표시는 미확인이다.
+- 적용 후 전체 development plan은 `No changes`다. 이후 개발 배포에서도 동일한 평가 버전이 유지된다.

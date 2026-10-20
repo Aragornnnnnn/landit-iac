@@ -84,6 +84,7 @@ printf '%s\n' 'SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE=50s' >> "$${RUNTIME_D
 printf '%s\n' 'SPRING_TASK_EXECUTION_SHUTDOWN_AWAIT_TERMINATION=true' >> "$${RUNTIME_DIR}/api.env"
 printf '%s\n' 'SPRING_TASK_EXECUTION_SHUTDOWN_AWAIT_TERMINATION_PERIOD=50s' >> "$${RUNTIME_DIR}/api.env"
 printf '%s\n' 'LANDIT_AI_BASE_URL=http://ai:8000' >> "$${RUNTIME_DIR}/api.env"
+printf '%s\n' 'LANDIT_AI_ASSESSMENT_VERSION=text-score-v2.0' >> "$${RUNTIME_DIR}/api.env"
 if [[ "$${GRAFANA_OTLP_ENABLED}" == true ]]; then
   printf '%s\n' "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=$${GRAFANA_OTLP_ENDPOINT%/}/v1/metrics" >> "$${RUNTIME_DIR}/api.env"
   printf '%s\n' 'OTEL_TRACES_EXPORTER=none' >> "$${RUNTIME_DIR}/api.env"

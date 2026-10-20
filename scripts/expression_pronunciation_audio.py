@@ -1362,7 +1362,7 @@ class _CompletedCall:
 
 
 class Boto3AwsRunner:
-    """aws CLI 호출(list-objects-v2·head-object·get-object·copy-object·put-object)을 boto3로 대신한다.
+    """aws CLI 호출(list-objects-v2·head-object·get-object·copy-object·put-object·delete-objects)을 boto3로 대신한다.
 
     CLI는 호출마다 파이썬 프로세스를 새로 띄워 객체당 1초 이상 걸리므로 수만 개 게시에
     한 시간이 넘는다. 같은 인자 계약을 받아 프로세스 안에서 처리하면 스레드 32개로
@@ -1419,6 +1419,19 @@ class Boto3AwsRunner:
                     MetadataDirective=self._option(command, "--metadata-directive"),
                 )
                 return _CompletedCall(0, "{}")
+            if operation == "delete-objects":
+                spec_path = self._option(command, "--delete").removeprefix("file://")
+                spec = json.loads(Path(spec_path).read_text(encoding="utf-8"))
+                response = self._client.delete_objects(Bucket=bucket, Delete=spec)
+                payload = {
+                    "Deleted": [{"Key": item["Key"]} for item in response.get("Deleted", [])],
+                    "Errors": [
+                        {"Key": item.get("Key"), "Code": item.get("Code"),
+                         "Message": item.get("Message")}
+                        for item in response.get("Errors", [])
+                    ],
+                }
+                return _CompletedCall(0, json.dumps(payload))
             if operation == "put-object":
                 metadata = dict(
                     item.split("=", 1)
@@ -2812,6 +2825,570 @@ def publish_word_pool_replacement(
     print(f"replaced {entry.target_key}")
 
 
+# ---------------------------------------------------------------------------
+# LAN-562 옛 단어 키 삭제
+#
+# LAN-475 백필이 (억양, 해시)별 대표를 공용 자리로 복사하고 LAN-560(V126)이 DB의 단어 URL을
+# 공용 주소로 바꾸면, 옛 단어 키 `{표현id}/{억양}/word/{순서}/{해시}.mp3`는 아무도 참조하지
+# 않는다. 여기서는 그 옛 키만 골라 지운다. 버킷에 버저닝이 없어 되돌릴 수 없으므로 삭제
+# 직전에 안전장치 다섯을 순서대로 통과해야 하고, 하나라도 실패하면 아무것도 지우지 않는다.
+#   1. dev·prod DB의 words[*].audioUrl과 대상의 교집합이 0 (LAN-560이 덜 적용된 환경 탐지)
+#   2. 대상의 (억양, 해시) 전부가 공용 자리에 실물로 있음 (빠진 것은 대상에서 제외하고 보고)
+#   3. 삭제 목록(키·크기·sha)을 로컬 파일과 S3에 남김 — 버저닝이 없어 이것이 유일한 기록
+#   4. dry-run 기본, --execute일 때만 1,000개 배치 delete-objects, Errors가 비었는지 확인
+#   5. 삭제 후 다시 나열해 옛 단어 키 0개, 공용·문장·표현 객체 수 불변 확인
+# ---------------------------------------------------------------------------
+
+PRUNE_SCHEMA_VERSION = 1
+PRUNE_ISSUE = "LAN-562"
+# 삭제 목록이 S3에 놓이는 자리. 매니페스트와 같은 콘텐츠 해시 키를 쓴다.
+PRUNE_LIST_KEY_PREFIX = f"{KEY_PREFIX}/manifests/prune-legacy-word-keys-"
+# S3 delete-objects가 한 호출에 받는 최대 키 수.
+PRUNE_DELETE_BATCH_SIZE = 1000
+# 대상에 한 건이라도 섞이면 즉시 중단하는 경로. KEY_PREFIX 바로 아래 첫 조각으로 본다.
+# `word`는 새 공용 자리 `word/{억양}/`이고, 옛 키의 `{표현id}/{억양}/word/`와는 자리가 다르다.
+PRUNE_PROTECTED_TOP_SEGMENTS = frozenset(
+    ("manifests", "reference", "word-pool", WORD_POOL_SEGMENT)
+)
+# `{표현id}/{억양}/<이 조각>/`은 문장·표현 음성이라 대상에 들어오면 안 된다.
+PRUNE_PROTECTED_KIND_SEGMENTS = frozenset((KIND_SENTENCE, KIND_EXPRESSION))
+PRUNE_NOTICE = (
+    "버킷에 버저닝이 없어 이 목록이 삭제된 객체의 유일한 기록이다. 복원 수단은 재합성뿐이다 "
+    "(scripts/expression_pronunciation_audio.py generate → upload, 이후 CloudFront 무효화)."
+)
+
+CLASS_LEGACY_WORD = "legacyWord"
+CLASS_SHARED_WORD = "sharedWord"
+CLASS_SENTENCE = "sentence"
+CLASS_EXPRESSION = "expression"
+CLASS_MANIFESTS = "manifests"
+CLASS_REFERENCE = "reference"
+CLASS_WORD_POOL = "wordPool"
+CLASS_OTHER = "other"
+PRUNE_KEY_CLASSES = (
+    CLASS_LEGACY_WORD,
+    CLASS_SHARED_WORD,
+    CLASS_SENTENCE,
+    CLASS_EXPRESSION,
+    CLASS_MANIFESTS,
+    CLASS_REFERENCE,
+    CLASS_WORD_POOL,
+    CLASS_OTHER,
+)
+
+
+@dataclass(frozen=True)
+class PruneTarget:
+    """삭제 대상 옛 단어 키 하나. 크기·sha는 안전장치 3에서 head로 채운다."""
+
+    key: str
+    accent_locale: str
+    fingerprint: str
+    content_length: int | None = None
+    audio_sha256: str | None = None
+
+    @property
+    def shared_key(self) -> str:
+        return shared_word_key(self.accent_locale, self.fingerprint)
+
+
+@dataclass(frozen=True)
+class PrunePlan:
+    bucket: str
+    targets: tuple[PruneTarget, ...]
+    # 나열 시점의 분류별 객체 수. 안전장치 5가 이 값과 삭제 후를 비교한다.
+    key_counts: Mapping[str, int]
+    # 안전장치 2에서 공용 자리에 실물이 없어 대상에서 뺀 (억양, 해시)
+    excluded_units: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def units(self) -> tuple[tuple[str, str], ...]:
+        return tuple(
+            sorted({(target.accent_locale, target.fingerprint) for target in self.targets})
+        )
+
+
+def classify_pronunciation_key(key: str) -> str:
+    """발음 자산 키를 분류한다. 안전장치 5의 전후 비교와 보호 경로 판정이 이 분류를 쓴다."""
+    if LEGACY_WORD_KEY_PATTERN.match(key):
+        return CLASS_LEGACY_WORD
+    if SHARED_WORD_KEY_PATTERN.match(key):
+        return CLASS_SHARED_WORD
+    if not key.startswith(f"{KEY_PREFIX}/"):
+        return CLASS_OTHER
+    parts = key[len(KEY_PREFIX) + 1 :].split("/")
+    if parts[0] == "manifests":
+        return CLASS_MANIFESTS
+    if parts[0] == "reference":
+        return CLASS_REFERENCE
+    if parts[0] == "word-pool":
+        return CLASS_WORD_POOL
+    if len(parts) >= 3 and parts[2] == KIND_SENTENCE:
+        return CLASS_SENTENCE
+    if len(parts) >= 3 and parts[2] == KIND_EXPRESSION:
+        return CLASS_EXPRESSION
+    return CLASS_OTHER
+
+
+def count_pronunciation_keys(keys: Iterable[str]) -> dict[str, int]:
+    counts = {name: 0 for name in PRUNE_KEY_CLASSES}
+    for key in keys:
+        counts[classify_pronunciation_key(key)] += 1
+    return counts
+
+
+def assert_prune_targets_are_legacy_word_keys(keys: Iterable[str]) -> None:
+    """대상 목록에 옛 단어 키가 아닌 것이 섞여 있으면 즉시 중단한다.
+
+    정규식이 이미 거르지만, 정규식이 바뀌거나 목록을 손으로 만든 경우에도 문장·표현·
+    매니페스트·참조·새 공용 단어 키가 지워지지 않도록 여기서 한 번 더 막는다.
+
+    :raises RuntimeError: 보호 경로이거나 옛 단어 키 형식이 아닌 키가 하나라도 있을 때
+    """
+    for key in keys:
+        if not key.startswith(f"{KEY_PREFIX}/"):
+            raise RuntimeError(f"prune target is outside the asset prefix, stopping: {key}")
+        parts = key[len(KEY_PREFIX) + 1 :].split("/")
+        if parts[0] in PRUNE_PROTECTED_TOP_SEGMENTS:
+            raise RuntimeError(f"prune target is a protected path, stopping: {key}")
+        if len(parts) >= 3 and parts[2] in PRUNE_PROTECTED_KIND_SEGMENTS:
+            raise RuntimeError(f"prune target is a protected path, stopping: {key}")
+        if LEGACY_WORD_KEY_PATTERN.match(key) is None:
+            raise RuntimeError(f"prune target is not a legacy word key, stopping: {key}")
+
+
+def plan_legacy_word_prune(keys: Iterable[str], bucket: str) -> PrunePlan:
+    """나열한 키에서 옛 단어 키만 삭제 대상으로 고른다.
+
+    :param keys: `KEY_PREFIX/` 아래 전체 키 목록
+    :param bucket: 대상 버킷
+    :return: 대상과 분류별 객체 수 스냅샷
+    :raises RuntimeError: 대상에 보호 경로가 섞였을 때
+    """
+    keys = list(keys)
+    legacy = parse_legacy_word_keys(keys)
+    assert_prune_targets_are_legacy_word_keys(item.key for item in legacy)
+    targets = tuple(
+        PruneTarget(
+            key=item.key,
+            accent_locale=item.accent_locale,
+            fingerprint=item.fingerprint,
+        )
+        for item in sorted(legacy, key=lambda item: item.key)
+    )
+    return PrunePlan(
+        bucket=bucket, targets=targets, key_counts=count_pronunciation_keys(keys)
+    )
+
+
+def audio_url_to_key(url: str) -> str:
+    """DB에 저장된 단어 음성 URL(또는 키)을 S3 키로 바꾼다. 호스트는 어떤 것이든 뗀다."""
+    text = url.strip()
+    if "://" in text:
+        _, _, remainder = text.partition("://")
+        _, _, text = remainder.partition("/")
+    return text.lstrip("/")
+
+
+def load_word_audio_keys(path: Path) -> frozenset[str]:
+    """DB에서 뽑은 `words[*].audioUrl` 목록(한 줄에 하나)을 S3 키 집합으로 읽는다.
+
+    :raises ValueError: 파일에 URL이 하나도 없을 때. 빈 파일로 교집합 0을 통과하면 안 된다
+    """
+    keys: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        keys.add(audio_url_to_key(line))
+    if not keys:
+        raise ValueError(f"word audio url file has no urls: {path}")
+    return frozenset(keys)
+
+
+def assert_prune_targets_unreferenced(
+    plan: PrunePlan, referenced_keys_by_source: Mapping[str, frozenset[str]]
+) -> None:
+    """안전장치 1. 어느 환경 DB라도 대상 키를 아직 가리키면 전체를 중단한다.
+
+    교집합이 하나라도 있으면 그 환경에 LAN-560이 덜 적용된 것이라 일부만 지우는 선택지는 없다.
+
+    :raises RuntimeError: 교집합이 0이 아닌 환경이 있을 때
+    """
+    target_keys = {target.key for target in plan.targets}
+    for source, referenced in referenced_keys_by_source.items():
+        hits = sorted(target_keys & referenced)
+        if hits:
+            raise RuntimeError(
+                f"{source} still references {len(hits)} prune targets "
+                f"(LAN-560 is not fully applied there), stopping. first: {hits[0]}"
+            )
+
+
+def verify_shared_copies(
+    plan: PrunePlan,
+    *,
+    aws_runner: Callable = subprocess.run,
+    max_workers: int = 8,
+    progress: Callable[[str], None] | None = None,
+) -> PrunePlan:
+    """안전장치 2. 대상의 (억양, 해시) 전부가 공용 자리에 실물로 있는지 head로 전수 확인한다.
+
+    공용 자리가 빈 (억양, 해시)는 그 옛 키들을 대상에서 빼고 `excluded_units`에 남긴다.
+    빼기만 하고 멈추지 않는 것은 이슈의 결정이다 — 나머지는 지워도 안전하기 때문이다.
+    """
+    units = plan.units
+    missing: list[tuple[str, str]] = []
+    checked = 0
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(
+                _head_key, plan.bucket, shared_word_key(accent, fingerprint), aws_runner
+            ): (accent, fingerprint)
+            for accent, fingerprint in units
+        }
+        for future in as_completed(futures):
+            if future.result() is None:
+                missing.append(futures[future])
+            checked += 1
+            if progress and checked % 1000 == 0:
+                progress(f"shared copies checked {checked}/{len(units)}")
+    missing_set = set(missing)
+    kept = tuple(
+        target
+        for target in plan.targets
+        if (target.accent_locale, target.fingerprint) not in missing_set
+    )
+    return PrunePlan(
+        bucket=plan.bucket,
+        targets=kept,
+        key_counts=plan.key_counts,
+        excluded_units=tuple(sorted(missing)),
+    )
+
+
+def describe_prune_targets(
+    plan: PrunePlan,
+    *,
+    aws_runner: Callable = subprocess.run,
+    max_workers: int = 8,
+    progress: Callable[[str], None] | None = None,
+) -> PrunePlan:
+    """삭제 목록에 남길 크기·sha를 대상마다 head로 받는다.
+
+    :raises RuntimeError: 나열에는 있었는데 head가 404인 키가 있을 때. 다른 실행이 동시에
+        지우고 있다는 뜻이므로 멈춘다
+    """
+    described: dict[str, PruneTarget] = {}
+    done = 0
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(_head_key, plan.bucket, target.key, aws_runner): target
+            for target in plan.targets
+        }
+        for future in as_completed(futures):
+            target = futures[future]
+            head = future.result()
+            if head is None:
+                raise RuntimeError(
+                    f"prune target vanished between list and head, stopping: {target.key}"
+                )
+            metadata = {k.lower(): str(v) for k, v in head.get("Metadata", {}).items()}
+            described[target.key] = PruneTarget(
+                key=target.key,
+                accent_locale=target.accent_locale,
+                fingerprint=target.fingerprint,
+                content_length=head.get("ContentLength"),
+                audio_sha256=metadata.get("audio-sha256"),
+            )
+            done += 1
+            if progress and done % 5000 == 0:
+                progress(f"targets described {done}/{len(plan.targets)}")
+    return PrunePlan(
+        bucket=plan.bucket,
+        targets=tuple(described[target.key] for target in plan.targets),
+        key_counts=plan.key_counts,
+        excluded_units=plan.excluded_units,
+    )
+
+
+def build_prune_list(
+    plan: PrunePlan, *, word_url_sources: Sequence[str]
+) -> dict:
+    """안전장치 3의 삭제 목록. 키·크기·sha와 실행 전 객체 수, 제외된 단위를 담는다."""
+    return {
+        "schemaVersion": PRUNE_SCHEMA_VERSION,
+        "issue": PRUNE_ISSUE,
+        "notice": PRUNE_NOTICE,
+        "bucket": plan.bucket,
+        "summary": {
+            "targets": len(plan.targets),
+            "distinctUnits": len(plan.units),
+            "totalBytes": sum(target.content_length or 0 for target in plan.targets),
+            "excludedUnits": len(plan.excluded_units),
+        },
+        "keyCountsBefore": dict(plan.key_counts),
+        "wordUrlSources": list(word_url_sources),
+        "excludedUnits": [
+            {"accentLocale": accent, "fingerprint": fingerprint}
+            for accent, fingerprint in plan.excluded_units
+        ],
+        "entries": [
+            {
+                "key": target.key,
+                "contentLength": target.content_length,
+                "audioSha256": target.audio_sha256,
+                "accentLocale": target.accent_locale,
+                "fingerprint": target.fingerprint,
+                "sharedKey": target.shared_key,
+            }
+            for target in plan.targets
+        ],
+    }
+
+
+def publish_prune_list(
+    prune_list: dict,
+    bucket: str,
+    *,
+    execute: bool = False,
+    aws_runner: Callable = subprocess.run,
+) -> str:
+    """삭제 목록을 매니페스트와 같은 콘텐츠 해시 키로 S3에 게시하고 키를 반환한다.
+
+    --execute가 아니면 게시하지 않고 키만 계산한다. 실행 시에는 삭제보다 먼저 호출돼야 한다.
+
+    :raises ValueError: 같은 키에 내용이 다른 객체가 있거나 게시 후 검증이 어긋날 때
+    """
+    body = canonical_manifest_bytes(prune_list)
+    digest = hashlib.sha256(body).hexdigest()
+    key = f"{PRUNE_LIST_KEY_PREFIX}{digest}.json"
+    upload_object = UploadObject(
+        key=key,
+        body_path=None,
+        body_bytes=body,
+        content_length=len(body),
+        content_type="application/json",
+        cache_control=CACHE_CONTROL,
+        metadata={"manifest-sha256": digest, "issue": PRUNE_ISSUE},
+        manifest_object=True,
+    )
+    head = _head_object(bucket, upload_object, aws_runner)
+    if head is not None:
+        if not _head_matches(upload_object, head):
+            raise ValueError(f"existing object conflict: {key}")
+        print(f"reused {key}")
+        return key
+    if not execute:
+        print(f"would upload {key} ({len(body)}B)")
+        return key
+    with tempfile.NamedTemporaryFile(
+        prefix="lan-562-prune-list-", suffix=".json", delete=False
+    ) as handle:
+        handle.write(body)
+        temporary = Path(handle.name)
+    try:
+        _put_object(
+            UploadPlan(
+                bucket=bucket,
+                new_keys=(key,),
+                reused_keys=(),
+                conflict_keys=(),
+                objects=(upload_object,),
+            ),
+            upload_object,
+            temporary,
+            aws_runner,
+        )
+    finally:
+        temporary.unlink(missing_ok=True)
+    verified = _head_object(bucket, upload_object, aws_runner)
+    if verified is None or not _head_matches(upload_object, verified):
+        raise ValueError(f"uploaded object verification conflict: {key}")
+    print(f"uploaded {key}")
+    return key
+
+
+def _delete_batch(bucket: str, keys: Sequence[str], aws_runner: Callable) -> None:
+    """delete-objects 한 번. 응답의 Errors가 비어 있고 Deleted 수가 요청 수와 같아야 한다."""
+    with tempfile.NamedTemporaryFile(
+        "w", prefix="lan-562-delete-", suffix=".json", delete=False, encoding="utf-8"
+    ) as handle:
+        json.dump({"Objects": [{"Key": key} for key in keys], "Quiet": False}, handle)
+        spec_path = Path(handle.name)
+    try:
+        completed = aws_runner(
+            [
+                "aws",
+                "s3api",
+                "delete-objects",
+                "--bucket",
+                bucket,
+                "--delete",
+                f"file://{spec_path}",
+                "--output",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    finally:
+        spec_path.unlink(missing_ok=True)
+    if completed.returncode != 0:
+        raise RuntimeError(f"S3 delete-objects failed: {completed.stderr.strip()}")
+    payload = json.loads(completed.stdout or "{}")
+    errors = payload.get("Errors") or []
+    if errors:
+        raise RuntimeError(
+            f"S3 delete-objects reported {len(errors)} errors, first: {errors[0]}"
+        )
+    deleted = payload.get("Deleted") or []
+    if len(deleted) != len(keys):
+        raise RuntimeError(
+            f"S3 delete-objects deleted {len(deleted)} of {len(keys)} requested keys"
+        )
+
+
+def execute_legacy_word_prune(
+    plan: PrunePlan,
+    *,
+    execute: bool = False,
+    aws_runner: Callable = subprocess.run,
+    progress: Callable[[str], None] | None = None,
+) -> int:
+    """안전장치 4. --execute일 때만 1,000개 배치로 지운다. 배치 하나라도 실패하면 거기서 멈춘다.
+
+    :return: 실제로 지운 키 수. dry-run이면 0
+    """
+    keys = [target.key for target in plan.targets]
+    batches = [
+        keys[start : start + PRUNE_DELETE_BATCH_SIZE]
+        for start in range(0, len(keys), PRUNE_DELETE_BATCH_SIZE)
+    ]
+    if not execute:
+        if progress:
+            progress(f"would delete {len(keys)} keys in {len(batches)} batches")
+        return 0
+    deleted = 0
+    for batch in batches:
+        try:
+            _delete_batch(plan.bucket, batch, aws_runner)
+        except RuntimeError as error:
+            raise RuntimeError(f"{error} (deleted {deleted}/{len(keys)} before failing)") from error
+        deleted += len(batch)
+        if progress:
+            progress(f"deleted {deleted}/{len(keys)}")
+    return deleted
+
+
+def verify_legacy_word_prune(
+    plan: PrunePlan,
+    deleted: int,
+    *,
+    aws_runner: Callable = subprocess.run,
+    ignore_keys: Iterable[str] = (),
+) -> dict[str, int]:
+    """안전장치 5. 다시 나열해 옛 단어 키가 지운 수만큼 줄고 나머지 분류는 그대로인지 확인한다.
+
+    :param ignore_keys: 이번 실행이 새로 올린 삭제 목록 키. 나열에서 빼고 비교한다
+    :raises RuntimeError: 분류별 수가 기대와 다를 때
+    """
+    keys = _list_existing_keys(plan.bucket, f"{KEY_PREFIX}/", aws_runner)
+    keys.difference_update(ignore_keys)
+    after = count_pronunciation_keys(keys)
+    expected = dict(plan.key_counts)
+    expected[CLASS_LEGACY_WORD] = plan.key_counts[CLASS_LEGACY_WORD] - deleted
+    problems = [
+        f"{name}: expected {expected[name]}, found {after[name]}"
+        for name in PRUNE_KEY_CLASSES
+        if after[name] != expected[name]
+    ]
+    if problems:
+        raise RuntimeError("post-delete verification failed: " + "; ".join(problems))
+    return after
+
+
+def _run_prune_legacy_word_keys(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    """prune-legacy-word-keys 서브커맨드. 안전장치 1→2→3→4→5 순서로 돌고 하나라도 실패하면 멈춘다."""
+    aws_runner = Boto3AwsRunner() if args.boto3 else subprocess.run
+    max_workers = 32 if args.boto3 else 8
+    if args.execute and len(args.word_urls) < 2:
+        parser.error("--execute requires --word-urls for both dev and prod (two files)")
+    require_bucket(args.bucket, aws_runner)
+    keys = _list_existing_keys(args.bucket, f"{KEY_PREFIX}/", aws_runner)
+    plan = plan_legacy_word_prune(keys, args.bucket)
+    counts = plan.key_counts
+    print(
+        f"targets={len(plan.targets)}, units={len(plan.units)}, "
+        + ", ".join(f"{name}={counts[name]}" for name in PRUNE_KEY_CLASSES)
+    )
+    if args.expect_count is not None and len(plan.targets) != args.expect_count:
+        print(
+            f"STOP: targets={len(plan.targets)} differs from --expect-count={args.expect_count}. "
+            "나열 결과가 이슈 기준과 다르니 원인을 확인할 것"
+        )
+        return 1
+    # 안전장치 1
+    if args.word_urls:
+        referenced = {str(path): load_word_audio_keys(path) for path in args.word_urls}
+        assert_prune_targets_unreferenced(plan, referenced)
+        print(
+            "word_url_intersection=0 ("
+            + ", ".join(f"{source}: {len(found)} urls" for source, found in referenced.items())
+            + ")"
+        )
+    else:
+        print("WARNING: --word-urls 없이 돌렸다. 안전장치 1(DB 참조 교집합)을 건너뛴 dry-run이다")
+    if not args.boto3:
+        print("NOTE: head-object를 수만 번 돈다. aws CLI로는 수 시간이 걸리니 --boto3를 권장")
+    # 안전장치 2
+    plan = verify_shared_copies(
+        plan, aws_runner=aws_runner, max_workers=max_workers, progress=print
+    )
+    print(
+        f"shared_copies_missing={len(plan.excluded_units)}, targets_after_exclusion={len(plan.targets)}"
+    )
+    for accent_locale, fingerprint in plan.excluded_units[:20]:
+        print(f"excluded {accent_locale} {fingerprint}")
+    if not plan.targets:
+        print("nothing to delete")
+        return 0
+    # 안전장치 3
+    plan = describe_prune_targets(
+        plan, aws_runner=aws_runner, max_workers=max_workers, progress=print
+    )
+    prune_list = build_prune_list(
+        plan, word_url_sources=[str(path) for path in args.word_urls]
+    )
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = Path(f"{args.output}.part")
+    temporary_path.write_bytes(canonical_manifest_bytes(prune_list))
+    os.replace(temporary_path, args.output)
+    print(
+        f"prune_list={args.output}, total_bytes={prune_list['summary']['totalBytes']}, "
+        f"prune_list_sha256={manifest_sha256(prune_list)}"
+    )
+    list_key = publish_prune_list(
+        prune_list, args.bucket, execute=args.execute, aws_runner=aws_runner
+    )
+    print(f"prune_list_key={list_key}")
+    # 안전장치 4
+    deleted = execute_legacy_word_prune(
+        plan, execute=args.execute, aws_runner=aws_runner, progress=print
+    )
+    print(f"deleted={deleted}")
+    if not args.execute:
+        print("dry-run: 아무것도 지우지 않았다. 목록을 검토한 뒤 --execute로 실행할 것")
+        return 0
+    # 안전장치 5
+    after = verify_legacy_word_prune(
+        plan, deleted, aws_runner=aws_runner, ignore_keys=(list_key,)
+    )
+    print("after: " + ", ".join(f"{name}={after[name]}" for name in PRUNE_KEY_CLASSES))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -2895,6 +3472,28 @@ def main(argv: list[str] | None = None) -> int:
         help="이미 공용 자리에 있는 항목까지 원본과 전수 대조한다",
     )
     pool_parser.add_argument("--execute", action="store_true")
+    prune_parser = subparsers.add_parser("prune-legacy-word-keys")
+    prune_parser.add_argument("--bucket", required=True)
+    prune_parser.add_argument(
+        "--word-urls",
+        action="append",
+        type=Path,
+        default=[],
+        help=(
+            "DB에서 뽑은 words[*].audioUrl 목록 파일(한 줄에 URL 하나). dev·prod 각각 "
+            "하나씩 두 번 준다. --execute면 둘 이상 필수, dry-run이면 없어도 되지만 "
+            "안전장치 1을 건너뛴 결과다"
+        ),
+    )
+    prune_parser.add_argument(
+        "--output", required=True, type=Path, help="삭제 목록(키·크기·sha)을 남길 로컬 경로"
+    )
+    prune_parser.add_argument(
+        "--expect-count",
+        type=int,
+        help="대상 수가 이 값과 다르면 중단한다 (이슈 기준 69531)",
+    )
+    prune_parser.add_argument("--execute", action="store_true")
     upload_parser = subparsers.add_parser("upload")
     upload_parser.add_argument("--manifest", required=True, type=Path)
     upload_parser.add_argument("--work-dir", required=True, type=Path)
@@ -2905,7 +3504,9 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="내용이 바뀐 기존 키를 충돌 대신 덮어쓴다 (QA 교체용, 게시 후 CloudFront 무효화 필요)",
     )
-    for s3_parser in (upload_parser, be_parser, reference_parser, pool_parser, generate_parser):
+    for s3_parser in (
+        upload_parser, be_parser, reference_parser, pool_parser, generate_parser, prune_parser
+    ):
         s3_parser.add_argument(
             "--boto3",
             action="store_true",
@@ -3089,6 +3690,8 @@ def main(argv: list[str] | None = None) -> int:
                 index, args.bucket, execute=args.execute, aws_runner=aws_runner
             )
             print(f"word_pool_index_key={key}")
+    elif args.command == "prune-legacy-word-keys":
+        return _run_prune_legacy_word_keys(args, parser)
     elif args.command == "upload":
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
         verify_manifest(manifest, args.work_dir)

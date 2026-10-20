@@ -291,3 +291,14 @@ variable "reward_configuration_enabled" {
   type        = bool
   default     = false
 }
+
+variable "ai_assessment_version" {
+  description = "BE evaluation contract; legacy remains the default outside explicitly enabled environments."
+  type        = string
+  default     = "text-level-v1.3"
+
+  validation {
+    condition     = contains(["text-level-v1.3", "text-score-v2.0"], var.ai_assessment_version)
+    error_message = "ai_assessment_version must be text-level-v1.3 or text-score-v2.0."
+  }
+}

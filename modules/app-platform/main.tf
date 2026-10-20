@@ -1487,6 +1487,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "SENTRY_ENVIRONMENT", value = var.environment },
         { name = "SPRING_FLYWAY_BASELINE_ON_MIGRATE", value = "true" },
         { name = "SPRING_PROFILES_ACTIVE", value = var.environment },
+        { name = "LANDIT_AI_ASSESSMENT_VERSION", value = var.ai_assessment_version },
         { name = "SERVER_SHUTDOWN", value = "graceful" },
         { name = "SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE", value = "50s" },
         { name = "SPRING_TASK_EXECUTION_SHUTDOWN_AWAIT_TERMINATION", value = "true" },

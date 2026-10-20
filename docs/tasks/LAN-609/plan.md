@@ -31,3 +31,6 @@
 - `test-dev-ec2-runtime.sh`, `test-dev-ec2-contract.sh`, `test-dev-ec2-cleanup.sh`, `terraform fmt -recursive -check`, 개발 root `terraform validate`, `git diff --check` 통과. runtime 검증에는 실제 생성된 API env의 평가 버전 확인을 추가했다.
 - 전체 development plan은 EC2 교체 없이 SSM 배포 문서 변경과 문서 참조로 인한 IAM policy 재계산만 포함한다. 실행 중인 runtime 스크립트의 hash가 plan의 이전 스크립트와 일치하고 변경은 평가 버전 한 줄이다.
 - 저장 plan을 적용하고 배포 문서 기본 버전 23을 확인했다. 현재 BE image digest를 그대로 지정해 API만 재배포를 시작했다. 배포 후 상태는 아래에 기록한다.
+- 18:03 KST 개발 API 배포 성공을 확인했다. 독립 SSM 재조회에서 실행 컨테이너에 `text-score-v2.0`이 설정됐으며 BE image digest, AI image digest와 AI 컨테이너가 모두 보존됐다. 공개 BE health `UP`, AI health `ok`다.
+- 개발 AI 합성 발화 3개 요청은 HTTP 200, `text-score-v2.0`과 78·90·85 등 1점 단위 점수를 반환했다. 합성 결과는 저장하지 않았으며 실제 사용자 평가 저장·실기기 표시는 미확인이다.
+- 적용 후 전체 development plan은 `No changes`다. 이후 개발 배포에서도 동일한 평가 버전이 유지된다.

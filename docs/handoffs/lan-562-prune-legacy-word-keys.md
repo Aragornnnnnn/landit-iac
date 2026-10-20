@@ -96,3 +96,13 @@ python3 -m scripts.expression_pronunciation_audio prune-legacy-word-keys \
 - 옛 배치의 work 매니페스트와 BE 매니페스트(`manifests/`, `reference/`)는 옛 단어 키를 가리킨다.
   삭제 후 그 키로 어드민 API 재임포트를 하면 words의 audioUrl이 죽은 주소가 된다. 적재는 Flyway로
   바뀌어 실사용 경로가 아니지만, `lan-373-be-import.md`·`lan-453-batch3-982-1938.md`에 표시해 뒀다.
+
+## 실행 기록 (2026-10-20)
+
+- `--execute --boto3`로 1회 실행, 안전장치 1~5 전부 통과. **69,525개 삭제**, 옛 단어 키 6개(위 1942·1945 제외분) 잔존.
+- 삭제 목록: `manifests/prune-legacy-word-keys-f44d7e12cbdc9f7d92b34ae655dcab41bbde9e4fb9c006cc04d2d8992fdec9f7.json`
+  (69,525건, 302,324,070B). 버저닝이 없어 이것이 유일한 기록이다.
+- 스크립트와 별개로 전후 키 목록을 다시 나열해 대조: 사라진 키 69,525개 전부 옛 단어 키 형식, 새로 생긴 키는
+  삭제 목록 1개뿐. 공용 18,012 · 문장 26,292 · 표현 23,271 · reference 34 · word-pool 1 · 7451 변형 3 모두 불변.
+- 삭제 후 prod 단어 URL 표본 5건(억양별 1~2건) CloudFront 200·sha 일치, 지운 옛 키는 origin에서 404.
+- 상세 로그는 PR Aragornnnnnn/landit-iac#59 코멘트.

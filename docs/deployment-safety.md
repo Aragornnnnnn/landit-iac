@@ -26,6 +26,30 @@ AWS_PROFILE=landit terraform -chdir=environments/prod plan -var-file=/tmp/landit
 
 승인된 plan을 적용하기 직전 `terraform show -json`을 `capture-prod-images.py --check`에 전달한다. 일반 운영 apply workflow에 이 검사가 포함되어 있다. 새 조회에 필요한 `ecs:ListTasks`, `ecs:DescribeTasks`는 별도 bootstrap plan·승인·apply 후 Terraform Actions 역할에 반영한다.
 
+## 예약 알림 중단과 복구.
+
+운영 예약 알림의 OOM 대응은 API 서비스 `prod-landit-api`와 `prod-landit-push-notifications` 큐를 기준으로 한다. 실제 설정 변경과 메시지 재전달은 사용자 승인 범위에서 진행한다.
+
+1. 현재 서비스가 사용하는 task definition과 실행 이미지 digest를 기록한다. 정의를 복사할 때는 `describe-task-definition --include TAGS`로 조회하고, 응답의 최상위 `tags`도 등록 요청에 보존한다. `taskDefinition`만 복사하면 태그가 빠진다. `Project=landit`, `Environment=prod`가 없으면 다음 코드 배포의 `RegisterTaskDefinition`이 권한 조건을 충족하지 못한다. `Repository`, `ManagedBy` 등 기존 태그도 유지하고, 누락을 해결하려고 IAM 조건을 완화하지 않는다.
+2. 중단할 때는 현재 이미지와 나머지 설정을 유지하고 `LANDIT_NOTIFICATION_CONSUMER_ENABLED=false`인 새 revision을 등록·적용한다. 이 설정은 해당 큐를 소비하는 푸시 처리를 모두 중단한다. 기존 task의 SQS 소비자 종료와 새 task의 ALB health를 확인한다. Scheduler만 꺼도 이미 큐에 들어간 메시지의 재시도는 계속될 수 있다.
+3. 수정 이미지를 배포한 뒤 그 digest를 유지하면서 `LANDIT_NOTIFICATION_CONSUMER_ENABLED=true`를 적용한다. 진행 중인 코드 배포의 검증이 끝나기 전에 별도 서비스 업데이트를 겹치지 않는다. 수정 전 이미지로 만든 활성화용 revision을 그대로 적용하지 않는다.
+4. 새 task의 이미지·환경 변수·태그, SQS 소비자 시작 로그, ALB health, ECS 배포 완료와 OOM 재발 여부를 확인한다. 소비자 시작은 실제 알림 발송 완료를 의미하지 않는다.
+
+환경 변수는 새 task 시작 때 적용된다. revision 등록만으로 실행 중 서비스가 바뀌지는 않지만, 서비스에 새 revision을 연결하면 즉시 롤링 배포가 시작된다. BE의 [코드 배포 스크립트](https://github.com/Aragornnnnnn/landit-be/blob/main/.github/scripts/deploy-ecs-revision.py)는 현재 서비스의 정의를 복사하고 이미지 digest만 교체한다. 따라서 등록만 해 둔 최신 revision의 `true`를 자동 선택하지 않으며, 현재 서비스가 `false`이면 코드 배포 뒤에도 그 값이 유지된다.
+
+태그 누락으로 배포가 실패했다면 원래 정의의 태그와 [등록 권한 조건](../bootstrap/terraform-actions/production-code-deploy.tf)을 비교한다. 기존 리소스 재태깅은 코드 배포 역할에 허용되지 않으므로 승인된 운영 자격으로 원래 태그를 복구한 뒤 실패한 job을 재실행한다. 태그 복구만으로 task가 재시작되거나 알림이 켜지지는 않는다.
+
+### DLQ 메시지 재처리.
+
+- 소비자를 다시 켜도 DLQ 메시지는 자동으로 원래 큐로 돌아오지 않는다. `prod-landit-push-notifications-dlq`의 실패 메시지와 원래 큐의 대기·처리 중 건수를 별도로 확인한다.
+- 재처리 전 대상 메시지의 `messageType`, 본문의 `messageId`, `occurredAt`과 기존 처리 기록을 확인한다. 예약일이 지난 알림은 현재 발송 의도와 맞는지 먼저 판단하며, 중복 전송 방지 동작을 확인한다.
+- 승인된 대상만 원래 큐로 재전달하고 본문·메시지 속성·업무 식별자는 유지한다. SQS가 부여하는 새 전송 ID와 본문의 `messageId`를 구분한다. 개별 수동 재발행은 전송 성공을 확인한 뒤 해당 DLQ 원본만 삭제한다. 전송 결과가 불명확하면 무작정 재발행하지 말고 원래 큐와 처리 기록부터 확인한다.
+- 같은 업무 식별자의 `scheduled_notification_batch_completed`, `ticketAccepted`, `ticketFailed`, 원래 큐·DLQ 잔여량과 OOM 재발 여부로 결과를 확인한다. Expo 접수 성공과 사용자 기기의 실제 수신은 구분한다.
+
+### JVM 메모리 설정 경계.
+
+운영 API의 Terraform 기본 메모리는 1GiB이고, LAN-736의 JVM 힙 설정은 BE의 [Dockerfile.runtime](https://github.com/Aragornnnnnn/landit-be/blob/main/Dockerfile.runtime)에서 `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=37.5`로 관리한다. 컨테이너 전체 메모리 사용률과 JVM 힙 포화는 별개다. IaC에 같은 값을 중복 주입하기 전에 이미지 기본값과 task 환경 변수의 override 여부를 확인한다. 힙 설정이나 메모리 증설은 과도한 조회의 코드 수정을 대체하지 않는다.
+
 ## AI 호출과 샌드박스.
 
 AI 컨테이너 포트는 운영에서는 ALB 보안 그룹에서만, 개발에서는 loopback에서만 접근된다. 공개 ALB·Caddy의 AI 주소는 유지하며, AI의 `/api/v1`은 `X-Landit-Internal-Token`으로 BE 호출을 검증한다. 네트워크 자체를 private으로 바꾸는 작업은 포함하지 않는다. `/health`만 인증에서 제외한다.

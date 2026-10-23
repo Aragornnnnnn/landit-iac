@@ -200,7 +200,13 @@ assert_contains "${api_content_policy}" '"s3:PutObject"' "API Task Role은 inbox
 assert_contains "${module}" 'resources = ["arn:aws:s3:::${var.content_bucket_name}/content/inbox/*"]' "API 업로드 권한은 inbox prefix로 제한해야 한다."
 assert_contains "${api_task}" '{ name = "CONTENT_BUCKET_NAME", value = var.content_bucket_name }' "API에 콘텐츠 bucket 이름을 주입해야 한다."
 assert_contains "${api_task}" '{ name = "CONTENT_CLOUDFRONT_URL", value = var.content_cloudfront_url }' "API에 CloudFront URL을 주입해야 한다."
-assert_not_contains "${worker_policy}" 'content_bucket_name' "worker IAM에는 shared 콘텐츠 bucket 권한을 추가하면 안 된다."
-assert_not_contains "${worker_task}" 'CONTENT_BUCKET_NAME' "worker에는 콘텐츠 bucket 환경 변수를 주입하면 안 된다."
+# LAN-754(콘텐츠 에셋 생성)부터 landit-ai(worker 태스크)가 썸네일·이미지·음성을 콘텍츠 bucket에 직접 올린다.
+# 그래도 담당자 업로드 전용 inbox와 그 밖의 접두어는 worker에 열지 않는다.
+assert_contains "${worker_policy}" 'arn:aws:s3:::${var.content_bucket_name}/content/scenarios/*' "worker IAM은 에셋 접두어(content/scenarios)에만 쓰기 권한을 가져야 한다."
+assert_contains "${worker_policy}" 'arn:aws:s3:::${var.content_bucket_name}/content/expression-pronunciation-audio/*' "worker IAM은 발음 자산 접두어에 쓰기 권한을 가져야 한다."
+assert_not_contains "${worker_policy}" 'content/inbox' "worker IAM에는 담당자 업로드 inbox 권한을 주면 안 된다."
+assert_not_contains "${worker_policy}" 'arn:aws:s3:::${var.content_bucket_name}/*' "worker IAM에 콘텐츠 bucket 전체 쓰기를 주면 안 된다."
+assert_contains "${worker_task}" '{ name = "CONTENT_BUCKET_NAME", value = var.content_bucket_name }' "worker에 콘텐츠 bucket 이름을 주입해야 한다(LAN-754)."
+assert_contains "${worker_task}" '{ name = "OPENAI_API_KEY", valueFrom = "${local.ssm_path}/OPENAI_API_KEY" }' "worker에 이미지 생성용 OPENAI_API_KEY를 SSM secret으로 주입해야 한다(LAN-754)."
 
 echo "관리자 콘텐츠 이미지 업로드 IaC 계약이 통과했다."

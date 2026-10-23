@@ -733,9 +733,10 @@ resource "aws_lb" "api" {
 
   name               = "${local.name_prefix}-alb"
   load_balancer_type = "application"
-  idle_timeout       = 130
-  security_groups    = [aws_security_group.alb[0].id]
-  subnets            = values(aws_subnet.public)[*].id
+  # 콘텐츠 제작(LAN-702) AI 호출이 최대 290초라 130초면 ALB가 먼저 504를 돌려준다. uvicorn keep-alive(320초)보다 짧게 둔다.
+  idle_timeout    = 300
+  security_groups = [aws_security_group.alb[0].id]
+  subnets         = values(aws_subnet.public)[*].id
 
   dynamic "access_logs" {
     for_each = var.alb_access_logs_enabled ? [1] : []
@@ -962,7 +963,7 @@ resource "aws_lb_target_group" "ai" {
   protocol             = "HTTP"
   target_type          = "ip"
   vpc_id               = aws_vpc.this.id
-  deregistration_delay = 150
+  deregistration_delay = 300
 
   health_check {
     enabled             = true

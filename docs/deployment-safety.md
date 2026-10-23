@@ -66,7 +66,7 @@ AI 컨테이너 포트는 운영에서는 ALB 보안 그룹에서만, 개발에�
 ## 최초 전환과 확인.
 
 - 구 AI 응답을 읽을 수 있는 BE와 구 BE 요청을 받을 수 있는 AI를 먼저 배포한다. 기존 AI 메모리 피드백이 DB로 옮겨지기 전에는 AI를 교체하지 않는다. 옮길 수 없는 세션은 별도로 신규 진입을 제한할 운영 수단을 준비해 기존 결과 수거를 완료한 뒤 교체한다. 이번 범위에는 DB 신규 시작 중지 스위치가 없다. 대화 진행 권한 24시간과 AI 메모리 TTL은 다르므로 시간만 기다려서 안전해졌다고 판단하지 않는다.
-- ECS·Compose 종료 유예는 120초다. BE는 HTTP graceful 50초와 executor 대기 50초, AI는 graceful 110초 계약을 사용한다. ALB idle 130초·drain 150초로 120초 피드백 응답을 수용한다. 종료 제한을 넘거나 강제 종료된 작업은 BE DB에서 재시도해야 한다. [AWS 종료 유예 문서](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_ContainerDefinition.html).
+- ECS·Compose 종료 유예는 120초다. BE는 HTTP graceful 50초와 executor 대기 50초, AI는 graceful 110초 계약을 사용한다. ALB idle 300초(LAN-702, 콘텐츠 제작 AI 호출 최대 290초)·API drain 150초·AI drain 300초로 긴 응답을 수용한다. Fargate stopTimeout 상한(120초) 때문에 배포 순간 돌던 콘텐츠 생성 호출은 잘릴 수 있고 BE가 단계 재시도·복구로 다시 만든다. 종료 제한을 넘거나 강제 종료된 작업은 BE DB에서 재시도해야 한다. [AWS 종료 유예 문서](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_ContainerDefinition.html).
 - dev에서 피드백 생성 중 AI 교체, BE 저장 직전 재시작, 같은 메시지 재요청을 실행한다. 다음 질문 지연, 중복 결과, 영구 PREPARING이 없어야 한다. 이전 BE+새 AI와 새 BE+이전 AI 조합도 확인한다.
 - 결제 오픈 전 시작한 학습이 같은 ID로 마무리되는지, 무료 대화 한 번 뒤 새 유료 학습이 막히는지, 구매·취소·복원이 실제 구독과 맞는지 확인한다. 실기기/구매 결과와 서버별 image digest를 함께 기록한다. health 성공만으로 완료하지 않는다.
 - 기능 롤백은 BE 오픈 시각을 비우고 재기동하는 절차와 FE 플래그 false 재배포를 함께 수행한다. DB에 저장한 학습·피드백·실결제 권한은 유지한다. 코드 롤백 시 이전 BE·AI가 새 저장 데이터와 인증 계약을 읽을 수 있는지 먼저 확인한다.

@@ -29,6 +29,7 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_SECRET` | `SecureString` | backend 자체 token signing secret |
 | `/landit/{environment}/LANDIT_AI_CLIENT_MODE` | `String` | backend AI client mode |
 | `/landit/{environment}/LANDIT_AI_BASE_URL` | `String` | backend에서 호출하는 AI service base URL |
+| `/landit/{environment}/LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT` | `String` | backend가 콘텐츠 제작(LAN-690) AI 호출 한 번을 기다리는 시간. Duration 형식(`300s`). 코드 기본값 300초, landit-ai `CONTENT_GENERATION_TIMEOUT_SECONDS`보다 길어야 한다 |
 | `/landit/{environment}/LANDIT_REVENUECAT_PROJECT_ID` | `String` | backend RevenueCat 프로젝트 ID |
 | `/landit/{environment}/LANDIT_REVENUECAT_API_SECRET_KEY` | `SecureString` | backend RevenueCat v2 조회 키. |
 | `/landit/{environment}/LANDIT_REVENUECAT_ENTITLEMENT_SECRET_KEY` | `SecureString` | LAN-659의 premium 부여·회수용 v1 Secret 키. 개발 EC2·운영 ECS API에만 주입하며 AI에는 전달하지 않는다. |
@@ -55,6 +56,9 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/OPENROUTER_BASE_URL` | `String` | OpenRouter API base URL |
 | `/landit/{environment}/OPENROUTER_MODEL` | `String` | 기본 OpenRouter model |
 | `/landit/{environment}/MESSAGE_FEEDBACK_MODEL` | `String` | 메시지 피드백 생성 전용 OpenRouter model |
+| `/landit/{environment}/CONTENT_GENERATION_MODEL` | `String` | 콘텐츠 제작(LAN-690) 생성 OpenRouter model. 2026-10-18 결정값 `anthropic/claude-opus-5.5`(코드 기본값과 같음) |
+| `/landit/{environment}/CONTENT_REVIEW_MODEL` | `String` | 콘텐츠 제작 독립 검수 model. 생성과 다른 계열이어야 한다. 결정값 `openai/gpt-5.6-terra` |
+| `/landit/{environment}/CONTENT_GENERATION_TIMEOUT_SECONDS` | `String` | 콘텐츠 생성 호출 1회의 SDK 한도(초). 코드 기본값 `290`. BE `LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT`보다 짧아야 한다 |
 | `/landit/{environment}/MESSAGE_FEEDBACK_REVIEW_ENABLED` | `String` | 메시지 피드백 문구 검수 사용 여부, `true` 또는 `false` |
 | `/landit/{environment}/JEV_ENABLED` | `String` | Jev 사용 여부. develop·prod 모두 `false`. |
 | `/landit/{environment}/JEV_ENABLED_WORKFLOWS` | `String` | JSON 배열 문자열. 양쪽 `["E1","E2","E3","E4","E7","E10","E13"]`. |
@@ -191,10 +195,15 @@ SSM parameter를 생성해도 ECS container environment에 자동으로 들어�
 
 - SSM 값은 shell history, CI log, git diff에 남지 않는 방식으로 갱신합니다.
 - `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `LANDIT_AUTH_TOKEN_SECRET`, `LANDIT_BE_SENTRY_DSN`, `LANDIT_AI_SENTRY_DSN`, `LANDIT_GRAFANA_CLOUD_OTLP_HEADERS`, `LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`, `LANDIT_AI_INTERNAL_TOKEN`, `LANDIT_SENTRY_RELAY_AUTH_TOKEN`, `LANDIT_SENTRY_DISCORD_WEBHOOK_URL`, `OPENROUTER_API_KEY`는 `SecureString`으로만 관리합니다.
-- `LANDIT_CORS_ALLOWED_ORIGINS`, `LANDIT_AI_CLIENT_MODE`, `LANDIT_AI_BASE_URL`, `LANDIT_SUBSCRIPTION_LAUNCHED_AT`, `LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE`, `LANDIT_MEMORY_WRITE_ENABLED`, `LANDIT_MEMORY_USE_ENABLED`, `LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES`, `LANDIT_AUTH_OIDC_KAKAO_AUDIENCES`, `LANDIT_AUTH_OIDC_APPLE_AUDIENCES`, `LLM_PROVIDER`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`, `MESSAGE_FEEDBACK_MODEL`, `MESSAGE_FEEDBACK_REVIEW_ENABLED`은 secret이 아니므로 `String`으로 관리합니다.
+- `LANDIT_CORS_ALLOWED_ORIGINS`, `LANDIT_AI_CLIENT_MODE`, `LANDIT_AI_BASE_URL`, `LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT`, `CONTENT_GENERATION_MODEL`, `CONTENT_REVIEW_MODEL`, `CONTENT_GENERATION_TIMEOUT_SECONDS`, `LANDIT_SUBSCRIPTION_LAUNCHED_AT`, `LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE`, `LANDIT_MEMORY_WRITE_ENABLED`, `LANDIT_MEMORY_USE_ENABLED`, `LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES`, `LANDIT_AUTH_OIDC_KAKAO_AUDIENCES`, `LANDIT_AUTH_OIDC_APPLE_AUDIENCES`, `LLM_PROVIDER`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`, `MESSAGE_FEEDBACK_MODEL`, `MESSAGE_FEEDBACK_REVIEW_ENABLED`은 secret이 아니므로 `String`으로 관리합니다.
 - Terraform에서 secret 값을 직접 생성하거나 import하지 않습니다.
 - 값 변경 후에는 값 자체가 아니라 parameter name, type, version만 검증 기록에 남깁니다.
 - ECS task definition에 연결된 SSM 값은 task 재시작 또는 새 deployment 후에만 container environment에 반영됩니다.
+
+## 콘텐츠 제작 모델·한도 주입 (LAN-702)
+
+- `CONTENT_GENERATION_MODEL`, `CONTENT_REVIEW_MODEL`, `CONTENT_GENERATION_TIMEOUT_SECONDS`(landit-ai)와 `LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT`(API)은 ECS task definition의 `secrets`로 주입한다. task definition이 참조하는 SSM 값이 없으면 task가 시작하지 못하므로, **이 변경을 apply하기 전에 develop·prod 두 환경에 네 값을 먼저 `put-parameter`한다.** 네 값 모두 코드 기본값(`anthropic/claude-opus-5.5`, `openai/gpt-5.6-terra`, `290`, `300s`)과 같게 넣는다.
+- 모델을 바꿀 때는 SSM 값만 바꾸고 task를 재시작한다. 두 timeout은 landit-ai 쪽이 API 쪽보다 항상 짧아야 한다.
 
 LAN-462 예약 실패 보관용 `LANDIT_PUSH_SCHEDULER_DLQ_ARN`은 Terraform이 기존 환경별 Push DLQ ARN으로 직접 주입한다. 추가 SSM 비밀 값은 필요 없다.
 

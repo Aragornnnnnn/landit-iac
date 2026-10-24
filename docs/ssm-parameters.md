@@ -55,7 +55,7 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/OPENROUTER_BASE_URL` | `String` | OpenRouter API base URL |
 | `/landit/{environment}/OPENROUTER_MODEL` | `String` | 기본 OpenRouter model |
 | `/landit/{environment}/MESSAGE_FEEDBACK_MODEL` | `String` | 메시지 피드백 생성 전용 OpenRouter model |
-| `/landit/{environment}/FREE_TALK_CORRECTION_MODEL` | `String` | 스몰톡 턴 교정(고친 문장·이유) 전용 OpenRouter model. 비우면 `OPENROUTER_MODEL`을 쓴다. 2026-10-24 결정값 `openai/gpt-5.4`(LAN-759, 5개 모델 비교 결과) |
+| `/landit/{environment}/FREE_TALK_CORRECTION_MODEL` | `String` | 스몰톡 턴 교정(고친 문장·이유) 전용 OpenRouter model. 2026-10-24 결정값 `openai/gpt-5.4`(LAN-759, 5개 모델 비교 결과). 기본 모델로 되돌리려면 파라미터를 지우거나 비우지 말고 `OPENROUTER_MODEL`과 같은 값으로 바꾼 뒤 재배포한다(task definition이 참조하므로 없으면 task가 시작하지 못함) |
 | `/landit/{environment}/MESSAGE_FEEDBACK_REVIEW_ENABLED` | `String` | 메시지 피드백 문구 검수 사용 여부, `true` 또는 `false` |
 | `/landit/{environment}/JEV_ENABLED` | `String` | Jev 사용 여부. develop·prod 모두 `false`. |
 | `/landit/{environment}/JEV_ENABLED_WORKFLOWS` | `String` | JSON 배열 문자열. 양쪽 `["E1","E2","E3","E4","E7","E10","E13"]`. |

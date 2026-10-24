@@ -1635,6 +1635,7 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "OPENROUTER_BASE_URL", valueFrom = "${local.ssm_path}/OPENROUTER_BASE_URL" },
         { name = "OPENROUTER_MODEL", valueFrom = "${local.ssm_path}/OPENROUTER_MODEL" },
         { name = "MESSAGE_FEEDBACK_MODEL", valueFrom = "${local.ssm_path}/MESSAGE_FEEDBACK_MODEL" },
+        { name = "FREE_TALK_CORRECTION_MODEL", valueFrom = "${local.ssm_path}/FREE_TALK_CORRECTION_MODEL" },
         { name = "MESSAGE_FEEDBACK_REVIEW_ENABLED", valueFrom = "${local.ssm_path}/MESSAGE_FEEDBACK_REVIEW_ENABLED" },
         { name = "JEV_ENABLED", valueFrom = "${local.ssm_path}/JEV_ENABLED" },
         { name = "JEV_ENABLED_WORKFLOWS", valueFrom = "${local.ssm_path}/JEV_ENABLED_WORKFLOWS" },

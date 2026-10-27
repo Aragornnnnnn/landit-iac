@@ -141,7 +141,9 @@ production apply는 `operation=plan-and-apply`, `target=production`, `confirm_en
 
 OIDC IAM role과 plan bucket은 `bootstrap/terraform-actions`에서 관리합니다. 기존 GitHub OIDC provider를 data source로 참조하며 `bootstrap/github-actions`의 BE·AI 배포 역할 state는 변경하지 않습니다.
 
-apply role은 범용 Terraform 관리자 역할이 아닙니다. LAN-347 saved plan의 exact SSM document·production ECS API service와 prod request tag task definition 등록만 허용하며 shared에는 AWS resource mutation 권한이 없습니다. Actions에는 runtime role 권한 상승을 막기 위해 `iam:PutRolePolicy`를 주지 않습니다. develop EC2·deploy role과 production API task role의 IAM 변경은 로컬 관리자 profile의 별도 saved plan으로 먼저 적용해야 합니다. 후속 인프라 변경은 bootstrap policy를 먼저 확장해 별도 검토해야 합니다. production API task definition은 account-wide deregister 권한 대신 `skip_destroy=true`로 이전 revision을 유지합니다.
+apply role은 범용 Terraform 관리자 역할이 아닙니다. target별 SSM document·production ECS API/worker service와 prod request tag task definition 등록만 허용하며 shared에는 AWS resource mutation 권한이 없습니다. `iam:PutRolePolicy`는 develop EC2 app 역할과 production API·worker task 역할의 정확한 ARN만 허용합니다. Actions 자체 역할과 deploy role의 정책을 수정할 권한은 없습니다. production task definition은 account-wide deregister 권한 대신 `skip_destroy=true`로 이전 revision을 유지합니다.
+
+LAN-754의 worker task 인라인 정책 갱신 권한은 코드 병합만으로 현재 Actions 역할에 반영되지 않습니다. 아래 bootstrap root에서 로컬 관리자 profile로 plan을 검토하고 별도 승인 후 먼저 적용해야 합니다. 그다음 production 환경의 plan/apply를 진행합니다. `OPENAI_API_KEY` 등 새로 참조하는 SSM 값도 환경 apply 전에 준비해야 합니다. 이 bootstrap 변경은 SSM 값을 생성하거나 변경하지 않습니다.
 
 ```bash
 AWS_PROFILE=landit terraform -chdir=bootstrap/terraform-actions init -reconfigure

@@ -26,6 +26,26 @@ AWS_PROFILE=landit terraform -chdir=environments/prod plan -var-file=/tmp/landit
 
 승인된 plan을 적용하기 직전 `terraform show -json`을 `capture-prod-images.py --check`에 전달한다. 일반 운영 apply workflow에 이 검사가 포함되어 있다. 새 조회에 필요한 `ecs:ListTasks`, `ecs:DescribeTasks`는 별도 bootstrap plan·승인·apply 후 Terraform Actions 역할에 반영한다.
 
+## ALB TLS 1.3 전환.
+
+HTTPS 리스너는 `ELBSecurityPolicy-TLS13-1-2-2021-06`으로 TLS 1.2와 1.3을 함께 허용한다. TLS 1.0·1.1은 제외된다. 운영 API와 AI가 이 리스너를 공유하므로 두 경로를 확인한다. 개발은 `ecs_platform_enabled=false`여서 이 ALB 변경이 적용되지 않는다.
+
+앱의 웹 진입점은 이미 TLS 1.3을 지원하며, 이번 변경은 ALB에 새로 연결하는 구간에 적용된다. 연결을 재사용하는 요청마다 지연이 줄어드는 것은 아니다. ALB에서 API·AI 대상까지는 HTTP이므로 인증서 교체나 서버 재시작이 필요하지 않다. 다만 [AWS는 트래픽이 많은 상태에서 TLS 정책 변경 시 일시적인 중단 가능성을 안내한다](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/listener-update-certificates.html). 무중단을 보장하지 않는다.
+
+2026-10-27 준비 시 전체 운영 plan에는 TLS 변경 외에 기존 ECS 서비스·task definition 변경이 포함됐다. 이 전체 plan은 적용하지 않는다. 이번 TLS 전환만 예외적으로 아래 대상 plan으로 분리하고, 기존 ECS 차이는 별도로 검토한다. `-target`을 일반 배포의 기본값으로 사용하지 않는다.
+
+```bash
+AWS_PROFILE=landit terraform -chdir=environments/prod plan \
+  -var-file=/tmp/landit-release.tfvars.json \
+  '-target=module.app_platform.aws_lb_listener.https[0]' \
+  -out=/tmp/landit-tls-only.tfplan
+```
+
+1. 앞 절의 이미지 캡처를 먼저 실행한다. 대상 plan은 기존 HTTPS 리스너의 `ssl_policy`만 in-place update하고, 생성·삭제·ECS 변경이 모두 없어야 한다. 적용 시점이 달라지거나 운영 배포가 진행됐다면 새 plan을 만든다.
+2. 변경 전 정책명과 최근 15분의 `ClientTLSNegotiationErrorCount`, `HTTPCode_ELB_5XX_Count`, `HTTPCode_Target_5XX_Count`, 요청량·새 연결 지연을 기록한다. 트래픽이 적은 시간에 사용자 승인된 저장 plan만 적용한다. 적용 직전 이미지 검증은 `terraform -chdir=environments/prod show -json /tmp/landit-tls-only.tfplan | AWS_PROFILE=landit python3 scripts/capture-prod-images.py --check`로 수행한다.
+3. 적용 뒤 새 연결에서 `api.landit.im/actuator/health`와 `ai.landit.im/health`의 TLS 1.2·1.3 협상 및 HTTP 성공을 각각 확인한다. TLS 1.2 강제 검사는 `curl --tlsv1.2 --tls-max 1.2`, TLS 1.3은 `curl --tlsv1.3 --tls-max 1.3`을 사용하고, 인증서 검증을 끄지 않는다. 앱의 웹 프록시 경유 API와 실제 대화 흐름도 확인한다.
+4. 같은 지표를 최소 15분 비교하고 지속적인 오류 증가나 앱 연결 실패가 발생하면 롤백한다. `ssl_policy`를 기록한 이전 정책으로 복구한 뒤, 현재 상태에서 새 대상 plan을 만들고 리스너 1건 변경인지 검토하여 승인 범위 안에서 적용한다. 이번 전환 전 정책은 `ELBSecurityPolicy-2016-08`이었다. 적용 후 전체 plan으로 남은 ECS 차이와 추가 변경 여부를 다시 확인한다.
+
 ## 예약 알림 중단과 복구.
 
 운영 예약 알림의 OOM 대응은 API 서비스 `prod-landit-api`와 `prod-landit-push-notifications` 큐를 기준으로 한다. 실제 설정 변경과 메시지 재전달은 사용자 승인 범위에서 진행한다.
@@ -66,7 +86,7 @@ AI 컨테이너 포트는 운영에서는 ALB 보안 그룹에서만, 개발에�
 ## 최초 전환과 확인.
 
 - 구 AI 응답을 읽을 수 있는 BE와 구 BE 요청을 받을 수 있는 AI를 먼저 배포한다. 기존 AI 메모리 피드백이 DB로 옮겨지기 전에는 AI를 교체하지 않는다. 옮길 수 없는 세션은 별도로 신규 진입을 제한할 운영 수단을 준비해 기존 결과 수거를 완료한 뒤 교체한다. 이번 범위에는 DB 신규 시작 중지 스위치가 없다. 대화 진행 권한 24시간과 AI 메모리 TTL은 다르므로 시간만 기다려서 안전해졌다고 판단하지 않는다.
-- ECS·Compose 종료 유예는 120초다. BE는 HTTP graceful 50초와 executor 대기 50초, AI는 graceful 110초 계약을 사용한다. ALB idle 130초·drain 150초로 120초 피드백 응답을 수용한다. 종료 제한을 넘거나 강제 종료된 작업은 BE DB에서 재시도해야 한다. [AWS 종료 유예 문서](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_ContainerDefinition.html).
+- ECS·Compose 종료 유예는 120초다. BE는 HTTP graceful 50초와 executor 대기 50초, AI는 graceful 110초 계약을 사용한다. ALB idle 300초(LAN-702, 콘텐츠 제작 AI 호출 최대 290초)·API drain 150초·AI drain 300초로 긴 응답을 수용한다. Fargate stopTimeout 상한(120초) 때문에 배포 순간 돌던 콘텐츠 생성 호출은 잘릴 수 있고 BE가 단계 재시도·복구로 다시 만든다. 종료 제한을 넘거나 강제 종료된 작업은 BE DB에서 재시도해야 한다. [AWS 종료 유예 문서](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_ContainerDefinition.html).
 - dev에서 피드백 생성 중 AI 교체, BE 저장 직전 재시작, 같은 메시지 재요청을 실행한다. 다음 질문 지연, 중복 결과, 영구 PREPARING이 없어야 한다. 이전 BE+새 AI와 새 BE+이전 AI 조합도 확인한다.
 - 결제 오픈 전 시작한 학습이 같은 ID로 마무리되는지, 무료 대화 한 번 뒤 새 유료 학습이 막히는지, 구매·취소·복원이 실제 구독과 맞는지 확인한다. 실기기/구매 결과와 서버별 image digest를 함께 기록한다. health 성공만으로 완료하지 않는다.
 - 기능 롤백은 BE 오픈 시각을 비우고 재기동하는 절차와 FE 플래그 false 재배포를 함께 수행한다. DB에 저장한 학습·피드백·실결제 권한은 유지한다. 코드 롤백 시 이전 BE·AI가 새 저장 데이터와 인증 계약을 읽을 수 있는지 먼저 확인한다.

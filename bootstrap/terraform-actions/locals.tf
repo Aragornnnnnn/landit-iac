@@ -167,7 +167,8 @@ locals {
       "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/develop-${var.project_name}-ec2-app"
     ]
     production = [
-      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-api-task"
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-api-task",
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-worker-task"
     ]
   }
 

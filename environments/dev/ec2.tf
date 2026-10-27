@@ -171,6 +171,31 @@ data "aws_iam_policy_document" "ec2_app" {
     ]
   }
 
+  # 콘텐츠 에셋 생성(LAN-754): dev에서는 BE·AI가 같은 EC2 인스턴스 역할을 쓴다. AI가 에셋을 올리고 BE가 교체 이미지를 복사한다.
+  # prod ECS의 api_task·worker_task 권한을 합친 것과 같다.
+  statement {
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject"
+    ]
+    resources = [
+      "arn:aws:s3:::${data.terraform_remote_state.shared.outputs.content_bucket_name}/content/scenarios/*",
+      "arn:aws:s3:::${data.terraform_remote_state.shared.outputs.content_bucket_name}/content/writing-expressions/*",
+      "arn:aws:s3:::${data.terraform_remote_state.shared.outputs.content_bucket_name}/content/scenario-question-audio/*",
+      "arn:aws:s3:::${data.terraform_remote_state.shared.outputs.content_bucket_name}/content/expression-pronunciation-audio/*"
+    ]
+  }
+
+  statement {
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:aws:s3:::${data.terraform_remote_state.shared.outputs.content_bucket_name}"]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["content/expression-pronunciation-audio/*", "content/inbox/*"]
+    }
+  }
+
   statement {
     actions = [
       "sqs:ChangeMessageVisibility",

@@ -733,9 +733,10 @@ resource "aws_lb" "api" {
 
   name               = "${local.name_prefix}-alb"
   load_balancer_type = "application"
-  idle_timeout       = 130
-  security_groups    = [aws_security_group.alb[0].id]
-  subnets            = values(aws_subnet.public)[*].id
+  # 콘텐츠 제작(LAN-702) AI 호출이 최대 290초라 130초면 ALB가 먼저 504를 돌려준다. uvicorn keep-alive(320초)보다 짧게 둔다.
+  idle_timeout    = 300
+  security_groups = [aws_security_group.alb[0].id]
+  subnets         = values(aws_subnet.public)[*].id
 
   dynamic "access_logs" {
     for_each = var.alb_access_logs_enabled ? [1] : []
@@ -962,7 +963,7 @@ resource "aws_lb_target_group" "ai" {
   protocol             = "HTTP"
   target_type          = "ip"
   vpc_id               = aws_vpc.this.id
-  deregistration_delay = 150
+  deregistration_delay = 300
 
   health_check {
     enabled             = true
@@ -1012,6 +1013,7 @@ resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.api[0].arn
   port              = 443
   protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
   certificate_arn   = var.alb_certificate_arn
 
   default_action {
@@ -1404,6 +1406,29 @@ data "aws_iam_policy_document" "api_task" {
       "arn:aws:s3:::${var.content_bucket_name}/content/expression-pronunciation-audio/*"
     ]
   }
+
+  # 콘텐츠 에셋 교체 업로드(LAN-754): 담당자가 inbox에 올린 webp를 BE가 최종 자리로 CopyObject한다.
+  # inbox 접두어 ListBucket은 없는 원본이 403이 아니라 404(NoSuchKey)로 보이게 하기 위한 것이다.
+  statement {
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject"
+    ]
+    resources = [
+      "arn:aws:s3:::${var.content_bucket_name}/content/scenarios/*",
+      "arn:aws:s3:::${var.content_bucket_name}/content/writing-expressions/*"
+    ]
+  }
+
+  statement {
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:aws:s3:::${var.content_bucket_name}"]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["content/inbox/*"]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "api_task" {
@@ -1438,6 +1463,31 @@ data "aws_iam_policy_document" "worker_task" {
   statement {
     actions   = ["s3:ListBucket"]
     resources = [aws_s3_bucket.app.arn]
+  }
+
+  # 콘텐츠 에셋 생성(LAN-754): landit-ai가 썸네일·표현 이미지·질문 음성·발음 자산을 콘텐츠 버킷에 직접 올린다.
+  # 단어 음성 공용 풀은 HEAD로 있는지 보고 재사용하므로, 없는 키가 403이 아니라 404로 보이도록 그 접두어의 ListBucket을 함께 준다.
+  statement {
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject"
+    ]
+    resources = [
+      "arn:aws:s3:::${var.content_bucket_name}/content/scenarios/*",
+      "arn:aws:s3:::${var.content_bucket_name}/content/writing-expressions/*",
+      "arn:aws:s3:::${var.content_bucket_name}/content/scenario-question-audio/*",
+      "arn:aws:s3:::${var.content_bucket_name}/content/expression-pronunciation-audio/*"
+    ]
+  }
+
+  statement {
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:aws:s3:::${var.content_bucket_name}"]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["content/expression-pronunciation-audio/*"]
+    }
   }
 }
 
@@ -1534,6 +1584,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_AUTH_OIDC_APPLE_AUDIENCES", valueFrom = "${local.ssm_path}/LANDIT_AUTH_OIDC_APPLE_AUDIENCES" },
         { name = "LANDIT_AI_CLIENT_MODE", valueFrom = "${local.ssm_path}/LANDIT_AI_CLIENT_MODE" },
         { name = "LANDIT_AI_BASE_URL", valueFrom = "${local.ssm_path}/LANDIT_AI_BASE_URL" },
+        { name = "LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT", valueFrom = "${local.ssm_path}/LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT" },
         { name = "LANDIT_MEMORY_WRITE_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_MEMORY_WRITE_ENABLED" },
         { name = "LANDIT_MEMORY_USE_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_MEMORY_USE_ENABLED" },
         { name = "LANDIT_FREE_TALK_DAILY_SPEAKING_TIME_LIMIT_MS", valueFrom = "${local.ssm_path}/LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS" },
@@ -1616,7 +1667,9 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "ENVIRONMENT", value = var.environment },
         { name = "APP_ENV", value = var.environment },
         { name = "S3_BUCKET_NAME", value = aws_s3_bucket.app.bucket },
-        { name = "SQS_JOBS_QUEUE_URL", value = aws_sqs_queue.jobs.url }
+        { name = "SQS_JOBS_QUEUE_URL", value = aws_sqs_queue.jobs.url },
+        { name = "CONTENT_BUCKET_NAME", value = var.content_bucket_name },
+        { name = "CONTENT_CLOUDFRONT_URL", value = var.content_cloudfront_url }
         ], var.grafana_otlp_enabled ? [
         { name = "OTEL_METRICS_ENABLED", value = "true" },
         { name = "OTEL_EXPORTER_OTLP_PROTOCOL", value = "http/protobuf" },
@@ -1636,6 +1689,9 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "OPENROUTER_MODEL", valueFrom = "${local.ssm_path}/OPENROUTER_MODEL" },
         { name = "MESSAGE_FEEDBACK_MODEL", valueFrom = "${local.ssm_path}/MESSAGE_FEEDBACK_MODEL" },
         { name = "FREE_TALK_CORRECTION_MODEL", valueFrom = "${local.ssm_path}/FREE_TALK_CORRECTION_MODEL" },
+        { name = "CONTENT_GENERATION_MODEL", valueFrom = "${local.ssm_path}/CONTENT_GENERATION_MODEL" },
+        { name = "CONTENT_REVIEW_MODEL", valueFrom = "${local.ssm_path}/CONTENT_REVIEW_MODEL" },
+        { name = "CONTENT_GENERATION_TIMEOUT_SECONDS", valueFrom = "${local.ssm_path}/CONTENT_GENERATION_TIMEOUT_SECONDS" },
         { name = "MESSAGE_FEEDBACK_REVIEW_ENABLED", valueFrom = "${local.ssm_path}/MESSAGE_FEEDBACK_REVIEW_ENABLED" },
         { name = "JEV_ENABLED", valueFrom = "${local.ssm_path}/JEV_ENABLED" },
         { name = "JEV_ENABLED_WORKFLOWS", valueFrom = "${local.ssm_path}/JEV_ENABLED_WORKFLOWS" },
@@ -1647,6 +1703,7 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "JEV_ADJUDICATOR_MODEL", valueFrom = "${local.ssm_path}/JEV_ADJUDICATOR_MODEL" },
         { name = "CODE_SESSION_SUMMARY_ENABLED", valueFrom = "${local.ssm_path}/CODE_SESSION_SUMMARY_ENABLED" },
         { name = "OPENROUTER_API_KEY", valueFrom = "${local.ssm_path}/OPENROUTER_API_KEY" },
+        { name = "OPENAI_API_KEY", valueFrom = "${local.ssm_path}/OPENAI_API_KEY" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_AI_SENTRY_DSN" }
         ], var.ai_internal_auth_enabled ? [
         { name = "LANDIT_AI_INTERNAL_TOKEN", valueFrom = "${local.ssm_path}/LANDIT_AI_INTERNAL_TOKEN" }

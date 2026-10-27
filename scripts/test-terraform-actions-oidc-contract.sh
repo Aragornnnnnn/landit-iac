@@ -133,4 +133,12 @@ manage_block="$(sed -n '/sid       = "ManageTargetResources"/,/^[[:space:]]*}/p'
 assert_contains "${manage_block}" 'resources = local.apply_resources_by_target[each.value.target]' "apply mutation은 target별 ARN으로 제한해야 한다."
 assert_not_contains "${manage_block}" 'resources = ["*"]' "일반 apply mutation에 wildcard resource를 사용하면 안 된다."
 
+# PassRole에 이미 있는 worker ARN을 잘못 검사하지 않도록 인라인 정책 쓰기 allowlist만 확인한다.
+inline_roles="$(sed -n '/putrolepolicy_role_arns_by_target = {/,/^  }/p' "${BOOTSTRAP_DIR}/locals.tf")"
+production_inline_roles="$(printf '%s\n' "${inline_roles}" | sed -n '/production = \[/,/^    ]/p')"
+assert_contains "${production_inline_roles}" 'role/prod-${var.project_name}-api-task' "production apply는 API task 인라인 정책을 갱신할 수 있어야 한다."
+assert_contains "${production_inline_roles}" 'role/prod-${var.project_name}-worker-task' "production apply는 AI worker task 인라인 정책을 갱신할 수 있어야 한다."
+assert_not_contains "${production_inline_roles}" '*' "인라인 정책 쓰기 대상을 wildcard로 넓히면 안 된다."
+assert_not_contains "${production_inline_roles}" 'iac-terraform' "Actions는 자기 역할의 권한을 바꿀 수 없어야 한다."
+
 echo "Terraform Actions OIDC bootstrap 계약이 통과했다."

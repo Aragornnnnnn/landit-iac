@@ -1406,6 +1406,29 @@ data "aws_iam_policy_document" "api_task" {
       "arn:aws:s3:::${var.content_bucket_name}/content/expression-pronunciation-audio/*"
     ]
   }
+
+  # 콘텐츠 에셋 교체 업로드(LAN-754): 담당자가 inbox에 올린 webp를 BE가 최종 자리로 CopyObject한다.
+  # inbox 접두어 ListBucket은 없는 원본이 403이 아니라 404(NoSuchKey)로 보이게 하기 위한 것이다.
+  statement {
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject"
+    ]
+    resources = [
+      "arn:aws:s3:::${var.content_bucket_name}/content/scenarios/*",
+      "arn:aws:s3:::${var.content_bucket_name}/content/writing-expressions/*"
+    ]
+  }
+
+  statement {
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:aws:s3:::${var.content_bucket_name}"]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["content/inbox/*"]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "api_task" {
@@ -1440,6 +1463,31 @@ data "aws_iam_policy_document" "worker_task" {
   statement {
     actions   = ["s3:ListBucket"]
     resources = [aws_s3_bucket.app.arn]
+  }
+
+  # 콘텐츠 에셋 생성(LAN-754): landit-ai가 썸네일·표현 이미지·질문 음성·발음 자산을 콘텐츠 버킷에 직접 올린다.
+  # 단어 음성 공용 풀은 HEAD로 있는지 보고 재사용하므로, 없는 키가 403이 아니라 404로 보이도록 그 접두어의 ListBucket을 함께 준다.
+  statement {
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject"
+    ]
+    resources = [
+      "arn:aws:s3:::${var.content_bucket_name}/content/scenarios/*",
+      "arn:aws:s3:::${var.content_bucket_name}/content/writing-expressions/*",
+      "arn:aws:s3:::${var.content_bucket_name}/content/scenario-question-audio/*",
+      "arn:aws:s3:::${var.content_bucket_name}/content/expression-pronunciation-audio/*"
+    ]
+  }
+
+  statement {
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:aws:s3:::${var.content_bucket_name}"]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["content/expression-pronunciation-audio/*"]
+    }
   }
 }
 
@@ -1619,7 +1667,9 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "ENVIRONMENT", value = var.environment },
         { name = "APP_ENV", value = var.environment },
         { name = "S3_BUCKET_NAME", value = aws_s3_bucket.app.bucket },
-        { name = "SQS_JOBS_QUEUE_URL", value = aws_sqs_queue.jobs.url }
+        { name = "SQS_JOBS_QUEUE_URL", value = aws_sqs_queue.jobs.url },
+        { name = "CONTENT_BUCKET_NAME", value = var.content_bucket_name },
+        { name = "CONTENT_CLOUDFRONT_URL", value = var.content_cloudfront_url }
         ], var.grafana_otlp_enabled ? [
         { name = "OTEL_METRICS_ENABLED", value = "true" },
         { name = "OTEL_EXPORTER_OTLP_PROTOCOL", value = "http/protobuf" },
@@ -1652,6 +1702,7 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "JEV_ADJUDICATOR_MODEL", valueFrom = "${local.ssm_path}/JEV_ADJUDICATOR_MODEL" },
         { name = "CODE_SESSION_SUMMARY_ENABLED", valueFrom = "${local.ssm_path}/CODE_SESSION_SUMMARY_ENABLED" },
         { name = "OPENROUTER_API_KEY", valueFrom = "${local.ssm_path}/OPENROUTER_API_KEY" },
+        { name = "OPENAI_API_KEY", valueFrom = "${local.ssm_path}/OPENAI_API_KEY" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_AI_SENTRY_DSN" }
         ], var.ai_internal_auth_enabled ? [
         { name = "LANDIT_AI_INTERNAL_TOKEN", valueFrom = "${local.ssm_path}/LANDIT_AI_INTERNAL_TOKEN" }

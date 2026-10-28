@@ -51,15 +51,15 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_BE_SENTRY_DSN` | `SecureString` | backend Sentry DSN, ECS에서 `SENTRY_DSN`으로 주입 |
 | `/landit/{environment}/LANDIT_AI_SENTRY_DSN` | `SecureString` | AI service Sentry DSN, ECS에서 `SENTRY_DSN`으로 주입 |
 | `/landit/{environment}/LANDIT_GRAFANA_CLOUD_OTLP_HEADERS` | `SecureString` | Grafana Cloud OTLP 인증 header, BE와 AI에서 `OTEL_EXPORTER_OTLP_HEADERS`로 주입 |
-| `/landit/{environment}/OPENROUTER_API_KEY` | `SecureString` | AI API provider key |
-| `/landit/{environment}/LLM_PROVIDER` | `String` | LLM provider identifier |
+| `/landit/{environment}/OPENROUTER_API_KEY` | `SecureString` | 발음 평가·Gemini·Claude·TTS용 OpenRouter 키. GPT 분리 후에도 유지한다. |
+| `/landit/{environment}/LLM_PROVIDER` | `String` | `openrouter`는 기존 경로, `openai`는 GPT·임베딩 직접 호출. LAN-793 AI 배포 후 변경한다. |
 | `/landit/{environment}/OPENROUTER_BASE_URL` | `String` | OpenRouter API base URL |
 | `/landit/{environment}/OPENROUTER_MODEL` | `String` | 기본 OpenRouter model |
 | `/landit/{environment}/MESSAGE_FEEDBACK_MODEL` | `String` | 메시지 피드백 생성 전용 OpenRouter model |
 | `/landit/{environment}/CONTENT_GENERATION_MODEL` | `String` | 콘텐츠 제작(LAN-690) 생성 OpenRouter model. 2026-10-18 결정값 `anthropic/claude-opus-5.5`(코드 기본값과 같음) |
 | `/landit/{environment}/CONTENT_REVIEW_MODEL` | `String` | 콘텐츠 제작 독립 검수 model. 생성과 다른 계열이어야 한다. 결정값 `openai/gpt-5.6-terra` |
 | `/landit/{environment}/CONTENT_GENERATION_TIMEOUT_SECONDS` | `String` | 콘텐츠 생성 호출 1회의 SDK 한도(초). 코드 기본값 `290`. BE `LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT`보다 짧아야 한다 |
-| `/landit/{environment}/OPENAI_API_KEY` | `SecureString` | 콘텐츠 에셋 생성(LAN-754) 이미지 전용 OpenAI API 키. OpenRouter에는 이미지 생성이 없어 따로 둔다. landit-ai에만 주입한다 |
+| `/landit/{environment}/OPENAI_API_KEY` | `SecureString` | GPT·임베딩 직접 호출(LAN-793) 및 콘텐츠 이미지 생성(LAN-754)용 OpenAI API 키. landit-ai에만 주입한다 |
 | `/landit/{environment}/MESSAGE_FEEDBACK_REVIEW_ENABLED` | `String` | 메시지 피드백 문구 검수 사용 여부, `true` 또는 `false` |
 | `/landit/{environment}/JEV_ENABLED` | `String` | Jev 사용 여부. develop·prod 모두 `false`. |
 | `/landit/{environment}/JEV_ENABLED_WORKFLOWS` | `String` | JSON 배열 문자열. 양쪽 `["E1","E2","E3","E4","E7","E10","E13"]`. |
@@ -207,6 +207,14 @@ SSM parameter를 생성해도 ECS container environment에 자동으로 들어�
 - 모델을 바꿀 때는 SSM 값만 바꾸고 task를 재시작한다. 두 timeout은 landit-ai 쪽이 API 쪽보다 항상 짧아야 한다.
 
 LAN-462 예약 실패 보관용 `LANDIT_PUSH_SCHEDULER_DLQ_ARN`은 Terraform이 기존 환경별 Push DLQ ARN으로 직접 주입한다. 추가 SSM 비밀 값은 필요 없다.
+
+## GPT 직접 호출 분리 (LAN-793).
+
+- ECS `worker`와 개발 EC2 `ai.env`의 `OPENAI_API_KEY` 주입은 LAN-754에 이미 포함되어 있다. 이 작업에서는 Terraform 리소스·IAM·SSM 경로를 추가하지 않는다.
+- 실제 배포된 AI에 두 키가 주입되는지 먼저 확인한다. `OPENAI_API_KEY`는 GPT·임베딩·이미지, `OPENROUTER_API_KEY`는 발음 평가·Gemini·Claude·TTS가 사용한다. BE에는 주입하지 않는다.
+- LAN-793 AI 코드를 먼저 배포한 후 해당 환경의 `LLM_PROVIDER`를 `openai`로 변경하고 AI를 재시작한다. 구버전은 `openai`를 거부하므로 순서를 바꾸지 않는다. 모델 변수와 `openai/` 접두사 값은 그대로 유지한다.
+- 개발 검증 후 운영에 적용한다. 롤백은 `LLM_PROVIDER=openrouter`로 복구하고 AI를 재시작한다. SSM 키 값 변경·배포·apply는 별도 사용자 확인 후 수행한다.
+- 상세 구현과 검증은 [AI LAN-793 계획](https://github.com/Aragornnnnnn/landit-ai/blob/feat/LAN-793/docs/tasks/LAN-793/plan.md)을 기준으로 한다.
 
 ## 콘텐츠 에셋 생성 주입 (LAN-754)
 

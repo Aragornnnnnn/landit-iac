@@ -158,6 +158,8 @@ LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS LANDIT_GRAFANA_CLOUD_OTLP_HEADERS LLM_PR
 OPENROUTER_BASE_URL OPENROUTER_MODEL MESSAGE_FEEDBACK_MODEL MESSAGE_FEEDBACK_REVIEW_ENABLED
 OPENROUTER_API_KEY OPENAI_API_KEY LANDIT_AI_SENTRY_DSN""".split()
 values = dict.fromkeys(names, "test-value")
+values.update(LLM_PROVIDER="openai", OPENAI_API_KEY="test-direct-key",
+              OPENROUTER_API_KEY="test-router-key")
 values.update(LANDIT_FREE_TALK_CONTEXT_ENABLED="false",
               LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS="7200000",
               LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT="1000",
@@ -224,8 +226,10 @@ assert 'LANDIT_AI_INTERNAL_TOKEN="lan474-token$$secret"' in (directory / "runtim
 # 에셋 생성(LAN-754)은 AI가 콘텐츠 버킷에 직접 올리므로 AI env에도 버킷·CDN과 OpenAI 키가 있어야 한다.
 assert "CONTENT_BUCKET_NAME=develop-landit-content-123456789012" in (directory / "runtime/ai.env").read_text()
 assert "CONTENT_CLOUDFRONT_URL=" in (directory / "runtime/ai.env").read_text()
-assert 'OPENAI_API_KEY="test-value"' in (directory / "runtime/ai.env").read_text()
-assert "OPENAI_API_KEY=" not in api.read_text(), "the image API key belongs only to AI"
+assert 'OPENAI_API_KEY="test-direct-key"' in (directory / "runtime/ai.env").read_text()
+assert 'OPENROUTER_API_KEY="test-router-key"' in (directory / "runtime/ai.env").read_text()
+assert 'LLM_PROVIDER="openai"' in (directory / "runtime/ai.env").read_text()
+assert "OPENAI_API_KEY=" not in api.read_text(), "the OpenAI API key belongs only to AI"
 # Compose env_file의 JSON 인용을 해제해도 작업 목록이 JSON 배열이어야 한다.
 ai_values = dict(line.split("=", 1) for line in (directory / "runtime/ai.env").read_text().splitlines())
 for parameter in json.loads((directory / "ssm.json").read_text())["Parameters"]:

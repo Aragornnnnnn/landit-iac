@@ -63,6 +63,8 @@ assert_contains "${bootstrap}" '"s3:DeleteObject"' "lockfile 삭제 권한이 �
 assert_contains "${bootstrap}" 'actions = ["iam:PassRole"]' "PassRole 권한을 별도 statement로 제한해야 한다."
 assert_contains "${bootstrap}" 'variable = "iam:PassedToService"' "PassRole 대상 AWS service를 제한해야 한다."
 assert_contains "${bootstrap}" 'sid       = "WriteRuntimeRoleInlinePolicies"' "PutRolePolicy를 별도 statement로 제한해야 한다."
+assert_contains "${bootstrap}" 'actions   = ["elasticloadbalancing:ModifyTargetGroupAttributes"]' "운영 AI drain 변경에 필요한 속성 갱신 권한만 허용해야 한다."
+assert_contains "${bootstrap}" 'targetgroup/prod-${var.project_name}-ai/*' "타깃 그룹 속성 변경은 운영 AI 그룹으로 제한해야 한다."
 assert_contains "${bootstrap}" 'actions   = ["iam:PutRolePolicy"]' "인라인 정책 쓰기는 PutRolePolicy 하나만 허용해야 한다."
 assert_contains "${bootstrap}" 'role/develop-${var.project_name}-ec2-app' "develop apply의 인라인 정책 쓰기를 dev BE EC2 역할로 한정해야 한다."
 assert_contains "${bootstrap}" 'role/prod-${var.project_name}-api-task' "production apply의 인라인 정책 쓰기를 prod BE 태스크 역할로 한정해야 한다."

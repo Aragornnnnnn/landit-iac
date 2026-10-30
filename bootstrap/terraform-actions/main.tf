@@ -230,6 +230,15 @@ data "aws_iam_policy_document" "terraform" {
   dynamic "statement" {
     for_each = each.value.phase == "apply" && each.value.target == "production" ? [1] : []
     content {
+      sid       = "UpdateProductionAiTargetGroupAttributes"
+      actions   = ["elasticloadbalancing:ModifyTargetGroupAttributes"]
+      resources = ["arn:aws:elasticloadbalancing:${var.aws_region}:${data.aws_caller_identity.current.account_id}:targetgroup/prod-${var.project_name}-ai/*"]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = each.value.phase == "apply" && each.value.target == "production" ? [1] : []
+    content {
       sid = "RegisterProductionTaskDefinitions"
       actions = [
         "ecs:RegisterTaskDefinition",

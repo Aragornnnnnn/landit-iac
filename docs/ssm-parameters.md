@@ -79,6 +79,26 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 
 `LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE`(LAN-707)도 같은 순서를 따릅니다. ECS task definition `secrets`가 참조하는 parameter가 없으면 새 task가 시작하지 못하므로, **이 변경을 apply하기 전에 develop·prod 두 환경에 값을 먼저 `put-parameter`합니다.** 값은 BE(LAN-704)와 FE 게이트 수정이 모두 올라간 날의 0시(`+09:00`)로 정하며, 그 전에는 빈 문자열이 아니라 아직 오지 않은 미래 시각을 넣어 체험을 닫아 둘 수 있습니다. API는 서버 시작 때 한 번 읽고 기동 로그에 활성 여부를 남깁니다.
 
+## 스몰톡 정책 예약 적용(LAN-802).
+
+`LANDIT_FREE_TALK_TRIAL_LAUNCHED_AT`은 기존 구독 공개 시각·시나리오 무료 표현 기준 시각과 독립적입니다. [BE PR #345](https://github.com/Aragornnnnnn/landit-be/pull/345)의 환경변수 계약을 사용합니다.
+
+임시 적용 시각은 **2026-12-31 00:00 한국 시간**(`2026-12-31T00:00:00+09:00`)입니다. 확정 일정이 아니므로 실제 출시 일정에 맞춰 변경합니다. 이 값은 Terraform 리소스/state로 관리하지 않습니다. 2026-10-30에 develop·prod 두 환경 모두 위 임시 시각을 `String` v1으로 등록·검증했습니다.
+
+새 ECS task나 개발 runtime-env 실행 전에 두 SSM 파라미터를 먼저 등록합니다. 누락되면 새 ECS task 시작이나 개발 env 파일 갱신이 실패합니다.
+
+```bash
+for environment in develop prod; do
+  aws --profile landit --region ap-northeast-2 ssm put-parameter \
+    --name "/landit/${environment}/LANDIT_FREE_TALK_TRIAL_LAUNCHED_AT" \
+    --type String --value '2026-12-31T00:00:00+09:00' --overwrite
+done
+```
+
+등록 후 IaC plan/apply 및 환경별 배포를 진행합니다. 운영은 새 ECS task definition을 사용하는 API task, 개발은 갱신된 runtime-env 스크립트와 API 컨테이너가 필요합니다. 값을 바꾸면 API를 다시 시작해야 하며, 미리 주입한 미래 시각에는 재시작 없이 자동 전환됩니다.
+
+적용 시각은 구버전 BE·진행 중 요청 종료 및 FE 연동 준비 이후로 정합니다. FE는 서버의 `freeTrialEnabled`를 따릅니다. 이 변경은 IAM 범위를 확대하거나 AI 컨테이너에 값을 주입하지 않습니다.
+
 ## 운영 환급 설정.
 
 운영 API는 `reward_configuration_enabled=true`로 활성화·사전 수집 플래그와 상품 목록을 SSM에서 주입한다. SSM 값은 Terraform 밖에서 관리하며 AI Worker에는 전달하지 않는다. 상품 목록의 기존 SSM 이름은 `LANDIT_REWARD_PRODUCTS`지만 컨테이너 이름은 반드시 `LANDIT_REWARD_PRODUCTS_JSON`이어야 한다. bare 이름은 Spring의 `landit.reward.products` 목록 바인딩과 충돌한다.
@@ -104,6 +124,7 @@ BE 배포는 현재 서비스의 task definition 설정을 보존한다. 기능�
 | Path pattern | Type | 값 |
 | --- | --- | --- |
 | `/landit/{environment}/LANDIT_FREE_TALK_CONTEXT_ENABLED` | `String` | `true`이면 새 세션에 요약 정책 적용, `false`이면 전체 원문 경로 유지. |
+| `/landit/{environment}/LANDIT_FREE_TALK_TRIAL_LAUNCHED_AT` | `String` | 스몰톡 무료 누적 5분·프리미엄 무제한 정책(LAN-802)의 적용 시각. 오프셋 포함 ISO 8601. 미설정·지정 시각 전에는 기존 정책 유지. develop EC2 env와 prod ECS secrets로 주입 |
 
 `{environment}`는 `develop` 또는 `prod`입니다. 사용자 허용 목록 없이 BE의 단일 활성화 설정으로 제어합니다. 값은 Terraform 밖에서 사용자가 등록·변경하며 이 연결 변경은 기존 ON/OFF 값을 변경하지 않습니다.
 

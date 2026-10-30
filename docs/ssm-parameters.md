@@ -97,6 +97,8 @@ done
 
 등록 후 환경별 Terraform plan에서 변경 범위를 확인합니다. 운영 ECS service는 새 task definition ARN을 직접 참조하므로 이번 변경을 apply하면 API 태스크 교체가 시작됩니다. 같은 이미지로 재기동할 수 있으며 새로운 BE 코드 배포를 보장하는 것은 아닙니다. 개발 EC2는 apply로 SSM 배포 문서만 갱신하고, 다음 별도 API 배포에서 runtime-env와 컨테이너를 갱신합니다. 값을 바꾸면 API를 다시 시작해야 하며, 미리 주입한 미래 시각에는 재시작 없이 자동 전환됩니다.
 
+기존 미반영 AI drain 설정까지 함께 적용할 때는 운영 Terraform apply 역할에 `elasticloadbalancing:ModifyTargetGroupAttributes`가 필요합니다. bootstrap 정책은 `prod-landit-ai` 타깃 그룹만 대상으로 허용하며 운영 apply 전에 해당 권한을 먼저 반영합니다.
+
 적용 시각은 구버전 BE·진행 중 요청 종료 및 FE 연동 준비 이후로 정합니다. FE는 서버의 `freeTrialEnabled`를 따릅니다. 이 변경은 IAM 범위를 확대하거나 AI 컨테이너에 값을 주입하지 않습니다.
 
 ## 운영 환급 설정.

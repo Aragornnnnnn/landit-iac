@@ -156,10 +156,11 @@ LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES LANDIT_AUTH_OIDC_KAKAO_AUDIENCES LANDIT_AUTH_O
 LANDIT_AI_CLIENT_MODE LANDIT_BE_SENTRY_DSN LANDIT_MEMORY_WRITE_ENABLED LANDIT_MEMORY_USE_ENABLED
 LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS LANDIT_GRAFANA_CLOUD_OTLP_HEADERS LLM_PROVIDER
 OPENROUTER_BASE_URL OPENROUTER_MODEL MESSAGE_FEEDBACK_MODEL MESSAGE_FEEDBACK_REVIEW_ENABLED
-OPENROUTER_API_KEY OPENAI_API_KEY LANDIT_AI_SENTRY_DSN""".split()
+OPENROUTER_API_KEY OPENAI_API_KEY ANTHROPIC_DIRECT_ENABLED ANTHROPIC_API_KEY LANDIT_AI_SENTRY_DSN""".split()
 values = dict.fromkeys(names, "test-value")
 values.update(LLM_PROVIDER="openai", OPENAI_API_KEY="test-direct-key",
-              OPENROUTER_API_KEY="test-router-key")
+              OPENROUTER_API_KEY="test-router-key",
+              ANTHROPIC_DIRECT_ENABLED="false", ANTHROPIC_API_KEY="test-anthropic-key")
 values.update(LANDIT_FREE_TALK_CONTEXT_ENABLED="false",
               LANDIT_FREE_TALK_TRIAL_LAUNCHED_AT="2026-12-31T00:00:00+09:00",
               LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS="7200000",
@@ -232,6 +233,10 @@ assert 'OPENAI_API_KEY="test-direct-key"' in (directory / "runtime/ai.env").read
 assert 'OPENROUTER_API_KEY="test-router-key"' in (directory / "runtime/ai.env").read_text()
 assert 'LLM_PROVIDER="openai"' in (directory / "runtime/ai.env").read_text()
 assert "OPENAI_API_KEY=" not in api.read_text(), "the OpenAI API key belongs only to AI"
+# Claude 직결(LAN-808) 스위치와 키도 AI env에만 있어야 한다.
+assert 'ANTHROPIC_API_KEY="test-anthropic-key"' in (directory / "runtime/ai.env").read_text()
+assert 'ANTHROPIC_DIRECT_ENABLED="false"' in (directory / "runtime/ai.env").read_text()
+assert "ANTHROPIC_API_KEY=" not in api.read_text(), "the Anthropic API key belongs only to AI"
 # Compose env_file의 JSON 인용을 해제해도 작업 목록이 JSON 배열이어야 한다.
 ai_values = dict(line.split("=", 1) for line in (directory / "runtime/ai.env").read_text().splitlines())
 for parameter in json.loads((directory / "ssm.json").read_text())["Parameters"]:

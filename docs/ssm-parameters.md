@@ -30,6 +30,8 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_AI_CLIENT_MODE` | `String` | backend AI client mode |
 | `/landit/{environment}/LANDIT_AI_BASE_URL` | `String` | backend에서 호출하는 AI service base URL |
 | `/landit/{environment}/LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT` | `String` | backend가 콘텐츠 제작(LAN-690) AI 호출 한 번을 기다리는 시간. Duration 형식(`300s`). 코드 기본값 300초, landit-ai `CONTENT_GENERATION_TIMEOUT_SECONDS`보다 길어야 한다 |
+| `/landit/{environment}/LANDIT_CONTENT_AUTHORING_ASSETS_ENABLED` | `String` | API 콘텐츠 에셋 생성(LAN-754) 스위치. 코드 기본값 `false`. 담당자 3명만 쓰는 관리자 기능이라 develop·prod 모두 `true`로 등록한다. develop EC2 env와 prod ECS API secrets로 주입 |
+| `/landit/{environment}/LANDIT_CONTENT_AUTHORING_PUBLISH_ENABLED` | `String` | API 콘텐츠 발행(LAN-755)·SQL 업로드 발행(LAN-758) 스위치. 코드 기본값 `false`. develop·prod 모두 `true`로 등록한다. develop EC2 env와 prod ECS API secrets로 주입 |
 | `/landit/{environment}/LANDIT_REVENUECAT_PROJECT_ID` | `String` | backend RevenueCat 프로젝트 ID |
 | `/landit/{environment}/LANDIT_REVENUECAT_API_SECRET_KEY` | `SecureString` | backend RevenueCat v2 조회 키. |
 | `/landit/{environment}/LANDIT_REVENUECAT_ENTITLEMENT_SECRET_KEY` | `SecureString` | LAN-659의 premium 부여·회수용 v1 Secret 키. 개발 EC2·운영 ECS API에만 주입하며 AI에는 전달하지 않는다. |
@@ -221,7 +223,7 @@ SSM parameter를 생성해도 ECS container environment에 자동으로 들어�
 
 - SSM 값은 shell history, CI log, git diff에 남지 않는 방식으로 갱신합니다.
 - `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `LANDIT_AUTH_TOKEN_SECRET`, `LANDIT_BE_SENTRY_DSN`, `LANDIT_AI_SENTRY_DSN`, `LANDIT_GRAFANA_CLOUD_OTLP_HEADERS`, `LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`, `LANDIT_AI_INTERNAL_TOKEN`, `LANDIT_SENTRY_RELAY_AUTH_TOKEN`, `LANDIT_SENTRY_DISCORD_WEBHOOK_URL`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`는 `SecureString`으로만 관리합니다.
-- `LANDIT_CORS_ALLOWED_ORIGINS`, `LANDIT_AI_CLIENT_MODE`, `LANDIT_AI_BASE_URL`, `LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT`, `CONTENT_GENERATION_MODEL`, `CONTENT_REVIEW_MODEL`, `CONTENT_GENERATION_TIMEOUT_SECONDS`, `LANDIT_SUBSCRIPTION_LAUNCHED_AT`, `LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE`, `LANDIT_MEMORY_WRITE_ENABLED`, `LANDIT_MEMORY_USE_ENABLED`, `LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES`, `LANDIT_AUTH_OIDC_KAKAO_AUDIENCES`, `LANDIT_AUTH_OIDC_APPLE_AUDIENCES`, `LLM_PROVIDER`, `ANTHROPIC_DIRECT_ENABLED`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`, `MESSAGE_FEEDBACK_MODEL`, `MESSAGE_FEEDBACK_REVIEW_ENABLED`은 secret이 아니므로 `String`으로 관리합니다.
+- `LANDIT_CORS_ALLOWED_ORIGINS`, `LANDIT_AI_CLIENT_MODE`, `LANDIT_AI_BASE_URL`, `LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT`, `LANDIT_CONTENT_AUTHORING_ASSETS_ENABLED`, `LANDIT_CONTENT_AUTHORING_PUBLISH_ENABLED`, `CONTENT_GENERATION_MODEL`, `CONTENT_REVIEW_MODEL`, `CONTENT_GENERATION_TIMEOUT_SECONDS`, `LANDIT_SUBSCRIPTION_LAUNCHED_AT`, `LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE`, `LANDIT_MEMORY_WRITE_ENABLED`, `LANDIT_MEMORY_USE_ENABLED`, `LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES`, `LANDIT_AUTH_OIDC_KAKAO_AUDIENCES`, `LANDIT_AUTH_OIDC_APPLE_AUDIENCES`, `LLM_PROVIDER`, `ANTHROPIC_DIRECT_ENABLED`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`, `MESSAGE_FEEDBACK_MODEL`, `MESSAGE_FEEDBACK_REVIEW_ENABLED`은 secret이 아니므로 `String`으로 관리합니다.
 - Terraform에서 secret 값을 직접 생성하거나 import하지 않습니다.
 - 값 변경 후에는 값 자체가 아니라 parameter name, type, version만 검증 기록에 남깁니다.
 - ECS task definition에 연결된 SSM 값은 task 재시작 또는 새 deployment 후에만 container environment에 반영됩니다.
@@ -247,6 +249,13 @@ LAN-462 예약 실패 보관용 `LANDIT_PUSH_SCHEDULER_DLQ_ARN`은 Terraform이 
 - 콘텐츠 버킷 이름과 CloudFront URL(`CONTENT_BUCKET_NAME`, `CONTENT_CLOUDFRONT_URL`)은 API와 같은 Terraform 값으로 landit-ai에도 환경 변수로 주입한다. 추가 SSM 값은 없다.
 - 이미지 모델·등급, TTS 모델, 청취 판정 모델(`CONTENT_IMAGE_MODEL`, `CONTENT_IMAGE_*_QUALITY`, `CONTENT_TTS_MODEL`, `CONTENT_AUDIO_QA_MODEL`)은 landit-ai 코드 기본값(`gpt-image-1-mini`, 썸네일·대표 medium·예문 low, `deepgram/aura-2`, `google/gemini-3.5-flash`)을 쓰고 Terraform으로 주입하지 않는다. Day 1개 실측 뒤 바꿔야 하면 그때 SSM `String`과 task definition `secrets`를 함께 추가한다.
 - IAM: landit-ai 태스크 롤(prod)과 EC2 인스턴스 롤(develop)에 콘텐츠 버킷의 `content/scenarios/*`, `content/writing-expressions/*`, `content/scenario-question-audio/*`, `content/expression-pronunciation-audio/*` 쓰기와, 단어 음성 공용 풀 HEAD가 404로 보이도록 `content/expression-pronunciation-audio/*` 접두어 `ListBucket`을 준다. API 태스크 롤에는 교체 업로드 복사용으로 `content/scenarios/*`, `content/writing-expressions/*` 쓰기와, 없는 원본이 404로 보이도록 `content/inbox/*` 접두어 `ListBucket`을 준다. 담당자 업로드 `content/inbox/*` 쓰기는 그대로 API만 갖는다.
+
+## 콘텐츠 에셋·발행 스위치 주입 (LAN-755·LAN-758)
+
+- API(prod ECS `api` 태스크 secrets, develop EC2 `api.env`)에 `LANDIT_CONTENT_AUTHORING_ASSETS_ENABLED`와 `LANDIT_CONTENT_AUTHORING_PUBLISH_ENABLED`(둘 다 String)를 주입한다. BE는 값이 없으면 `false`로 보지만 task definition·EC2 runtime env가 두 값을 요구하므로 **apply·배포 전에 develop·prod 두 환경에 먼저 `put-parameter`한다.** develop EC2는 값이 없으면 runtime env 작성 단계에서 멈춘다.
+- 값은 두 환경 모두 `true`다. 두 기능은 관리자 인증 뒤의 어드민 전용이고 담당자 3명만 쓰므로 스위치로 단계 배포를 하지 않는다. 끄려면 `false`로 바꾸고 API를 재시작(prod는 새 deployment)한다. 코드 배포는 필요 없다.
+- 스위치가 켜져도 발행·에셋 생성은 해당 기능이 든 BE 이미지(LAN-754·755·758)가 배포된 뒤에만 동작한다. 구버전 BE는 두 변수를 무시한다.
+- IAM(원본 SQL 보관 `authoring/publish-bundles/*`)은 같은 PR에서 API 태스크 롤·develop EC2 롤에 준다. worker에는 스위치도 권한도 주지 않는다.
 
 ## Claude 직결 전환 (LAN-808)
 

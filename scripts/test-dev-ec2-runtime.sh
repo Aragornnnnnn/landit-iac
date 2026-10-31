@@ -129,6 +129,10 @@ if ! rg -q 'LANDIT_REWARD_ENABLED LANDIT_REWARD_CAPTURE_ENABLED LANDIT_REWARD_PR
   echo 'develop API must load the reward flags and product list from SSM.' >&2
   exit 1
 fi
+if ! rg -q 'LANDIT_CONTENT_AUTHORING_ASSETS_ENABLED LANDIT_CONTENT_AUTHORING_PUBLISH_ENABLED' "${TEST_DIR}/user-data.sh"; then
+  echo 'develop API must load the content authoring assets/publish switches from SSM (LAN-754/755/758).' >&2
+  exit 1
+fi
 # LANDIT_REWARD_PRODUCTS는 Spring이 landit.reward.products(List)에도 바인딩해 기동이 깨진다. 이름 그대로 주입하면 안 된다.
 if rg -q 'LANDIT_REWARD_PRODUCTS( |$)' "${TEST_DIR}/user-data.sh"; then
   echo 'develop API must not inject LANDIT_REWARD_PRODUCTS; use LANDIT_REWARD_PRODUCTS_JSON.' >&2
@@ -179,6 +183,7 @@ values.update(LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION="Bearer lan477-test$secret
               LANDIT_SUBSCRIPTION_LAUNCHED_AT="2026-09-11T14:44:00+09:00",
               LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE="2026-10-21T00:00:00+09:00",
               LANDIT_TRIAL_REMINDER_ANNUAL_PRODUCT_IDS="com.saynow.app.premium.yearly,com.saynow.app.premium.yearly:yearly")
+values.update(LANDIT_CONTENT_AUTHORING_ASSETS_ENABLED="true", LANDIT_CONTENT_AUTHORING_PUBLISH_ENABLED="true")
 values.update(LANDIT_REWARD_ENABLED="true", LANDIT_REWARD_CAPTURE_ENABLED="false",
               LANDIT_REWARD_PRODUCTS_JSON='[{"appId":"app1","store":"APP_STORE","productId":"com.saynow.app.premium.quarterly","months":3}]')
 (directory / "ssm.json").write_text(json.dumps({"Parameters": [
@@ -214,6 +219,8 @@ expected = {
     'LANDIT_TRIAL_REMINDER_ANNUAL_PRODUCT_IDS="com.saynow.app.premium.yearly,com.saynow.app.premium.yearly:yearly"',
     'LANDIT_REWARD_ENABLED="true"',
     'LANDIT_REWARD_CAPTURE_ENABLED="false"',
+    'LANDIT_CONTENT_AUTHORING_ASSETS_ENABLED="true"',
+    'LANDIT_CONTENT_AUTHORING_PUBLISH_ENABLED="true"',
     'LANDIT_EMAIL_CONFIGURATION_SET=develop-landit-transactional',
     'LANDIT_EMAIL_FROM=Landit <no-reply@landit.im>',
     'SERVER_SHUTDOWN=graceful',
@@ -224,6 +231,7 @@ assert "LANDIT_EMAIL_ENABLED=" not in api.read_text()
 assert "LANDIT_TRIAL_REMINDER_SCHEDULING_ENABLED=" not in api.read_text()
 assert stat.S_IMODE(api.stat().st_mode) == 0o600, "API secrets must remain owner-only"
 assert not any("LANDIT_REVENUECAT" in line or "LANDIT_SUBSCRIPTION" in line or "LANDIT_FREE_TALK" in line
+               or "LANDIT_CONTENT_AUTHORING" in line
                for line in (directory / "runtime/ai.env").read_text().splitlines())
 assert 'LANDIT_AI_INTERNAL_TOKEN="lan474-token$$secret"' in (directory / "runtime/ai.env").read_text()
 # 에셋 생성(LAN-754)은 AI가 콘텐츠 버킷에 직접 올리므로 AI env에도 버킷·CDN과 OpenAI 키가 있어야 한다.

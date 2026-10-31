@@ -202,6 +202,9 @@ assert_contains "${module}" '"arn:aws:s3:::${var.content_bucket_name}/authoring/
 assert_contains "${dev_ec2}" 'arn:aws:s3:::${data.terraform_remote_state.shared.outputs.content_bucket_name}/authoring/publish-bundles/*' "develop EC2(API)에도 SQL 업로드 원본 보관 읽기·쓰기를 줘야 한다(LAN-758)."
 assert_not_contains "${module}" 'content/publish-bundles' "SQL 업로드 원본은 CloudFront가 공개하는 content/* 밖(authoring/)에 두어야 한다(LAN-758)."
 assert_not_contains "${worker_policy}" 'publish-bundles' "worker IAM에는 SQL 업로드 원본 권한을 주면 안 된다(LAN-758)."
+assert_contains "${api_task}" '{ name = "LANDIT_CONTENT_AUTHORING_ASSETS_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_CONTENT_AUTHORING_ASSETS_ENABLED" }' "API에 콘텐츠 에셋 생성 스위치를 SSM으로 주입해야 한다(LAN-754)."
+assert_contains "${api_task}" '{ name = "LANDIT_CONTENT_AUTHORING_PUBLISH_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_CONTENT_AUTHORING_PUBLISH_ENABLED" }' "API에 콘텐츠 발행 스위치를 SSM으로 주입해야 한다(LAN-755/758)."
+assert_not_contains "${worker_task}" 'LANDIT_CONTENT_AUTHORING' "에셋·발행 스위치는 API 전용이며 worker에 주입하지 않는다."
 assert_contains "${api_task}" '{ name = "CONTENT_BUCKET_NAME", value = var.content_bucket_name }' "API에 콘텐츠 bucket 이름을 주입해야 한다."
 assert_contains "${api_task}" '{ name = "CONTENT_CLOUDFRONT_URL", value = var.content_cloudfront_url }' "API에 CloudFront URL을 주입해야 한다."
 # LAN-754(콘텐츠 에셋 생성)부터 landit-ai(worker 태스크)가 썸네일·이미지·음성을 콘텍츠 bucket에 직접 올린다.

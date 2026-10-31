@@ -158,7 +158,9 @@ data "aws_iam_policy_document" "ec2_app" {
       "s3:PutObject"
     ]
     resources = [
-      "arn:aws:s3:::${data.terraform_remote_state.shared.outputs.content_bucket_name}/content/inbox/*"
+      "arn:aws:s3:::${data.terraform_remote_state.shared.outputs.content_bucket_name}/content/inbox/*",
+      # 로컬 제작 콘텐츠 SQL 업로드 원본 보관(LAN-758). CloudFront 공개 범위 content/* 밖
+      "arn:aws:s3:::${data.terraform_remote_state.shared.outputs.content_bucket_name}/authoring/publish-bundles/*"
     ]
   }
 

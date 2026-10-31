@@ -1704,6 +1704,8 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "CODE_SESSION_SUMMARY_ENABLED", valueFrom = "${local.ssm_path}/CODE_SESSION_SUMMARY_ENABLED" },
         { name = "OPENROUTER_API_KEY", valueFrom = "${local.ssm_path}/OPENROUTER_API_KEY" },
         { name = "OPENAI_API_KEY", valueFrom = "${local.ssm_path}/OPENAI_API_KEY" },
+        { name = "ANTHROPIC_DIRECT_ENABLED", valueFrom = "${local.ssm_path}/ANTHROPIC_DIRECT_ENABLED" },
+        { name = "ANTHROPIC_API_KEY", valueFrom = "${local.ssm_path}/ANTHROPIC_API_KEY" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_AI_SENTRY_DSN" }
         ], var.ai_internal_auth_enabled ? [
         { name = "LANDIT_AI_INTERNAL_TOKEN", valueFrom = "${local.ssm_path}/LANDIT_AI_INTERNAL_TOKEN" }

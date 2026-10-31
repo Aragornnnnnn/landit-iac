@@ -60,6 +60,8 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/CONTENT_REVIEW_MODEL` | `String` | 콘텐츠 제작 독립 검수 model. 생성과 다른 계열이어야 한다. 결정값 `openai/gpt-5.6-terra` |
 | `/landit/{environment}/CONTENT_GENERATION_TIMEOUT_SECONDS` | `String` | 콘텐츠 생성 호출 1회의 SDK 한도(초). 코드 기본값 `290`. BE `LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT`보다 짧아야 한다 |
 | `/landit/{environment}/OPENAI_API_KEY` | `SecureString` | GPT·임베딩 직접 호출(LAN-793) 및 콘텐츠 이미지 생성(LAN-754)용 OpenAI API 키. landit-ai에만 주입한다 |
+| `/landit/{environment}/ANTHROPIC_DIRECT_ENABLED` | `String` | `true`면 `anthropic/` 모델만 Anthropic 공식 SDK로 직접 호출(LAN-808). 처음엔 `false`로 등록하고 AI 배포 뒤 켠다. 롤백은 `false` + 재시작 |
+| `/landit/{environment}/ANTHROPIC_API_KEY` | `SecureString` | Claude 직접 호출용 Anthropic API 키(LAN-808). landit-ai에만 주입한다. 스위치가 켜졌는데 비어 있으면 Claude 호출이 실패하고 OpenRouter로 되돌아가지 않는다 |
 | `/landit/{environment}/MESSAGE_FEEDBACK_REVIEW_ENABLED` | `String` | 메시지 피드백 문구 검수 사용 여부, `true` 또는 `false` |
 | `/landit/{environment}/JEV_ENABLED` | `String` | Jev 사용 여부. develop·prod 모두 `false`. |
 | `/landit/{environment}/JEV_ENABLED_WORKFLOWS` | `String` | JSON 배열 문자열. 양쪽 `["E1","E2","E3","E4","E7","E10","E13"]`. |
@@ -218,8 +220,8 @@ SSM parameter를 생성해도 ECS container environment에 자동으로 들어�
 ## 운영 규칙
 
 - SSM 값은 shell history, CI log, git diff에 남지 않는 방식으로 갱신합니다.
-- `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `LANDIT_AUTH_TOKEN_SECRET`, `LANDIT_BE_SENTRY_DSN`, `LANDIT_AI_SENTRY_DSN`, `LANDIT_GRAFANA_CLOUD_OTLP_HEADERS`, `LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`, `LANDIT_AI_INTERNAL_TOKEN`, `LANDIT_SENTRY_RELAY_AUTH_TOKEN`, `LANDIT_SENTRY_DISCORD_WEBHOOK_URL`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`는 `SecureString`으로만 관리합니다.
-- `LANDIT_CORS_ALLOWED_ORIGINS`, `LANDIT_AI_CLIENT_MODE`, `LANDIT_AI_BASE_URL`, `LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT`, `CONTENT_GENERATION_MODEL`, `CONTENT_REVIEW_MODEL`, `CONTENT_GENERATION_TIMEOUT_SECONDS`, `LANDIT_SUBSCRIPTION_LAUNCHED_AT`, `LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE`, `LANDIT_MEMORY_WRITE_ENABLED`, `LANDIT_MEMORY_USE_ENABLED`, `LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES`, `LANDIT_AUTH_OIDC_KAKAO_AUDIENCES`, `LANDIT_AUTH_OIDC_APPLE_AUDIENCES`, `LLM_PROVIDER`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`, `MESSAGE_FEEDBACK_MODEL`, `MESSAGE_FEEDBACK_REVIEW_ENABLED`은 secret이 아니므로 `String`으로 관리합니다.
+- `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `LANDIT_AUTH_TOKEN_SECRET`, `LANDIT_BE_SENTRY_DSN`, `LANDIT_AI_SENTRY_DSN`, `LANDIT_GRAFANA_CLOUD_OTLP_HEADERS`, `LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION`, `LANDIT_AI_INTERNAL_TOKEN`, `LANDIT_SENTRY_RELAY_AUTH_TOKEN`, `LANDIT_SENTRY_DISCORD_WEBHOOK_URL`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`는 `SecureString`으로만 관리합니다.
+- `LANDIT_CORS_ALLOWED_ORIGINS`, `LANDIT_AI_CLIENT_MODE`, `LANDIT_AI_BASE_URL`, `LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT`, `CONTENT_GENERATION_MODEL`, `CONTENT_REVIEW_MODEL`, `CONTENT_GENERATION_TIMEOUT_SECONDS`, `LANDIT_SUBSCRIPTION_LAUNCHED_AT`, `LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE`, `LANDIT_MEMORY_WRITE_ENABLED`, `LANDIT_MEMORY_USE_ENABLED`, `LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS`, `LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES`, `LANDIT_AUTH_OIDC_KAKAO_AUDIENCES`, `LANDIT_AUTH_OIDC_APPLE_AUDIENCES`, `LLM_PROVIDER`, `ANTHROPIC_DIRECT_ENABLED`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`, `MESSAGE_FEEDBACK_MODEL`, `MESSAGE_FEEDBACK_REVIEW_ENABLED`은 secret이 아니므로 `String`으로 관리합니다.
 - Terraform에서 secret 값을 직접 생성하거나 import하지 않습니다.
 - 값 변경 후에는 값 자체가 아니라 parameter name, type, version만 검증 기록에 남깁니다.
 - ECS task definition에 연결된 SSM 값은 task 재시작 또는 새 deployment 후에만 container environment에 반영됩니다.
@@ -245,6 +247,14 @@ LAN-462 예약 실패 보관용 `LANDIT_PUSH_SCHEDULER_DLQ_ARN`은 Terraform이 
 - 콘텐츠 버킷 이름과 CloudFront URL(`CONTENT_BUCKET_NAME`, `CONTENT_CLOUDFRONT_URL`)은 API와 같은 Terraform 값으로 landit-ai에도 환경 변수로 주입한다. 추가 SSM 값은 없다.
 - 이미지 모델·등급, TTS 모델, 청취 판정 모델(`CONTENT_IMAGE_MODEL`, `CONTENT_IMAGE_*_QUALITY`, `CONTENT_TTS_MODEL`, `CONTENT_AUDIO_QA_MODEL`)은 landit-ai 코드 기본값(`gpt-image-1-mini`, 썸네일·대표 medium·예문 low, `deepgram/aura-2`, `google/gemini-3.5-flash`)을 쓰고 Terraform으로 주입하지 않는다. Day 1개 실측 뒤 바꿔야 하면 그때 SSM `String`과 task definition `secrets`를 함께 추가한다.
 - IAM: landit-ai 태스크 롤(prod)과 EC2 인스턴스 롤(develop)에 콘텐츠 버킷의 `content/scenarios/*`, `content/writing-expressions/*`, `content/scenario-question-audio/*`, `content/expression-pronunciation-audio/*` 쓰기와, 단어 음성 공용 풀 HEAD가 404로 보이도록 `content/expression-pronunciation-audio/*` 접두어 `ListBucket`을 준다. API 태스크 롤에는 교체 업로드 복사용으로 `content/scenarios/*`, `content/writing-expressions/*` 쓰기와, 없는 원본이 404로 보이도록 `content/inbox/*` 접두어 `ListBucket`을 준다. 담당자 업로드 `content/inbox/*` 쓰기는 그대로 API만 갖는다.
+
+## Claude 직결 전환 (LAN-808)
+
+- landit-ai(ECS `worker` 태스크, develop EC2 `ai.env`)에 `ANTHROPIC_DIRECT_ENABLED`(String)와 `ANTHROPIC_API_KEY`(SecureString)를 주입한다. task definition·EC2 runtime env가 두 값을 요구하므로 **apply·배포 전에 develop·prod 두 환경에 먼저 `put-parameter`한다.** 처음 값은 `ANTHROPIC_DIRECT_ENABLED=false`다.
+- 순서: SSM 두 값 등록 → iac apply → LAN-808 AI 이미지 배포 → develop에서 `ANTHROPIC_DIRECT_ENABLED=true`로 바꾸고 AI 재시작 → 콘텐츠 Day 1개 실측과 Anthropic 콘솔 사용량 확인 → prod 동일. 구버전 AI는 두 변수를 무시하므로 등록 순서가 바뀌어도 기동은 되지만, 스위치는 새 이미지 배포 뒤에만 켠다.
+- 켜진 뒤 `anthropic/` 모델(콘텐츠 생성 `CONTENT_GENERATION_MODEL`, 그리고 `OPENROUTER_MODEL`·`MESSAGE_FEEDBACK_MODEL`이 Claude라면 그것도)은 Anthropic으로 가고 GPT·Gemini·Deepgram·임베딩·이미지는 기존 키를 그대로 쓴다. `OPENROUTER_API_KEY`는 유지한다.
+- 롤백은 `ANTHROPIC_DIRECT_ENABLED=false` + AI 재시작이다. 코드 배포가 필요 없다.
+- 상세 설계는 [AI LAN-808 설계](https://github.com/Aragornnnnnn/landit-ai/blob/feat/LAN-808/docs/tasks/LAN-808/design.md)를 기준으로 한다.
 
 ## Jev 설정 주입 (LAN-530)
 

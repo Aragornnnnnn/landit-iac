@@ -1396,7 +1396,12 @@ data "aws_iam_policy_document" "api_task" {
       "s3:GetObject",
       "s3:PutObject"
     ]
-    resources = ["arn:aws:s3:::${var.content_bucket_name}/content/inbox/*"]
+    resources = [
+      "arn:aws:s3:::${var.content_bucket_name}/content/inbox/*",
+      # 로컬 제작 콘텐츠 SQL 업로드 원본 보관(LAN-758). API가 파싱 뒤 원본을 올리고 발행은 DB의 조각으로 한다.
+      # CloudFront가 공개하는 content/* 밖에 두어 미발행 Day의 SQL이 CDN으로 새지 않는다.
+      "arn:aws:s3:::${var.content_bucket_name}/authoring/publish-bundles/*"
+    ]
   }
 
   # 발음 평가 자산 매니페스트를 BE가 S3에서 직접 읽어 임포트한다 (LAN-373)

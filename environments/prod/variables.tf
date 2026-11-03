@@ -233,3 +233,9 @@ variable "revenuecat_apply_sandbox_events" {
   type        = bool
   default     = true
 }
+
+variable "content_authoring_configuration_enabled" {
+  description = "Preserve the deployed API content authoring switch configuration during infrastructure changes."
+  type        = bool
+  default     = true
+}

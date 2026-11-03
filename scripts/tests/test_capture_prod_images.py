@@ -16,6 +16,13 @@ class CaptureProdImagesTest(unittest.TestCase):
 
     def aws(self, *args):
         operation = args[1]
+        if operation == "describe-task-definition":
+            secrets = [{"name": "LANDIT_CONTENT_AUTHORING_ASSETS_ENABLED"}]
+            if self.mode != "partial-authoring":
+                secrets.append({"name": "LANDIT_CONTENT_AUTHORING_PUBLISH_ENABLED"})
+            return {"taskDefinition": {"containerDefinitions": [{"name": "api",
+                "environment": [{"name": "LANDIT_REVENUECAT_APPLY_SANDBOX_EVENTS", "value": "false"}],
+                "secrets": secrets if self.mode in ("authoring-enabled", "partial-authoring") else []}]}}
         if operation == "describe-services":
             name = args[-1]
             return {"services": [{"desiredCount": 1, "runningCount": 1, "pendingCount": 0,
@@ -61,7 +68,8 @@ class CaptureProdImagesTest(unittest.TestCase):
     def test_apply_rejects_new_deployment_or_overridden_image(self):
         with patch.object(capture, "aws", self.aws):
             actual = capture.snapshot()
-        plan = {"variables": {name: {"value": value} for name, value in capture.inputs(actual).items()}}
+        with patch.object(capture, "aws", self.aws):
+            plan = {"variables": {name: {"value": value} for name, value in capture.inputs(actual).items()}}
         capture.verify(plan, actual)
         changed = copy.deepcopy(actual)
         changed["api"]["deployment_id"] = "new-deployment"
@@ -70,6 +78,19 @@ class CaptureProdImagesTest(unittest.TestCase):
         plan["variables"]["api_image_ref"]["value"] = "different-image"
         with self.assertRaises(ValueError):
             capture.verify(plan, actual)
+
+    def test_preserves_existing_runtime_switches_instead_of_defaults(self):
+        for mode, expected in (("stable", False), ("authoring-enabled", True)):
+            with self.subTest(mode=mode), patch.object(capture, "aws", self.aws):
+                self.mode = mode
+                values = capture.inputs(capture.snapshot())
+                self.assertFalse(values["revenuecat_apply_sandbox_events"])
+                self.assertEqual(values["content_authoring_configuration_enabled"], expected)
+
+    def test_partial_authoring_configuration_fails_closed(self):
+        self.mode = "partial-authoring"
+        with patch.object(capture, "aws", self.aws), self.assertRaises(ValueError):
+            capture.inputs(capture.snapshot())
 
 
 if __name__ == "__main__":

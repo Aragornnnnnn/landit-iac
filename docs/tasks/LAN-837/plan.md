@@ -37,3 +37,16 @@
 
 - 별도 infra_config_review가 IaC e72345f 대비 staged/unstaged/new files 전체의 IAM·환경 분리·SSM·저장 계약·배포/롤백을 검토했다. 추가 보안 확정 결함은 없었다. 그래프를 구축했으나 조회에서 신규 HCL 누락이 있어 직접 전체 소스와 호출 계약으로 보완했다.
 - 개발 소비자가 준비 검사를 끝내기 전에 running 상태만으로 배포 성공 처리되는 P2를 확인했다. Worker 준비 marker를 Compose/ECS healthcheck로 확인하고 개발 배포는 healthy까지 최대 90초 대기하게 수정했다. HTTP 서버가 건강해도 소비자가 준비되지 않으면 실패/rollback한다. 모의 지연 준비 성공과 timeout/구버전 소비자 정지 회귀 검사를 추가해 통과했다. 수정 경로를 재검토했다.
+
+## AWS 적용 (2026-11-04)
+
+- 사용자가 개발·운영 토큰 생성과 Terraform 적용을 승인했으며 앱 배포는 보류했다. account 982529430654/region ap-northeast-2의 `landit` profile을 확인했다.
+- 준비 스크립트 `--apply`로 누락된 `/landit/{develop|prod}/ROLEPLAY_THUMBNAIL_WORKER_TOKEN`을 생성했다. 환경별 값이 서로 다르고 32자 이상 SecureString임을 메모리 안에서 확인했다. 기존 OpenAI 키/토큰을 덮어쓰지 않았으며 시크릿 값은 출력·커밋·Terraform 입력/state에 넣지 않았다.
+- 최신 plan을 재확인한 뒤 saved plan으로 순서대로 적용했다. 실제 결과: bootstrap 2 add/2 change/0 destroy, dev 5 add/2 change/0 destroy, prod 9 add/2 change/1 replacement. 이전 API revision은 skip_destroy로 보존한다. DB·버킷·서버 삭제는 없었다.
+- 운영 설정 검증에서 실제 기존 태스크와 Terraform 기본값 차이로 sandbox 이벤트 설정이 바뀌고 콘텐츠 authoring SSM 스위치 2개가 추가된 것을 발견했다. 기존 값과 주입 여부로 복원하는 plan을 별도로 검토·적용했다(1 add/1 change/1 replacement). 기존 API 태스크와 비교해 썸네일 env 2개/token 참조 1개 외 모든 환경 변수·시크릿 참조, 이미지, CPU·메모리·실행 역할이 보존되는 것을 확인했다.
+- `content_authoring_configuration_enabled`로 기존 주입 유무를 보존할 수 있게 하고 `capture-prod-images.py`가 기존 API의 sandbox 값/authoring 참조 유무도 auto.tfvars에 캡처하도록 보강했다. immutable task definition을 읽으며 secret 값은 조회하지 않는다. 인프라 workflow는 현재 기능 스위치를 우선 보존한다. 의도적인 기능 스위치 전환은 별도 rollout 입력으로 수행한다.
+- 실제 큐 두 개와 DLQ 연결, managed encryption, visibility 900/long poll 20/maxReceiveCount 5, 큐 visible/inflight=0을 확인했다. 운영 thumbnail 서비스는 desired/running/pending 모두 0이며 Flare Low·준비 검사 설정이 들어 있다. 개발 기본 SSM 배포 문서도 새 큐·토큰·소비자/healthcheck를 포함하며 최신 버전을 기본으로 사용한다. 문서를 호스트에서 실행하지 않았다.
+- 최종 bootstrap/dev/prod `terraform plan -detailed-exitcode` 모두 exit 0/no changes다. `terraform validate` dev/prod, fmt/diff 검사 및 capture 테스트 6건·token 테스트 3건 통과했다. capture·조건부 SSM 주입 변경을 독립 리뷰하여 미해결 결함은 없었다. 전체 scripts unittest를 추가 시도했으나 기존 발음 QA 의존성 `num2words` 부재로 관련 51개가 오류였고, 이번 변경 대상 테스트는 별도로 통과했다.
+- 개발·운영 API/AI의 HTTPS health 네 곳은 모두 HTTP 200이었다. 앱 이미지 빌드/푸시, 앱 배포 workflow, 개발 SSM command, DB migration, 실제 이미지 생성/업로드/큐 소비는 실행하지 않았다. 운영 API는 기존 이미지로 설정 교체만 수행했다.
+- 최종 ECS waiter 통과: API/AI는 각각 desired=running=1,pending=0, 썸네일은 모두 0, 세 서비스 모두 단일 COMPLETED deployment다. 전환 중 새 타깃 health timeout을 관측했으나 애플리케이션 예외/태스크 실패는 없었고 이후 healthy로 전환되어 이전 타깃 연결 종료까지 확인했다. 공개 health 확인은 모두 200이었다.
+- 보강된 `capture-prod-images.py --output`을 실제 안정 운영 상태에 읽기 전용으로 실행해 성공했다. 캡처한 API/AI digest 및 기능 스위치가 보존한 적용 입력과 동일함을 guarded equality로 확인했다. 실제 tfvars/plan/state/log는 비공개 임시 경로에만 두고 커밋에서 제외했다.

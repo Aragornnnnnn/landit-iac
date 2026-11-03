@@ -160,7 +160,8 @@ LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES LANDIT_AUTH_OIDC_KAKAO_AUDIENCES LANDIT_AUTH_O
 LANDIT_AI_CLIENT_MODE LANDIT_BE_SENTRY_DSN LANDIT_MEMORY_WRITE_ENABLED LANDIT_MEMORY_USE_ENABLED
 LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS LANDIT_GRAFANA_CLOUD_OTLP_HEADERS LLM_PROVIDER
 OPENROUTER_BASE_URL OPENROUTER_MODEL MESSAGE_FEEDBACK_MODEL MESSAGE_FEEDBACK_REVIEW_ENABLED
-OPENROUTER_API_KEY OPENAI_API_KEY ANTHROPIC_DIRECT_ENABLED ANTHROPIC_API_KEY LANDIT_AI_SENTRY_DSN""".split()
+OPENROUTER_API_KEY OPENAI_API_KEY ANTHROPIC_DIRECT_ENABLED ANTHROPIC_API_KEY DEEPGRAM_API_KEY
+LANDIT_AI_SENTRY_DSN""".split()
 values = dict.fromkeys(names, "test-value")
 model_profiles = {'SCENARIO_NEXT_MESSAGE_MODEL': 'openai/gpt-6-luna',
  'SCENARIO_NEXT_MESSAGE_REASONING_EFFORT': 'none',
@@ -182,7 +183,8 @@ values.update(model_profiles)
 (directory / "model-profiles.json").write_text(json.dumps(model_profiles))
 values.update(LLM_PROVIDER="openai", OPENAI_API_KEY="test-direct-key",
               OPENROUTER_API_KEY="test-router-key",
-              ANTHROPIC_DIRECT_ENABLED="false", ANTHROPIC_API_KEY="test-anthropic-key")
+              ANTHROPIC_DIRECT_ENABLED="false", ANTHROPIC_API_KEY="test-anthropic-key",
+              DEEPGRAM_API_KEY="test-deepgram-key")
 values.update(LANDIT_FREE_TALK_CONTEXT_ENABLED="false",
               LANDIT_ROLEPLAY_ENABLED="true",
               LANDIT_FREE_TALK_TRIAL_LAUNCHED_AT="2026-12-31T00:00:00+09:00",
@@ -269,6 +271,9 @@ assert "OPENAI_API_KEY=" not in api.read_text(), "the OpenAI API key belongs onl
 assert 'ANTHROPIC_API_KEY="test-anthropic-key"' in (directory / "runtime/ai.env").read_text()
 assert 'ANTHROPIC_DIRECT_ENABLED="false"' in (directory / "runtime/ai.env").read_text()
 assert "ANTHROPIC_API_KEY=" not in api.read_text(), "the Anthropic API key belongs only to AI"
+# 발음 평가 받아쓰기(LAN-829) Deepgram 키도 AI env에만 있어야 한다.
+assert 'DEEPGRAM_API_KEY="test-deepgram-key"' in (directory / "runtime/ai.env").read_text()
+assert "DEEPGRAM_API_KEY=" not in api.read_text(), "the Deepgram API key belongs only to AI"
 # Compose env_file의 JSON 인용을 해제해도 작업 목록이 JSON 배열이어야 한다.
 ai_values = dict(line.split("=", 1) for line in (directory / "runtime/ai.env").read_text().splitlines())
 for parameter in json.loads((directory / "ssm.json").read_text())["Parameters"]:

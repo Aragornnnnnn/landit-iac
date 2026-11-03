@@ -158,6 +158,24 @@ LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS LANDIT_GRAFANA_CLOUD_OTLP_HEADERS LLM_PR
 OPENROUTER_BASE_URL OPENROUTER_MODEL MESSAGE_FEEDBACK_MODEL MESSAGE_FEEDBACK_REVIEW_ENABLED
 OPENROUTER_API_KEY OPENAI_API_KEY ANTHROPIC_DIRECT_ENABLED ANTHROPIC_API_KEY LANDIT_AI_SENTRY_DSN""".split()
 values = dict.fromkeys(names, "test-value")
+model_profiles = {'SCENARIO_NEXT_MESSAGE_MODEL': 'openai/gpt-6-luna',
+ 'SCENARIO_NEXT_MESSAGE_REASONING_EFFORT': 'none',
+ 'SESSION_FEEDBACK_MODEL': 'openai/gpt-6.1-terra',
+ 'SESSION_FEEDBACK_REASONING_EFFORT': 'none',
+ 'FREE_TALK_SUMMARY_MODEL': 'openai/gpt-6.1-terra',
+ 'FREE_TALK_SUMMARY_REASONING_EFFORT': 'none',
+ 'FREE_TALK_EXCERPT_MODEL': 'openai/gpt-6-luna',
+ 'FREE_TALK_EXCERPT_REASONING_EFFORT': 'none',
+ 'FREE_TALK_EXPRESSION_RECOMMENDATION_MODEL': 'openai/gpt-6-luna',
+ 'FREE_TALK_EXPRESSION_RECOMMENDATION_REASONING_EFFORT': 'none',
+ 'FREE_TALK_FOLLOW_UP_MODEL': 'openai/gpt-6-luna',
+ 'FREE_TALK_FOLLOW_UP_REASONING_EFFORT': 'none',
+ 'DISPLAY_COPY_REPAIR_MODEL': 'openai/gpt-6.1-terra',
+ 'FREE_TALK_MEMORY_MODEL': 'openai/gpt-6-luna',
+ 'EMBEDDING_MODEL': 'openai/text-embedding-3-small',
+ 'CONTENT_WORD_TTS_MODEL': 'deepgram/aura-2'}
+values.update(model_profiles)
+(directory / "model-profiles.json").write_text(json.dumps(model_profiles))
 values.update(LLM_PROVIDER="openai", OPENAI_API_KEY="test-direct-key",
               OPENROUTER_API_KEY="test-router-key",
               ANTHROPIC_DIRECT_ENABLED="false", ANTHROPIC_API_KEY="test-anthropic-key")
@@ -234,6 +252,10 @@ assert "CONTENT_CLOUDFRONT_URL=" in (directory / "runtime/ai.env").read_text()
 assert 'OPENAI_API_KEY="test-direct-key"' in (directory / "runtime/ai.env").read_text()
 assert 'OPENROUTER_API_KEY="test-router-key"' in (directory / "runtime/ai.env").read_text()
 assert 'LLM_PROVIDER="openai"' in (directory / "runtime/ai.env").read_text()
+ai_env = (directory / "runtime/ai.env").read_text().splitlines()
+for name, value in json.loads((directory / "model-profiles.json").read_text()).items():
+    assert f'{name}={json.dumps(value)}' in ai_env, f"missing model setting: {name}"
+    assert not any(line.startswith(name + "=") for line in api.read_text().splitlines())
 assert "OPENAI_API_KEY=" not in api.read_text(), "the OpenAI API key belongs only to AI"
 # Claude 직결(LAN-808) 스위치와 키도 AI env에만 있어야 한다.
 assert 'ANTHROPIC_API_KEY="test-anthropic-key"' in (directory / "runtime/ai.env").read_text()

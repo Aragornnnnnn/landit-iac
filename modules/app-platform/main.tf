@@ -1363,7 +1363,7 @@ data "aws_iam_policy_document" "api_task" {
       "sqs:GetQueueAttributes",
       "sqs:SendMessage"
     ]
-    resources = [aws_sqs_queue.jobs.arn]
+    resources = [aws_sqs_queue.jobs.arn, aws_sqs_queue.roleplay_thumbnails.arn]
   }
 
   statement {
@@ -1552,6 +1552,8 @@ resource "aws_ecs_task_definition" "api" {
         { name = "CONTENT_BUCKET_NAME", value = var.content_bucket_name },
         { name = "CONTENT_CLOUDFRONT_URL", value = var.content_cloudfront_url },
         { name = "SQS_JOBS_QUEUE_URL", value = aws_sqs_queue.jobs.url },
+        { name = "LANDIT_ROLEPLAY_THUMBNAIL_ENABLED", value = tostring(var.roleplay_thumbnail_enabled) },
+        { name = "LANDIT_ROLEPLAY_THUMBNAIL_QUEUE_URL", value = aws_sqs_queue.roleplay_thumbnails.url },
         { name = "SQS_PUSH_NOTIFICATIONS_QUEUE_URL", value = aws_sqs_queue.push_notifications.url },
         { name = "LANDIT_PUSH_SCHEDULER_QUEUE_ARN", value = aws_sqs_queue.push_notifications.arn },
         { name = "LANDIT_PUSH_SCHEDULER_DLQ_ARN", value = aws_sqs_queue.push_notifications_dlq.arn },
@@ -1608,7 +1610,9 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_SUBSCRIPTION_LAUNCHED_AT", valueFrom = "${local.ssm_path}/LANDIT_SUBSCRIPTION_LAUNCHED_AT" },
         { name = "LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE", valueFrom = "${local.ssm_path}/LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_BE_SENTRY_DSN" }
-        ], var.reward_configuration_enabled ? [
+        ], var.roleplay_thumbnail_enabled ? [
+        { name = "LANDIT_ROLEPLAY_THUMBNAIL_WORKER_TOKEN", valueFrom = "${local.ssm_path}/ROLEPLAY_THUMBNAIL_WORKER_TOKEN" }
+        ] : [], var.reward_configuration_enabled ? [
         { name = "LANDIT_REWARD_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_REWARD_ENABLED" },
         { name = "LANDIT_REWARD_CAPTURE_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_REWARD_CAPTURE_ENABLED" },
         { name = "LANDIT_REWARD_PRODUCTS_JSON", valueFrom = "${local.ssm_path}/LANDIT_REWARD_PRODUCTS" }

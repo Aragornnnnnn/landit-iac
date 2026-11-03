@@ -12,12 +12,13 @@ data "terraform_remote_state" "shared" {
 module "app_platform" {
   source = "../../modules/app-platform"
 
-  project_name           = var.project_name
-  environment            = var.environment
-  aws_region             = var.aws_region
-  parameter_store_path   = var.parameter_store_path
-  content_bucket_name    = data.terraform_remote_state.shared.outputs.content_bucket_name
-  content_cloudfront_url = data.terraform_remote_state.shared.outputs.cloudfront_url
+  roleplay_thumbnail_enabled = true
+  project_name               = var.project_name
+  environment                = var.environment
+  aws_region                 = var.aws_region
+  parameter_store_path       = var.parameter_store_path
+  content_bucket_name        = data.terraform_remote_state.shared.outputs.content_bucket_name
+  content_cloudfront_url     = data.terraform_remote_state.shared.outputs.cloudfront_url
 
   vpc_cidr            = var.vpc_cidr
   public_subnet_cidrs = var.public_subnet_cidrs

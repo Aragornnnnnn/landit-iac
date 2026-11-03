@@ -28,6 +28,7 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_CORS_ALLOWED_ORIGINS` | `String` | backend CORS allowed origins, comma-separated |
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_SECRET` | `SecureString` | backend 자체 token signing secret |
 | `/landit/{environment}/LANDIT_AI_CLIENT_MODE` | `String` | backend AI client mode |
+| `/landit/develop/LANDIT_ROLEPLAY_ENABLED` | `String` | 개발 BE의 롤플레이 신규 대화 시작 스위치. `true`로 켠 뒤 API 컨테이너를 재생성한다. AI 롤플레이 API와 DB 마이그레이션 배포 후 활성화하며 `false`로 내려도 기존 대화 종료·이력 조회는 유지한다. |
 | `/landit/{environment}/LANDIT_AI_BASE_URL` | `String` | backend에서 호출하는 AI service base URL |
 | `/landit/{environment}/LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT` | `String` | backend가 콘텐츠 제작(LAN-690) AI 호출 한 번을 기다리는 시간. Duration 형식(`300s`). 코드 기본값 300초, landit-ai `CONTENT_GENERATION_TIMEOUT_SECONDS`보다 길어야 한다 |
 | `/landit/{environment}/LANDIT_REVENUECAT_PROJECT_ID` | `String` | backend RevenueCat 프로젝트 ID |

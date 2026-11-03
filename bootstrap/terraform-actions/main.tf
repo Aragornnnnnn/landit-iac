@@ -269,6 +269,7 @@ data "aws_iam_policy_document" "terraform" {
       resources = [
         "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-api-task",
         "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-worker-task",
+        "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-thumbnail-task",
         "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-ecs-execution"
       ]
 
@@ -279,6 +280,74 @@ data "aws_iam_policy_document" "terraform" {
       }
     }
   }
+}
+
+# LAN-837 전용 큐·경보·소비자 리소스 생성 권한은 환경별 이름으로 제한한다.
+data "aws_iam_policy_document" "thumbnail_infrastructure" {
+  for_each = { develop = "develop", production = "prod" }
+  statement {
+    actions   = ["sqs:CreateQueue", "sqs:SetQueueAttributes", "sqs:TagQueue", "sqs:UntagQueue", "sqs:DeleteQueue"]
+    resources = [for suffix in ["roleplay-thumbnails", "roleplay-thumbnails-dlq"] : "arn:aws:sqs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:${each.value}-${var.project_name}-${suffix}"]
+  }
+  statement {
+    actions   = ["cloudwatch:PutMetricAlarm", "cloudwatch:DeleteAlarms", "cloudwatch:TagResource", "cloudwatch:UntagResource"]
+    resources = ["arn:aws:cloudwatch:${var.aws_region}:${data.aws_caller_identity.current.account_id}:alarm:${each.value}-${var.project_name}-roleplay-thumbnail-dlq"]
+  }
+  dynamic "statement" {
+    for_each = each.key == "production" ? [1] : []
+    content {
+      actions   = ["iam:CreateRole", "iam:TagRole", "iam:UntagRole", "iam:DeleteRole", "iam:PutRolePolicy", "iam:DeleteRolePolicy"]
+      resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-thumbnail-task"]
+    }
+  }
+  dynamic "statement" {
+    for_each = each.key == "production" ? [1] : []
+    content {
+      actions   = ["ecs:CreateService", "ecs:UpdateService", "ecs:DeleteService", "ecs:TagResource", "ecs:UntagResource"]
+      resources = ["arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/prod-${var.project_name}-cluster/prod-${var.project_name}-thumbnail"]
+    }
+  }
+  dynamic "statement" {
+    for_each = each.key == "production" ? [1] : []
+    content {
+      actions   = ["ec2:CreateSecurityGroup", "ec2:CreateTags"]
+      resources = ["arn:aws:ec2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:vpc/*", "arn:aws:ec2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:security-group/*"]
+      condition {
+        test     = "StringEquals"
+        variable = "aws:RequestTag/Project"
+        values   = [var.project_name]
+      }
+      condition {
+        test     = "StringEquals"
+        variable = "aws:RequestTag/Environment"
+        values   = ["prod"]
+      }
+    }
+  }
+  dynamic "statement" {
+    for_each = each.key == "production" ? [1] : []
+    content {
+      actions   = ["ec2:AuthorizeSecurityGroupEgress", "ec2:RevokeSecurityGroupEgress", "ec2:DeleteSecurityGroup"]
+      resources = ["arn:aws:ec2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:security-group/*"]
+      condition {
+        test     = "StringEquals"
+        variable = "ec2:ResourceTag/Project"
+        values   = [var.project_name]
+      }
+      condition {
+        test     = "StringEquals"
+        variable = "ec2:ResourceTag/Environment"
+        values   = ["prod"]
+      }
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "thumbnail_infrastructure" {
+  for_each = { develop = "develop", production = "production" }
+  name     = "${var.project_name}-iac-thumbnail-${each.key}"
+  role     = aws_iam_role.terraform["apply-${each.value}"].id
+  policy   = data.aws_iam_policy_document.thumbnail_infrastructure[each.key].json
 }
 
 resource "aws_iam_role_policy" "terraform" {

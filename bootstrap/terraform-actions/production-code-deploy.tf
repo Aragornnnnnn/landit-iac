@@ -1,12 +1,18 @@
 # 기존 운영 코드 배포 역할에 이미지 고정 task revision을 등록할 최소 추가 권한을 부여한다.
 locals {
   production_task_definition_arns = [
-    for service in ["api", "worker"] :
+    for service in ["api", "worker", "thumbnail"] :
     "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:task-definition/prod-${var.project_name}-${service}:*"
   ]
 }
 
 data "aws_iam_policy_document" "production_code_deploy" {
+  statement {
+    sid       = "DeployThumbnailConsumer"
+    actions   = ["ecs:DescribeServices", "ecs:UpdateService"]
+    resources = ["arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/prod-${var.project_name}-cluster/prod-${var.project_name}-thumbnail"]
+  }
+
   statement {
     sid       = "ReadProductionImageDigests"
     actions   = ["ecr:DescribeImages"]
@@ -64,7 +70,8 @@ data "aws_iam_policy_document" "production_code_deploy" {
     resources = [
       "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-ecs-execution",
       "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-api-task",
-      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-worker-task"
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-worker-task",
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/prod-${var.project_name}-thumbnail-task"
     ]
     condition {
       test     = "StringEquals"

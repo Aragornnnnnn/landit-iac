@@ -1396,7 +1396,12 @@ data "aws_iam_policy_document" "api_task" {
       "s3:GetObject",
       "s3:PutObject"
     ]
-    resources = ["arn:aws:s3:::${var.content_bucket_name}/content/inbox/*"]
+    resources = [
+      "arn:aws:s3:::${var.content_bucket_name}/content/inbox/*",
+      # 로컬 제작 콘텐츠 SQL 업로드 원본 보관(LAN-758). API가 파싱 뒤 원본을 올리고 발행은 DB의 조각으로 한다.
+      # CloudFront가 공개하는 content/* 밖에 두어 미발행 Day의 SQL이 CDN으로 새지 않는다.
+      "arn:aws:s3:::${var.content_bucket_name}/authoring/publish-bundles/*"
+    ]
   }
 
   # 발음 평가 자산 매니페스트를 BE가 S3에서 직접 읽어 임포트한다 (LAN-373)
@@ -1585,6 +1590,8 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_AI_CLIENT_MODE", valueFrom = "${local.ssm_path}/LANDIT_AI_CLIENT_MODE" },
         { name = "LANDIT_AI_BASE_URL", valueFrom = "${local.ssm_path}/LANDIT_AI_BASE_URL" },
         { name = "LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT", valueFrom = "${local.ssm_path}/LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT" },
+        { name = "LANDIT_CONTENT_AUTHORING_ASSETS_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_CONTENT_AUTHORING_ASSETS_ENABLED" },
+        { name = "LANDIT_CONTENT_AUTHORING_PUBLISH_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_CONTENT_AUTHORING_PUBLISH_ENABLED" },
         { name = "LANDIT_MEMORY_WRITE_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_MEMORY_WRITE_ENABLED" },
         { name = "LANDIT_MEMORY_USE_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_MEMORY_USE_ENABLED" },
         { name = "LANDIT_FREE_TALK_DAILY_SPEAKING_TIME_LIMIT_MS", valueFrom = "${local.ssm_path}/LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS" },

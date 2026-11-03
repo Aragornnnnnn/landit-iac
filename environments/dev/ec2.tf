@@ -53,6 +53,7 @@ locals {
     content_bucket_name    = data.terraform_remote_state.shared.outputs.content_bucket_name
     content_cloudfront_url = data.terraform_remote_state.shared.outputs.cloudfront_url
     jobs_queue_url         = module.app_platform.jobs_queue_url
+    thumbnail_queue_url    = module.app_platform.roleplay_thumbnail_queue_url
     push_queue_url         = module.app_platform.push_notifications_queue_url
     push_queue_arn         = module.app_platform.push_notifications_queue_arn
     push_dlq_arn           = module.app_platform.push_notifications_dlq_arn
@@ -460,4 +461,18 @@ resource "aws_iam_role_policy" "github_actions_golden_audio" {
   name   = "develop-golden-audio-read"
   role   = data.aws_iam_role.github_actions_deploy.id
   policy = data.aws_iam_policy_document.github_actions_golden_audio.json
+}
+
+# EC2 배포에서 실행하는 썸네일 소비 프로세스에만 필요한 추가 권한이다.
+resource "aws_iam_role_policy" "ec2_thumbnail_consumer" {
+  name   = "${local.name_prefix}-thumbnail-consumer"
+  role   = aws_iam_role.ec2_app.id
+  policy = module.app_platform.roleplay_thumbnail_consumer_policy_json
+}
+resource "aws_iam_role_policy" "ec2_thumbnail_publisher" {
+  name = "${local.name_prefix}-thumbnail-publisher"
+  role = aws_iam_role.ec2_app.id
+  policy = jsonencode({ Version = "2012-10-17", Statement = [{
+    Effect = "Allow", Action = ["sqs:SendMessage"], Resource = module.app_platform.roleplay_thumbnail_queue_arn
+  }] })
 }

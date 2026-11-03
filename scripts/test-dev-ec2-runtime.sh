@@ -162,6 +162,7 @@ values.update(LLM_PROVIDER="openai", OPENAI_API_KEY="test-direct-key",
               OPENROUTER_API_KEY="test-router-key",
               ANTHROPIC_DIRECT_ENABLED="false", ANTHROPIC_API_KEY="test-anthropic-key")
 values.update(LANDIT_FREE_TALK_CONTEXT_ENABLED="false",
+              LANDIT_ROLEPLAY_ENABLED="true",
               LANDIT_FREE_TALK_TRIAL_LAUNCHED_AT="2026-12-31T00:00:00+09:00",
               LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS="7200000",
               LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT="1000",
@@ -199,6 +200,7 @@ api = directory / "runtime/api.env"
 expected = {
     'LANDIT_AI_ASSESSMENT_VERSION=text-score-v2.0',
     'LANDIT_FREE_TALK_CONTEXT_ENABLED="false"',
+    'LANDIT_ROLEPLAY_ENABLED="true"',
     'LANDIT_FREE_TALK_TRIAL_LAUNCHED_AT="2026-12-31T00:00:00+09:00"',
     'LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS="7200000"',
     'LANDIT_FREE_TALK_DAILY_REQUEST_LIMIT="1000"',

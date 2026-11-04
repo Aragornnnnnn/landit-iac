@@ -152,24 +152,24 @@ if [[ -n "$${internal_token_env}" ]]; then
   printf '%s\n' "$${internal_token_env}" >> "$${RUNTIME_DIR}/ai.env"
 fi
 
-# 썸네일은 큐 소비 전용 env를 사용해 대화 서버의 provider 설정과 분리한다.
+# 썸네일은 기존 AI 서버 안에서 큐를 소비한다. 토큰은 BE와 같은 SSM 값을 쓴다.
 write_ssm_env "$${RUNTIME_DIR}/thumbnail.env" OPENAI_API_KEY ROLEPLAY_THUMBNAIL_WORKER_TOKEN
 sed -n 's/^ROLEPLAY_THUMBNAIL_WORKER_TOKEN=/LANDIT_ROLEPLAY_THUMBNAIL_WORKER_TOKEN=/p' \
   "$${RUNTIME_DIR}/thumbnail.env" >> "$${RUNTIME_DIR}/api.env"
 printf '%s\n' 'LANDIT_ROLEPLAY_THUMBNAIL_ENABLED=true' >> "$${RUNTIME_DIR}/api.env"
 printf '%s\n' 'LANDIT_ROLEPLAY_THUMBNAIL_QUEUE_URL=${thumbnail_queue_url}' >> "$${RUNTIME_DIR}/api.env"
-cat >> "$${RUNTIME_DIR}/thumbnail.env" <<EOF
+cat >> "$${RUNTIME_DIR}/ai.env" <<EOF
 AWS_REGION=$${AWS_REGION}
 APP_ENV=$${ENVIRONMENT}
-LLM_PROVIDER=openai
-EMBEDDING_MODEL=openai/text-embedding-3-small
 ROLEPLAY_THUMBNAIL_ENABLED=true
+ROLEPLAY_THUMBNAIL_CONSUMER_ENABLED=true
 ROLEPLAY_THUMBNAIL_MODEL=gpt-image-2.5-flare
 ROLEPLAY_THUMBNAIL_QUALITY=low
 ROLEPLAY_THUMBNAIL_QUEUE_URL=${thumbnail_queue_url}
 ROLEPLAY_THUMBNAIL_BACKEND_URL=https://api-develop.landit.im
 CONTENT_BUCKET_NAME=$${CONTENT_BUCKET_NAME}
 CONTENT_CLOUDFRONT_URL=$${CONTENT_CLOUDFRONT_URL}
-CONTENT_ASSET_TIMEOUT_SECONDS=600
 EOF
-chmod 0600 "$${RUNTIME_DIR}/thumbnail.env"
+sed -n '/^ROLEPLAY_THUMBNAIL_WORKER_TOKEN=/p' "$${RUNTIME_DIR}/thumbnail.env" >> "$${RUNTIME_DIR}/ai.env"
+rm -f "$${RUNTIME_DIR}/thumbnail.env"
+chmod 0600 "$${RUNTIME_DIR}/ai.env"

@@ -92,3 +92,13 @@ Vercel DNS는 EC2 Elastic IP를 가리킨다. 임시 도메인 `api-ec2-develop.
 - 필요하면 PR 댓글의 `@codex review` 또는 `@codex security review`로 수동 리뷰를 요청합니다. 리뷰 지침은 테스트·브랜치 보호·사람의 승인을 대체하지 않습니다.
 - CodeRabbit 자동 리뷰는 사용하지 않습니다. `.coderabbit.yaml`은 자동·증분 리뷰와 label·본문 키워드 자동 실행을 끄는 최소 설정만 유지합니다. 파일 삭제만으로는 기본값 또는 상위 설정에 따라 리뷰가 다시 켜질 수 있습니다.
 - 기존 PR·작업 문서의 CodeRabbit 리뷰 기록은 과거 근거로 보존합니다. 다른 저장소를 문서에 언급하는 것만으로 Codex의 접근 권한이나 교차 저장소 분석이 설정되지는 않습니다.
+
+### 썸네일 소비 통합 hotfix
+
+썸네일 큐·DLQ와 BE 콜백 계약은 유지하며 별도 ECS 서비스/Task Role/SG와 개발 Compose 소비자 컨테이너를 제거한다. 기존 AI HTTP 서버의 백그라운드 스레드가 소비한다. 개발 EC2 role은 기존 소비 권한을 유지하고, 운영은 같은 최소 권한 정책을 기존 worker task role에 연결한다. 토큰은 기존 `/landit/{환경}/ROLEPLAY_THUMBNAIL_WORKER_TOKEN` SecureString을 재사용한다.
+
+적용 전 개발·운영 plan에서 SQS/DLQ 삭제·교체가 없는지 확인한다. 운영 기존 thumbnail 서비스가 실행 중이라면 먼저 정상 중지와 진행 작업 종료를 확인한 뒤 제거한다. IaC 적용은 기존 이미지 digest를 유지하지만 task 설정 변경으로 API/AI 서비스의 롤링 재시작을 포함할 수 있다. 실제 적용 전 최신 plan과 배포 승인이 필요하며, 이번 수정에서는 apply하지 않았다. IaC가 새 worker task definition의 큐 URL·BE URL·플래그·토큰 참조와 IAM 권한을 준비한 다음 AI hotfix를 배포한다. AI 배포 스크립트는 최신 family에서 이 필드만 자동 반영하므로 task definition ARN 입력은 없다. 최신 IaC가 없으면 배포를 거부한다.
+
+개발은 IaC의 runtime/compose/deploy-service 갱신 후 새 AI 이미지를 배포한다. HTTP health 통과 뒤 구 thumbnail 컨테이너를 제거한다. 실패한 배포는 구 소비자를 보존한다. 통합 이전 이미지로의 롤백은 자동 큐 소비를 제공하지 않으므로 구 Compose/소비자 구성도 함께 복구해야 한다. 운영에서는 구 BE 중에도 HTTP는 응답하며 소비자는 새 BE 내부 API가 준비될 때까지 큐를 받지 않고 재검사한다. HTTP health만으로 이미지 생성 성공을 판단하지 않으며 소비자 ready 로그와 BE의 썸네일 완료 상태를 별도로 확인한다.
+
+2026-11-05 검증은 운영 S3 state 사본을 로컬 backend로 읽고 `-refresh=false`로 생성한 plan이다. 썸네일 SQS/DLQ는 모두 no-op이며 전용 ECS 서비스/task definition/role/policy/SG 삭제와 기존 worker 권한·설정 추가를 확인했다. 전체 plan은 3 add / 2 change / 7 destroy이고 기존 API task 설정 차이도 포함한다. 이 snapshot plan을 운영 apply에 재사용하지 않으며, 실제 적용 전 배포 snapshot을 다시 고정한 최신 plan을 검토한다.

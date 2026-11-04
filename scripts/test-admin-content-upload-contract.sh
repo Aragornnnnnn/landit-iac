@@ -219,5 +219,8 @@ assert_contains "${worker_task}" '{ name = "OPENAI_API_KEY", valueFrom = "${loca
 assert_contains "${worker_task}" '{ name = "ANTHROPIC_API_KEY", valueFrom = "${local.ssm_path}/ANTHROPIC_API_KEY" }' "worker에 Claude 직결용 ANTHROPIC_API_KEY를 SSM secret으로 주입해야 한다(LAN-808)."
 assert_contains "${worker_task}" '{ name = "ANTHROPIC_DIRECT_ENABLED", valueFrom = "${local.ssm_path}/ANTHROPIC_DIRECT_ENABLED" }' "worker에 Claude 직결 스위치 ANTHROPIC_DIRECT_ENABLED를 주입해야 한다(LAN-808)."
 assert_not_contains "${api_task}" 'ANTHROPIC_API_KEY' "API 태스크에 Anthropic 키를 주면 안 된다(LAN-808)."
+# LAN-829(발음 평가 받아쓰기)는 Deepgram 키를 landit-ai에만 준다.
+assert_contains "${worker_task}" '{ name = "DEEPGRAM_API_KEY", valueFrom = "${local.ssm_path}/DEEPGRAM_API_KEY" }' "worker에 발음 평가 받아쓰기용 DEEPGRAM_API_KEY를 SSM secret으로 주입해야 한다(LAN-829)."
+assert_not_contains "${api_task}" 'DEEPGRAM_API_KEY' "API 태스크에 Deepgram 키를 주면 안 된다(LAN-829)."
 
 echo "관리자 콘텐츠 이미지 업로드 IaC 계약이 통과했다."

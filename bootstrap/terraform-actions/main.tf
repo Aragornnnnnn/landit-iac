@@ -307,6 +307,19 @@ data "aws_iam_policy_document" "thumbnail_infrastructure" {
       resources = ["arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/prod-${var.project_name}-cluster/prod-${var.project_name}-thumbnail"]
     }
   }
+  # SG 제거 시 provider가 연결된 ENI를 먼저 조회한다. 변경 권한은 추가하지 않는다.
+  dynamic "statement" {
+    for_each = each.key == "production" ? [1] : []
+    content {
+      actions   = ["ec2:DescribeNetworkInterfaces"]
+      resources = ["*"]
+      condition {
+        test     = "StringEquals"
+        variable = "aws:RequestedRegion"
+        values   = [var.aws_region]
+      }
+    }
+  }
   dynamic "statement" {
     for_each = each.key == "production" ? [1] : []
     content {

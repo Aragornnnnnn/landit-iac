@@ -1692,7 +1692,7 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "OTEL_LOGS_EXPORTER", value = "none" },
         { name = "OTEL_SERVICE_NAME", value = "landit-ai" },
         { name = "OTEL_RESOURCE_ATTRIBUTES", value = "service.namespace=landit,deployment.environment.name=${var.environment}" }
-      ] : [])
+      ] : [], local.thumbnail_environment)
 
       secrets = concat([
         { name = "DB_URL", valueFrom = "${local.ssm_path}/DB_URL" },
@@ -1737,7 +1737,9 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "ANTHROPIC_API_KEY", valueFrom = "${local.ssm_path}/ANTHROPIC_API_KEY" },
         { name = "DEEPGRAM_API_KEY", valueFrom = "${local.ssm_path}/DEEPGRAM_API_KEY" },
         { name = "SENTRY_DSN", valueFrom = "${local.ssm_path}/LANDIT_AI_SENTRY_DSN" }
-        ], var.ai_internal_auth_enabled ? [
+        ], var.roleplay_thumbnail_enabled ? [
+        { name = "ROLEPLAY_THUMBNAIL_WORKER_TOKEN", valueFrom = "${local.ssm_path}/ROLEPLAY_THUMBNAIL_WORKER_TOKEN" }
+        ] : [], var.ai_internal_auth_enabled ? [
         { name = "LANDIT_AI_INTERNAL_TOKEN", valueFrom = "${local.ssm_path}/LANDIT_AI_INTERNAL_TOKEN" }
         ] : [], var.grafana_otlp_enabled ? [
         { name = "OTEL_EXPORTER_OTLP_HEADERS", valueFrom = "${local.ssm_path}/LANDIT_GRAFANA_CLOUD_OTLP_HEADERS" }

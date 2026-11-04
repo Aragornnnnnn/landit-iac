@@ -79,15 +79,6 @@ rollback() {
     echo "rollback container start failed for $${service}" >&2
     return 1
   fi
-  if [[ "$${service}" == ai ]]; then
-    if [[ "$(docker image inspect --format '{{index .Config.Labels "im.landit.roleplay-thumbnail-worker"}}' "$${previous_ref}")" == v2 ]]; then
-      docker compose --project-directory "$${LANDIT_DIR}" --env-file "$${LANDIT_DIR}/images.env" \
-        -f "$${LANDIT_DIR}/compose.yml" --profile thumbnail up -d --no-deps thumbnail || return 1
-    else
-      docker compose --project-directory "$${LANDIT_DIR}" --env-file "$${LANDIT_DIR}/images.env" \
-        -f "$${LANDIT_DIR}/compose.yml" --profile thumbnail stop thumbnail || return 1
-    fi
-  fi
   if ! wait_for_health; then
     echo "rollback health check failed for $${service}" >&2
     return 1
@@ -137,28 +128,15 @@ if ! docker compose --project-directory "$${LANDIT_DIR}" --env-file "$${LANDIT_D
   rollback || true
   exit 1
 fi
-if [[ "$${service}" == ai ]]; then
-  if ! docker compose --project-directory "$${LANDIT_DIR}" --env-file "$${LANDIT_DIR}/images.env" \
-    -f "$${LANDIT_DIR}/compose.yml" --profile thumbnail up -d --no-deps thumbnail; then
-    rollback || true
-    exit 1
-  fi
-  thumbnail_container="$(docker compose --project-directory "$${LANDIT_DIR}" --env-file "$${LANDIT_DIR}/images.env" \
-    -f "$${LANDIT_DIR}/compose.yml" --profile thumbnail ps -q thumbnail)"
-  thumbnail_ready=false
-  for attempt in $(seq 1 45); do
-    if [[ -z "$${thumbnail_container}" ]]; then break; fi
-    thumbnail_health="$(docker inspect --format '{{.State.Health.Status}}' "$${thumbnail_container}")"
-    if [[ "$${thumbnail_health}" == healthy ]]; then thumbnail_ready=true; break; fi
-    if [[ "$${thumbnail_health}" == unhealthy ]]; then break; fi
-    sleep 2
-  done
-  if [[ "$${thumbnail_ready}" != true ]]; then
-    rollback || true
-    exit 1
-  fi
-fi
 if wait_for_health; then
+  if [[ "$${service}" == ai ]]; then
+    # HTTP 교체 성공 후 Compose에서 제거한 구 전용 컨테이너만 종료한다.
+    old_thumbnail="$(docker ps -aq --filter label=com.docker.compose.project=landit --filter label=com.docker.compose.service=thumbnail)"
+    if [[ -n "$${old_thumbnail}" ]]; then
+      docker stop -t 120 $${old_thumbnail}
+      docker rm $${old_thumbnail}
+    fi
+  fi
   printf '%s %s %s %s %s %s\n' "$(date -u +%FT%TZ)" "$${service}" "$${previous_tag}" "$${image_tag}" "$${previous_ref}" "$${candidate_ref}" \
     >> "$${LANDIT_DIR}/deployments.log"
   exit 0

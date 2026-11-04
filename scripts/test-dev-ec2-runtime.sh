@@ -350,23 +350,11 @@ EOF
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${TEST_LOG}"
 case "$*" in
-  *'--profile thumbnail ps -q thumbnail') printf 'cccccccccccc\n'; exit 0 ;;
   *' ps '*) exit 1 ;;
   'ps -aq'*service=api) printf 'aaaaaaaaaaaa\n'; exit 0 ;;
   'ps -aq'*service=ai) printf 'bbbbbbbbbbbb\n'; exit 0 ;;
-  'inspect --format {{.State.Health.Status}} '*)
-    count=0
-    if [[ -f "${TEST_LOG}.health-count" ]]; then count="$(cat "${TEST_LOG}.health-count")"; fi
-    count=$((count + 1))
-    printf '%s\n' "$count" > "${TEST_LOG}.health-count"
-    if [[ "${TEST_MODE}" == thumbnail-timeout || "$count" -lt 4 ]]; then
-      printf 'starting\n'
-    else
-      printf 'healthy\n'
-    fi
-    exit 0 ;;
+  'ps -aq'*service=thumbnail) printf 'cccccccccccc\n'; exit 0 ;;
   'inspect '*) printf 'sha256:%064d\n' 1; exit 0 ;;
-  'image inspect --format '*im.landit.roleplay-thumbnail-worker*) printf '<no value>\n'; exit 0 ;;
   'image inspect '*)
     printf '["123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/develop-landit-api@sha256:%064d","123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/develop-landit-worker@sha256:%064d"]\n' 1 1
     exit 0 ;;
@@ -391,7 +379,7 @@ fi
 count=$((count + 1))
 printf '%s\n' "${count}" > "${TEST_CURL_COUNT}"
 case "${TEST_MODE}" in
-  success|thumbnail-ready|thumbnail-timeout) exit 0 ;;
+  success|integrated-ai) exit 0 ;;
   health-fail) [[ "${count}" -gt 30 ]] && exit 0 || exit 1 ;;
   rollback-fail) exit 1 ;;
   *) exit 1 ;;
@@ -483,11 +471,20 @@ assert_file_value "${same_sha_dir}/landit/api.ref" "${old_ref}"
 rg -Fxq "API_IMAGE_REF=${new_ref}" "${same_sha_dir}/docker.log.images"
 rg -Fxq "API_IMAGE_REF=${old_ref}" "${same_sha_dir}/landit/images.env"
 
-# AI HTTP health 성공만으로 소비자 준비 검사를 건너뛰지 않는다.
-thumbnail_ready_dir="$(run_case thumbnail-ready thumbnail-ready 0 ai)"
-assert_file_value "${thumbnail_ready_dir}/landit/ai.tag" "${NEW_SHA}"
-assert_file_value "${thumbnail_ready_dir}/docker.log.health-count" 4
-thumbnail_timeout_dir="$(run_case thumbnail-timeout thumbnail-timeout 1 ai)"
-assert_file_value "${thumbnail_timeout_dir}/landit/ai.tag" "${OLD_SHA}"
-assert_file_value "${thumbnail_timeout_dir}/docker.log.health-count" 45
-rg -q -- '--profile thumbnail stop thumbnail' "${thumbnail_timeout_dir}/docker.log"
+# 새 AI HTTP health가 통과한 뒤에만 구 독립 컨테이너를 제거한다.
+integrated_dir="$(run_case integrated-ai integrated-ai 0 ai)"
+assert_file_value "${integrated_dir}/landit/ai.tag" "${NEW_SHA}"
+rg -Fxq 'stop -t 120 cccccccccccc' "${integrated_dir}/docker.log"
+rg -Fxq 'rm cccccccccccc' "${integrated_dir}/docker.log"
+if rg -q -- '--profile thumbnail' "${integrated_dir}/docker.log"; then
+  echo 'AI deployment must not start an independent thumbnail container.' >&2
+  exit 1
+fi
+failed_ai_dir="$(run_case failed-ai health-fail 1 ai)"
+if rg -q 'rm cccccccccccc' "${failed_ai_dir}/docker.log"; then
+  echo 'failed AI deployment must preserve the old consumer.' >&2
+  exit 1
+fi
+rg -Fxq 'ROLEPLAY_THUMBNAIL_CONSUMER_ENABLED=true' "${TEST_DIR}/runtime/ai.env"
+rg -q '^ROLEPLAY_THUMBNAIL_WORKER_TOKEN=' "${TEST_DIR}/runtime/ai.env"
+[[ ! -e "${TEST_DIR}/runtime/thumbnail.env" ]]

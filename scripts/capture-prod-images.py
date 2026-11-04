@@ -65,8 +65,22 @@ def snapshot(cluster="prod-landit-cluster", prefix="prod-landit"):
 
 
 def inputs(baseline):
+    # 앱 배포 없이 인프라만 바꿀 때 기존 기능 스위치를 기본값으로 되돌리지 않는다.
+    definition = aws("ecs", "describe-task-definition", "--task-definition",
+                     baseline["api"]["task_definition"])["taskDefinition"]
+    container = next(c for c in definition["containerDefinitions"] if c["name"] == "api")
+    environment = {item["name"]: item["value"] for item in container.get("environment", [])}
+    sandbox = environment.get("LANDIT_REVENUECAT_APPLY_SANDBOX_EVENTS")
+    if sandbox not in ("true", "false"):
+        raise ValueError("The running API sandbox-event switch must be explicit")
+    authoring = {"LANDIT_CONTENT_AUTHORING_ASSETS_ENABLED", "LANDIT_CONTENT_AUTHORING_PUBLISH_ENABLED"}
+    injected = authoring & {item["name"] for item in container.get("secrets", [])}
+    if injected and injected != authoring:
+        raise ValueError("The API content authoring switch injection is incomplete")
     return {"api_image_ref": baseline["api"]["image_ref"],
             "worker_image_ref": baseline["worker"]["image_ref"],
+            "revenuecat_apply_sandbox_events": sandbox == "true",
+            "content_authoring_configuration_enabled": bool(injected),
             "release_baseline": baseline}
 
 
@@ -76,7 +90,8 @@ def verify(plan, current):
     if expected != current:
         raise ValueError("Application deployment changed after plan; create and review a new plan")
     for name in ("api_image_ref", "worker_image_ref"):
-        if variables.get(name, {}).get("value") != inputs(current)[name]:
+        container = "api" if name == "api_image_ref" else "worker"
+        if variables.get(name, {}).get("value") != current[container]["image_ref"]:
             raise ValueError("Plan image does not match the approved running image")
 
 

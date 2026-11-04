@@ -35,6 +35,30 @@ services:
         awslogs-region: "${aws_region}"
         awslogs-stream: ec2-ai
 
+  thumbnail:
+    image: $${AI_IMAGE_REF}
+    command: ["python", "-m", "app.roleplay.thumbnail_worker"]
+    profiles: ["thumbnail"]
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/landit-thumbnail-ready"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+      start_period: 45s
+    env_file:
+      - /run/landit/thumbnail.env
+    stop_grace_period: 120s
+    mem_limit: 256m
+    restart: unless-stopped
+    networks:
+      - landit
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: "${ai_log_group_name}"
+        awslogs-region: "${aws_region}"
+        awslogs-stream: ec2-thumbnail
+
   caddy:
     image: caddy:2.8.4-alpine
     ports:

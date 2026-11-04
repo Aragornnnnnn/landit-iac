@@ -12,12 +12,13 @@ data "terraform_remote_state" "shared" {
 module "app_platform" {
   source = "../../modules/app-platform"
 
-  project_name           = var.project_name
-  environment            = var.environment
-  aws_region             = var.aws_region
-  parameter_store_path   = var.parameter_store_path
-  content_bucket_name    = data.terraform_remote_state.shared.outputs.content_bucket_name
-  content_cloudfront_url = data.terraform_remote_state.shared.outputs.cloudfront_url
+  roleplay_thumbnail_enabled = true
+  project_name               = var.project_name
+  environment                = var.environment
+  aws_region                 = var.aws_region
+  parameter_store_path       = var.parameter_store_path
+  content_bucket_name        = data.terraform_remote_state.shared.outputs.content_bucket_name
+  content_cloudfront_url     = data.terraform_remote_state.shared.outputs.cloudfront_url
 
   vpc_cidr            = var.vpc_cidr
   public_subnet_cidrs = var.public_subnet_cidrs
@@ -32,19 +33,20 @@ module "app_platform" {
   api_health_check_grace_period_seconds = var.api_health_check_grace_period_seconds
   ai_health_check_grace_period_seconds  = var.ai_health_check_grace_period_seconds
 
-  ai_assessment_version           = "text-score-v2.0"
-  reward_configuration_enabled    = true
-  revenuecat_apply_sandbox_events = var.revenuecat_apply_sandbox_events
-  ai_internal_token_enabled       = var.ai_internal_token_enabled
-  ai_internal_auth_enabled        = var.ai_internal_auth_enabled
-  api_image_ref                   = var.api_image_ref
-  worker_image_ref                = var.worker_image_ref
-  api_cpu                         = var.api_cpu
-  api_memory                      = var.api_memory
-  worker_cpu                      = var.worker_cpu
-  worker_memory                   = var.worker_memory
-  api_desired_count               = var.api_desired_count
-  worker_desired_count            = var.worker_desired_count
+  ai_assessment_version                   = "text-score-v2.0"
+  reward_configuration_enabled            = true
+  content_authoring_configuration_enabled = var.content_authoring_configuration_enabled
+  revenuecat_apply_sandbox_events         = var.revenuecat_apply_sandbox_events
+  ai_internal_token_enabled               = var.ai_internal_token_enabled
+  ai_internal_auth_enabled                = var.ai_internal_auth_enabled
+  api_image_ref                           = var.api_image_ref
+  worker_image_ref                        = var.worker_image_ref
+  api_cpu                                 = var.api_cpu
+  api_memory                              = var.api_memory
+  worker_cpu                              = var.worker_cpu
+  worker_memory                           = var.worker_memory
+  api_desired_count                       = var.api_desired_count
+  worker_desired_count                    = var.worker_desired_count
 
   expression_review_schedule_enabled  = var.expression_review_schedule_enabled
   review_reminder_schedule_expression = var.review_reminder_schedule_expression

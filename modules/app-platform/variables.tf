@@ -292,6 +292,12 @@ variable "reward_configuration_enabled" {
   default     = false
 }
 
+variable "content_authoring_configuration_enabled" {
+  description = "Inject content authoring SSM switches only when the API rollout includes them."
+  type        = bool
+  default     = true
+}
+
 variable "ai_assessment_version" {
   description = "BE evaluation contract; legacy remains the default outside explicitly enabled environments."
   type        = string

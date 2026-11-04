@@ -17,6 +17,10 @@ assert_contains() {
   local pattern="$2"
   local message="$3"
 
+  # terraform fmt가 바꾼 정렬 공백은 실행 계약에 영향을 주지 않는다.
+  content="$(tr -s '[:blank:]' ' ' <<<"${content}")"
+  pattern="$(tr -s '[:blank:]' ' ' <<<"${pattern}")"
+
   if ! grep -Fq "${pattern}" <<<"${content}"; then
     echo "계약 위반. ${message}" >&2
     exit 1
@@ -27,6 +31,10 @@ assert_not_contains() {
   local content="$1"
   local pattern="$2"
   local message="$3"
+
+  # terraform fmt가 바꾼 정렬 공백은 실행 계약에 영향을 주지 않는다.
+  content="$(tr -s '[:blank:]' ' ' <<<"${content}")"
+  pattern="$(tr -s '[:blank:]' ' ' <<<"${pattern}")"
 
   if grep -Fq "${pattern}" <<<"${content}"; then
     echo "계약 위반. ${message}" >&2

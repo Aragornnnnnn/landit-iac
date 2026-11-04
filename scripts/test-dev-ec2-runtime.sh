@@ -27,6 +27,7 @@ locals {
     app_bucket_name        = "develop-landit-app-123456789012"
     content_bucket_name    = "develop-landit-content-123456789012"
     content_cloudfront_url = "https://d1234567890.cloudfront.net"
+    thumbnail_queue_url    = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/develop-landit-roleplay-thumbnails"
     jobs_queue_url         = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/develop-landit-jobs"
     push_queue_url         = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/develop-landit-push-notifications"
     push_queue_arn         = "arn:aws:sqs:ap-northeast-2:123456789012:develop-landit-push-notifications"
@@ -161,7 +162,7 @@ LANDIT_AI_CLIENT_MODE LANDIT_BE_SENTRY_DSN LANDIT_MEMORY_WRITE_ENABLED LANDIT_ME
 LANDIT_FREE_TALK_SPEAKING_TIME_LIMIT_MS LANDIT_GRAFANA_CLOUD_OTLP_HEADERS LLM_PROVIDER
 OPENROUTER_BASE_URL OPENROUTER_MODEL MESSAGE_FEEDBACK_MODEL MESSAGE_FEEDBACK_REVIEW_ENABLED
 OPENROUTER_API_KEY OPENAI_API_KEY ANTHROPIC_DIRECT_ENABLED ANTHROPIC_API_KEY DEEPGRAM_API_KEY
-LANDIT_AI_SENTRY_DSN""".split()
+LANDIT_AI_SENTRY_DSN ROLEPLAY_THUMBNAIL_WORKER_TOKEN""".split()
 values = dict.fromkeys(names, "test-value")
 model_profiles = {'SCENARIO_NEXT_MESSAGE_MODEL': 'openai/gpt-6-luna',
  'SCENARIO_NEXT_MESSAGE_REASONING_EFFORT': 'none',
@@ -349,10 +350,23 @@ EOF
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${TEST_LOG}"
 case "$*" in
+  *'--profile thumbnail ps -q thumbnail') printf 'cccccccccccc\n'; exit 0 ;;
   *' ps '*) exit 1 ;;
   'ps -aq'*service=api) printf 'aaaaaaaaaaaa\n'; exit 0 ;;
   'ps -aq'*service=ai) printf 'bbbbbbbbbbbb\n'; exit 0 ;;
+  'inspect --format {{.State.Health.Status}} '*)
+    count=0
+    if [[ -f "${TEST_LOG}.health-count" ]]; then count="$(cat "${TEST_LOG}.health-count")"; fi
+    count=$((count + 1))
+    printf '%s\n' "$count" > "${TEST_LOG}.health-count"
+    if [[ "${TEST_MODE}" == thumbnail-timeout || "$count" -lt 4 ]]; then
+      printf 'starting\n'
+    else
+      printf 'healthy\n'
+    fi
+    exit 0 ;;
   'inspect '*) printf 'sha256:%064d\n' 1; exit 0 ;;
+  'image inspect --format '*im.landit.roleplay-thumbnail-worker*) printf '<no value>\n'; exit 0 ;;
   'image inspect '*)
     printf '["123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/develop-landit-api@sha256:%064d","123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/develop-landit-worker@sha256:%064d"]\n' 1 1
     exit 0 ;;
@@ -377,7 +391,7 @@ fi
 count=$((count + 1))
 printf '%s\n' "${count}" > "${TEST_CURL_COUNT}"
 case "${TEST_MODE}" in
-  success) exit 0 ;;
+  success|thumbnail-ready|thumbnail-timeout) exit 0 ;;
   health-fail) [[ "${count}" -gt 30 ]] && exit 0 || exit 1 ;;
   rollback-fail) exit 1 ;;
   *) exit 1 ;;
@@ -399,6 +413,7 @@ run_case() {
   local name="$1"
   local mode="$2"
   local expected_exit="$3"
+  local service="${4:-api}"
   local case_dir
 
   case_dir="$(prepare_case "${name}")"
@@ -408,7 +423,7 @@ run_case() {
     TEST_LOG="${case_dir}/docker.log" \
     TEST_CURL_COUNT="${case_dir}/curl-count" \
     TEST_MODE="${mode}" \
-    "${TEST_DIR}/deploy-service" api "${NEW_SHA}"; then
+    "${TEST_DIR}/deploy-service" "${service}" "${NEW_SHA}"; then
     actual_exit=0
   else
     actual_exit=1
@@ -467,3 +482,12 @@ assert_file_value "${same_sha_dir}/landit/api.previous.ref" "${old_ref}"
 assert_file_value "${same_sha_dir}/landit/api.ref" "${old_ref}"
 rg -Fxq "API_IMAGE_REF=${new_ref}" "${same_sha_dir}/docker.log.images"
 rg -Fxq "API_IMAGE_REF=${old_ref}" "${same_sha_dir}/landit/images.env"
+
+# AI HTTP health 성공만으로 소비자 준비 검사를 건너뛰지 않는다.
+thumbnail_ready_dir="$(run_case thumbnail-ready thumbnail-ready 0 ai)"
+assert_file_value "${thumbnail_ready_dir}/landit/ai.tag" "${NEW_SHA}"
+assert_file_value "${thumbnail_ready_dir}/docker.log.health-count" 4
+thumbnail_timeout_dir="$(run_case thumbnail-timeout thumbnail-timeout 1 ai)"
+assert_file_value "${thumbnail_timeout_dir}/landit/ai.tag" "${OLD_SHA}"
+assert_file_value "${thumbnail_timeout_dir}/docker.log.health-count" 45
+rg -q -- '--profile thumbnail stop thumbnail' "${thumbnail_timeout_dir}/docker.log"

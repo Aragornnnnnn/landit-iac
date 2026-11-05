@@ -1563,7 +1563,9 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_EMAIL_CONFIGURATION_SET", value = aws_sesv2_configuration_set.transactional[0].configuration_set_name },
         { name = "LANDIT_TRIAL_REMINDER_SANDBOX_ENABLED", value = "false" },
         { name = "LANDIT_NOTIFICATION_CONSUMER_ENABLED", value = "true" }
-        ], var.notification_test_api_enabled ? [
+        ], var.notification_push_retry_enabled ? [
+        { name = "LANDIT_NOTIFICATION_PUSH_RETRY_ENABLED", value = "true" }
+        ] : [], var.notification_test_api_enabled ? [
         { name = "LANDIT_NOTIFICATION_TEST_API_ENABLED", value = "true" }
         ] : [], var.grafana_otlp_enabled ? [
         { name = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", value = "${trimsuffix(var.grafana_otlp_endpoint, "/")}/v1/metrics" },

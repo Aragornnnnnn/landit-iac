@@ -8,6 +8,8 @@ import re
 import subprocess
 import sys
 
+PUSH_RETRY_FLAG = "LANDIT_NOTIFICATION_PUSH_RETRY_ENABLED"
+
 
 def aws(*args):
     return json.loads(subprocess.check_output(["aws", *args, "--output", "json"], text=True))
@@ -77,8 +79,15 @@ def inputs(baseline):
     injected = authoring & {item["name"] for item in container.get("secrets", [])}
     if injected and injected != authoring:
         raise ValueError("The API content authoring switch injection is incomplete")
+    push_retry_flags = [item["value"] for item in container.get("environment", [])
+                        if item["name"] == PUSH_RETRY_FLAG]
+    if (len(push_retry_flags) > 1 or any(flag not in ("true", "false") for flag in push_retry_flags)
+            or any(item["name"] == PUSH_RETRY_FLAG for item in container.get("secrets", []))
+            or container.get("environmentFiles")):
+        raise ValueError("The API push retry switch must be a single boolean environment variable")
     return {"api_image_ref": baseline["api"]["image_ref"],
             "worker_image_ref": baseline["worker"]["image_ref"],
+            "notification_push_retry_enabled": push_retry_flags == ["true"],
             "revenuecat_apply_sandbox_events": sandbox == "true",
             "content_authoring_configuration_enabled": bool(injected),
             "release_baseline": baseline}
@@ -93,6 +102,9 @@ def verify(plan, current):
         container = "api" if name == "api_image_ref" else "worker"
         if variables.get(name, {}).get("value") != current[container]["image_ref"]:
             raise ValueError("Plan image does not match the approved running image")
+    name = "notification_push_retry_enabled"
+    if variables.get(name, {}).get("value") is not inputs(current)[name]:
+        raise ValueError("Plan push retry switch does not match the running API")
 
 
 def main():

@@ -63,6 +63,9 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/CONTENT_REVIEW_MODEL` | `String` | 콘텐츠 제작 독립 검수 model. 생성과 다른 계열이어야 한다. 결정값 `openai/gpt-5.6-terra` |
 | `/landit/{environment}/CONTENT_GENERATION_TIMEOUT_SECONDS` | `String` | 콘텐츠 생성 호출 1회의 SDK 한도(초). 코드 기본값 `290`. BE `LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT`보다 짧아야 한다 |
 | `/landit/{environment}/OPENAI_API_KEY` | `SecureString` | GPT·임베딩 직접 호출(LAN-793) 및 콘텐츠 이미지 생성(LAN-754)용 OpenAI API 키. landit-ai에만 주입한다 |
+| `/landit/prod/ABTO_CALLING_KEY` | `SecureString` | 운영 ABTO 프로젝트의 Calling Key. 운영 AI ECS worker에만 주입한다. |
+| `/landit/prod/SCENARIO_ABTO_ENABLED` | `String` | 시나리오의 OpenAI 텍스트 호출을 ABTO로 보낼지 설정한다. 초기값은 `false`다. |
+| `/landit/prod/SCENARIO_ABTO_TIMEOUT_SECONDS` | `String` | ABTO 송수신 전체 상한을 초 단위로 설정한다. 초기값은 AI 기본값과 같은 `15`다. |
 | `/landit/{environment}/ANTHROPIC_DIRECT_ENABLED` | `String` | `true`면 `anthropic/` 모델만 Anthropic 공식 SDK로 직접 호출(LAN-808). 처음엔 `false`로 등록하고 AI 배포 뒤 켠다. 롤백은 `false` + 재시작 |
 | `/landit/{environment}/ANTHROPIC_API_KEY` | `SecureString` | Claude 직접 호출용 Anthropic API 키(LAN-808). landit-ai에만 주입한다. 스위치가 켜졌는데 비어 있으면 Claude 호출이 실패하고 OpenRouter로 되돌아가지 않는다 |
 | `/landit/{environment}/DEEPGRAM_API_KEY` | `SecureString` | 발음 평가의 정답 없는 받아쓰기(LAN-829)용 Deepgram API 키. landit-ai에만 주입한다. 비어 있으면 받아쓰기 신호 없이 점수를 내고 요청마다 `event=heard_check_failed` 경고를 남긴다 |
@@ -258,6 +261,13 @@ LAN-462 예약 실패 보관용 `LANDIT_PUSH_SCHEDULER_DLQ_ARN`은 Terraform이 
 - 값은 두 환경 모두 `true`다. 두 기능은 관리자 인증 뒤의 어드민 전용이고 담당자 3명만 쓰므로 스위치로 단계 배포를 하지 않는다. 끄려면 `false`로 바꾸고 API를 재시작(prod는 새 deployment)한다. 코드 배포는 필요 없다.
 - 스위치가 켜져도 발행·에셋 생성은 해당 기능이 든 BE 이미지(LAN-754·755·758)가 배포된 뒤에만 동작한다. 구버전 BE는 두 변수를 무시한다.
 - IAM(원본 SQL 보관 `authoring/publish-bundles/*`)은 같은 PR에서 API 태스크 롤·develop EC2 롤에 준다. worker에는 스위치도 권한도 주지 않는다.
+
+## 시나리오 ABTO 설정 주입 (LAN-847)
+
+- 운영 AI ECS `worker`에 `ABTO_CALLING_KEY`, `SCENARIO_ABTO_ENABLED`, `SCENARIO_ABTO_TIMEOUT_SECONDS`를 주입한다. 실행 역할의 기존 SSM 조회와 복호화 권한을 사용한다.
+- **IaC 적용 전에 세 파라미터를 모두 등록하고 이름과 타입을 확인한다.** ECS는 기능이 꺼져 있어도 태스크 시작 시 세 값을 읽으므로 하나라도 없으면 새 태스크가 시작하지 못한다. Calling Key는 Terraform 밖에서 `SecureString`으로 저장하고, 활성화와 시간 상한은 각각 `false`와 `15`를 `String`으로 저장한다.
+- [AI PR #195](https://github.com/Aragornnnnnn/landit-ai/pull/195)가 포함된 이미지 배포와 ABTO의 프롬프트·응답 원문 저장 비활성화를 확인한 뒤에만 활성화 값을 `true`로 바꾼다. 기존 `OPENAI_API_KEY`는 ABTO 경유와 OpenAI 직결 폴백에 사용한다.
+- 활성화 또는 롤백 시 운영 AI 서비스를 새로 배포해 변경된 SSM 값을 읽도록 한다. 롤백은 `SCENARIO_ABTO_ENABLED=false`로 바꾸고 운영 AI 태스크를 교체한다. 태스크 정의가 참조하는 동안 세 파라미터는 보존한다.
 
 ## Claude 직결 전환 (LAN-808)
 

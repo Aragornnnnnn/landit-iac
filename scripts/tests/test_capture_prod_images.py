@@ -13,6 +13,7 @@ spec.loader.exec_module(capture)
 class CaptureProdImagesTest(unittest.TestCase):
     def setUp(self):
         self.mode = "stable"
+        self.push_retry_flags = []
 
     def aws(self, *args):
         operation = args[1]
@@ -20,8 +21,10 @@ class CaptureProdImagesTest(unittest.TestCase):
             secrets = [{"name": "LANDIT_CONTENT_AUTHORING_ASSETS_ENABLED"}]
             if self.mode != "partial-authoring":
                 secrets.append({"name": "LANDIT_CONTENT_AUTHORING_PUBLISH_ENABLED"})
+            environment = [{"name": "LANDIT_REVENUECAT_APPLY_SANDBOX_EVENTS", "value": "false"}]
+            environment.extend({"name": capture.PUSH_RETRY_FLAG, "value": flag} for flag in self.push_retry_flags)
             return {"taskDefinition": {"containerDefinitions": [{"name": "api",
-                "environment": [{"name": "LANDIT_REVENUECAT_APPLY_SANDBOX_EVENTS", "value": "false"}],
+                "environment": environment,
                 "secrets": secrets if self.mode in ("authoring-enabled", "partial-authoring") else []}]}}
         if operation == "describe-services":
             name = args[-1]
@@ -70,7 +73,7 @@ class CaptureProdImagesTest(unittest.TestCase):
             actual = capture.snapshot()
         with patch.object(capture, "aws", self.aws):
             plan = {"variables": {name: {"value": value} for name, value in capture.inputs(actual).items()}}
-        capture.verify(plan, actual)
+            capture.verify(plan, actual)
         changed = copy.deepcopy(actual)
         changed["api"]["deployment_id"] = "new-deployment"
         with self.assertRaises(ValueError):
@@ -91,6 +94,27 @@ class CaptureProdImagesTest(unittest.TestCase):
         self.mode = "partial-authoring"
         with patch.object(capture, "aws", self.aws), self.assertRaises(ValueError):
             capture.inputs(capture.snapshot())
+
+    def test_push_retry_flag_is_preserved_and_rechecked_before_apply(self):
+        with patch.object(capture, "aws", self.aws):
+            actual = capture.snapshot()
+            self.assertFalse(capture.inputs(actual)["notification_push_retry_enabled"])
+            self.push_retry_flags = ["true"]
+            values = capture.inputs(actual)
+            self.assertTrue(values["notification_push_retry_enabled"])
+            plan = {"variables": {name: {"value": value} for name, value in values.items()}}
+            capture.verify(plan, actual)
+            plan["variables"]["notification_push_retry_enabled"]["value"] = False
+            with self.assertRaisesRegex(ValueError, "switch does not match"):
+                capture.verify(plan, actual)
+
+    def test_ambiguous_push_retry_flag_fails_closed(self):
+        with patch.object(capture, "aws", self.aws):
+            actual = capture.snapshot()
+            for flags in (["true", "false"], ["unexpected"]):
+                with self.subTest(flags=flags), self.assertRaisesRegex(ValueError, "single boolean"):
+                    self.push_retry_flags = flags
+                    capture.inputs(actual)
 
 
 if __name__ == "__main__":

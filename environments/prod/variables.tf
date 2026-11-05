@@ -234,6 +234,12 @@ variable "revenuecat_apply_sandbox_events" {
   default     = true
 }
 
+variable "notification_push_retry_enabled" {
+  description = "Preserve the running API push retry switch when infrastructure replaces the task revision."
+  type        = bool
+  default     = false
+}
+
 variable "content_authoring_configuration_enabled" {
   description = "Preserve the deployed API content authoring switch configuration during infrastructure changes."
   type        = bool

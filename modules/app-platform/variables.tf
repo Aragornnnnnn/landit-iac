@@ -292,6 +292,12 @@ variable "reward_configuration_enabled" {
   default     = false
 }
 
+variable "notification_push_retry_enabled" {
+  description = "Preserve the running API push retry switch during infrastructure changes."
+  type        = bool
+  default     = false
+}
+
 variable "content_authoring_configuration_enabled" {
   description = "Inject content authoring SSM switches only when the API rollout includes them."
   type        = bool

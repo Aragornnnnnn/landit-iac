@@ -6,6 +6,7 @@
 
 - BE·AI 저장소가 코드 이미지를 배포한다. 운영 workflow는 새 digest를 넣은 task revision을 배포하고 직전 revision을 기록해야 한다. `latest` task의 강제 재배포를 사용하지 않는다.
 - IaC 운영 plan은 `scripts/capture-prod-images.py`로 현재 실행 중인 두 서비스의 digest를 고정한다. 혼합 배포 중이면 중단하고, apply 직전 실행 revision·digest가 plan 때와 다르면 다시 plan한다. 승인부터 apply 종료까지 BE·AI 코드 배포를 멈춘다. 마지막 검사와 apply 사이의 변경까지 원자적으로 잠그는 장치는 아니다.
+- 운영 푸시 재시도는 BE 배포에서 소비자 교체 검증 후 활성화한다. IaC 운영 workflow는 실행 중인 API의 `LANDIT_NOTIFICATION_PUSH_RETRY_ENABLED`를 plan에 복사하고 apply 전에 다시 대조한다. 변수가 없던 구버전은 `false`로 처리한다. 수동으로 운영 plan을 만들 때도 같은 캡처와 apply 전 검증을 수행한다.
 - API와 AI task definition은 `skip_destroy=true`로 이전 revision을 보존한다. 롤백할 revision의 이미지가 ECR에 남아 있어야 하며, 호환 기간에는 이전 revision과 SHA 이미지를 삭제하거나 태그를 덮어쓰지 않는다.
 - 개발 배포는 Git SHA를 ECR digest로 해석해 고정한다. 배포 전에 실제 실행 컨테이너의 digest를 캡처하고 `/opt/landit/{api,ai}.previous.ref`·`.previous.tag`와 `deployments.log`에 남긴다. 같은 SHA를 재빌드해도 health 실패 시 이전 digest를 다시 받는다. 수동 롤백은 `deploy-service api|ai sha256:<기록한 digest>`를 사용한다.
 

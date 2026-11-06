@@ -35,6 +35,7 @@ module "app_platform" {
 
   ai_assessment_version                   = "text-score-v2.0"
   reward_configuration_enabled            = true
+  reviewer_premium_configuration_enabled  = true
   content_authoring_configuration_enabled = var.content_authoring_configuration_enabled
   notification_push_retry_enabled         = var.notification_push_retry_enabled
   revenuecat_apply_sandbox_events         = var.revenuecat_apply_sandbox_events

@@ -1619,6 +1619,9 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_REWARD_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_REWARD_ENABLED" },
         { name = "LANDIT_REWARD_CAPTURE_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_REWARD_CAPTURE_ENABLED" },
         { name = "LANDIT_REWARD_PRODUCTS_JSON", valueFrom = "${local.ssm_path}/LANDIT_REWARD_PRODUCTS" }
+        ] : [], var.reviewer_premium_configuration_enabled ? [
+        { name = "LANDIT_SUBSCRIPTION_REVIEWER_PREMIUM_EMAIL", valueFrom = "${local.ssm_path}/LANDIT_SUBSCRIPTION_REVIEWER_PREMIUM_EMAIL" },
+        { name = "LANDIT_SUBSCRIPTION_REVIEWER_PREMIUM_ADMIN_USER_ID", valueFrom = "${local.ssm_path}/LANDIT_SUBSCRIPTION_REVIEWER_PREMIUM_ADMIN_USER_ID" }
         ] : [], var.ai_internal_token_enabled ? [
         { name = "LANDIT_AI_INTERNAL_TOKEN", valueFrom = "${local.ssm_path}/LANDIT_AI_INTERNAL_TOKEN" }
         ] : [], var.grafana_otlp_enabled ? [

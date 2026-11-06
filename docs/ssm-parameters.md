@@ -46,6 +46,8 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_REWARD_CAPTURE_ENABLED` | `String` | 환급 활성화 전 결제·학습 근거 사전 수집 여부, 기본값 `false`. develop EC2 env와 prod ECS API secrets로 주입한다. |
 | `/landit/develop/LANDIT_REWARD_PRODUCTS_JSON` | `String` | 환급 대상 3·6개월 상품 JSON 배열(`appId`, `store`, `productId`, `months`). develop EC2 env에만 주입. 이름을 `LANDIT_REWARD_PRODUCTS`로 쓰면 Spring이 `landit.reward.products`(List)에도 바인딩해 API 기동이 실패한다. |
 | `/landit/prod/LANDIT_REWARD_PRODUCTS` | `String` | 기존 운영 상품 JSON 경로를 유지하며 ECS에는 `LANDIT_REWARD_PRODUCTS_JSON`으로 매핑한다. bare 이름으로 주입하지 않는다. |
+| `/landit/prod/LANDIT_SUBSCRIPTION_REVIEWER_PREMIUM_EMAIL` | `String` | 첫 가입 시 100일 이용권을 받을 심사용 Gmail 주소. 운영 API에만 주입한다. |
+| `/landit/prod/LANDIT_SUBSCRIPTION_REVIEWER_PREMIUM_ADMIN_USER_ID` | `String` | 이용권 부여를 승인한 활성 Landit 관리자 ID. 감사 기록에 사용한다. |
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_ACCESS_EXPIRES_IN_SECONDS` | `String` | backend access token 만료시간, 초 단위 |
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_REFRESH_EXPIRES_IN_SECONDS` | `String` | backend refresh token 만료시간, 초 단위 |
 | `/landit/{environment}/LANDIT_AUTH_OIDC_GOOGLE_AUDIENCES` | `String` | Google OIDC audience allowlist |
@@ -113,6 +115,8 @@ done
 ## 운영 환급 설정.
 
 운영 API는 `reward_configuration_enabled=true`로 활성화·사전 수집 플래그와 상품 목록을 SSM에서 주입한다. SSM 값은 Terraform 밖에서 관리하며 AI Worker에는 전달하지 않는다. 상품 목록의 기존 SSM 이름은 `LANDIT_REWARD_PRODUCTS`지만 컨테이너 이름은 반드시 `LANDIT_REWARD_PRODUCTS_JSON`이어야 한다. bare 이름은 Spring의 `landit.reward.products` 목록 바인딩과 충돌한다.
+
+운영 API의 심사용 이용권 설정을 적용하기 전에 위 두 SSM 값을 모두 준비한다. ECS가 참조하는 값이 누락되면 새 태스크가 기동하지 못한다. BE 코드와 실행 설정을 모두 배포한 뒤 심사 계정이 처음 가입해야 한다. 심사 종료 시 `reviewer_premium_configuration_enabled`를 끄고 적용하면 신규 부여가 중단된다. 기존 이용권을 종료할 때는 어드민에서 회수한다.
 
 운영 선반영 값은 `LANDIT_REWARD_ENABLED=true`, `LANDIT_REWARD_CAPTURE_ENABLED=false`다. BE는 enabled가 true이면 결제·학습 근거 수집도 수행하므로 capture를 함께 켤 필요가 없다. 세 파라미터를 먼저 준비하고 현재 이미지 digest를 보존한 Terraform plan·apply로 API를 재기동한다. 이후 BE 환급 버전의 정상 배포와 해당 DB 마이그레이션이 완료되면 별도 환경 설정 없이 활성화된다. 기존 구버전은 환급 설정을 사용하지 않는다.
 

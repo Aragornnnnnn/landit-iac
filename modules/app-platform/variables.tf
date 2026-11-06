@@ -298,6 +298,12 @@ variable "notification_push_retry_enabled" {
   default     = false
 }
 
+variable "reviewer_premium_configuration_enabled" {
+  description = "Inject the reviewer Gmail address and granting administrator ID from SSM into the API."
+  type        = bool
+  default     = false
+}
+
 variable "content_authoring_configuration_enabled" {
   description = "Inject content authoring SSM switches only when the API rollout includes them."
   type        = bool

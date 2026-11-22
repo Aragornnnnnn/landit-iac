@@ -1541,6 +1541,9 @@ resource "aws_ecs_task_definition" "api" {
         { name = "ENVIRONMENT", value = var.environment },
         { name = "SENTRY_ENVIRONMENT", value = var.environment },
         { name = "SPRING_FLYWAY_BASELINE_ON_MIGRATE", value = "true" },
+        { name = "SPRING_FLYWAY_ENABLED", value = "false" },
+        { name = "SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE", value = "3" },
+        { name = "SPRING_DATASOURCE_HIKARI_MINIMUMIDLE", value = "1" },
         { name = "SPRING_PROFILES_ACTIVE", value = var.environment },
         { name = "LANDIT_AI_ASSESSMENT_VERSION", value = var.ai_assessment_version },
         { name = "SERVER_SHUTDOWN", value = "graceful" },
@@ -1688,7 +1691,8 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "S3_BUCKET_NAME", value = aws_s3_bucket.app.bucket },
         { name = "SQS_JOBS_QUEUE_URL", value = aws_sqs_queue.jobs.url },
         { name = "CONTENT_BUCKET_NAME", value = var.content_bucket_name },
-        { name = "CONTENT_CLOUDFRONT_URL", value = var.content_cloudfront_url }
+        { name = "CONTENT_CLOUDFRONT_URL", value = var.content_cloudfront_url },
+        { name = "PRONUNCIATION_REFERENCE_ALLOWED_ORIGINS", value = "https://d19azau1un4t7r.cloudfront.net,https://cdn.landit.im" }
         ], var.grafana_otlp_enabled ? [
         { name = "OTEL_METRICS_ENABLED", value = "true" },
         { name = "OTEL_EXPORTER_OTLP_PROTOCOL", value = "http/protobuf" },

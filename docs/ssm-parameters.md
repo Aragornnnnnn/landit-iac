@@ -4,9 +4,9 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 
 ## 기준
 
-- AWS account는 `982529430654`입니다.
+- AWS account는 `944011958218`입니다.
 - AWS region은 `ap-northeast-2`입니다.
-- 로컬 AWS profile은 `landit`입니다.
+- 로컬 AWS profile은 `landit-aragorn`입니다.
 - development path는 `/landit/develop`입니다.
 - production path는 `/landit/prod`입니다.
 - secret 값은 Terraform state에 남기지 않기 위해 Terraform 밖에서 SSM Parameter Store에 작성합니다.
@@ -160,7 +160,7 @@ jdbc:postgresql://{host}:5432/postgres?sslmode=require&prepareThreshold=0
 값 없이 이름, 타입, 버전만 확인합니다.
 
 ```bash
-AWS_PROFILE=landit AWS_REGION=ap-northeast-2 \
+AWS_PROFILE=landit-aragorn AWS_REGION=ap-northeast-2 \
   aws ssm get-parameters-by-path \
   --path /landit \
   --recursive \

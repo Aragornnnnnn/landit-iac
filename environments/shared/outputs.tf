@@ -16,5 +16,5 @@ output "cloudfront_domain_name" {
 
 output "cloudfront_url" {
   description = "CloudFront base URL used to build content image URLs."
-  value       = "https://${aws_cloudfront_distribution.content.domain_name}"
+  value       = "https://${one(aws_cloudfront_distribution.content.aliases)}"
 }

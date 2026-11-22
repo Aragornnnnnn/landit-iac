@@ -9,7 +9,7 @@ Landit 서비스의 Infrastructure as Code 레포입니다.
 | 영역 | 현재 상태 |
 | --- | --- |
 | Terraform state | S3 backend 사용 준비 완료 |
-| State bucket | `landit-terraform-state-982529430654` |
+| State bucket | `landit-terraform-state-944011958218` |
 | Terraform roots | `bootstrap/state-backend`, `environments/shared`, `environments/dev`, `environments/prod` |
 | GitHub Actions | 수동 `workflow_dispatch`로 plan 또는 승인 후 apply |
 | 일반 workflow target | `shared`, `develop`, `production` |
@@ -47,7 +47,7 @@ Landit 서비스의 Infrastructure as Code 레포입니다.
 | development state key | `dev/landit-iac/terraform.tfstate` |
 | bootstrap state key | `bootstrap/state-backend/terraform.tfstate` |
 | shared state key | `shared/landit-iac/terraform.tfstate` |
-| AWS profile | `landit` |
+| AWS profile | `landit-aragorn` |
 | AWS region | `ap-northeast-2` |
 | backend develop URL | `https://api-develop.landit.im` |
 | backend production URL | `https://api.landit.im` |

@@ -168,7 +168,7 @@ variable "review_reminder_schedule_enabled" {
 variable "alb_certificate_arn" {
   description = "Optional ACM certificate ARN for HTTPS."
   type        = string
-  default     = "arn:aws:acm:ap-northeast-2:982529430654:certificate/c27457fe-4469-4944-a5d4-322569ddd549"
+  default     = "arn:aws:acm:ap-northeast-2:944011958218:certificate/277ad24f-b0a9-40c5-b123-9891e0285c3a"
 }
 
 variable "grafana_otlp_enabled" {
@@ -198,5 +198,5 @@ variable "grafana_logs_endpoint" {
 variable "grafana_logs_secret_arn" {
   description = "Secrets Manager ARN containing development Grafana Logs authentication."
   type        = string
-  default     = "arn:aws:secretsmanager:ap-northeast-2:982529430654:secret:landit/grafana-cloud/logs-R3yL8N"
+  default     = "arn:aws:secretsmanager:ap-northeast-2:944011958218:secret:landit/grafana-cloud/logs-yUErcf"
 }

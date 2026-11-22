@@ -45,7 +45,10 @@ assert_file "${APP_MODULE}"
 
 bootstrap="$(find "${BOOTSTRAP_DIR}" -maxdepth 1 -name '*.tf' -type f -exec sed -n '1,$p' {} +)"
 
-assert_contains "${bootstrap}" 'key          = "bootstrap/terraform-actions/terraform.tfstate"' "bootstrap state key가 분리되어야 한다."
+if ! grep -Eq '^[[:space:]]*key[[:space:]]*=[[:space:]]*"bootstrap/terraform-actions/terraform\.tfstate"' <<<"${bootstrap}"; then
+  echo "계약 위반. bootstrap state key가 분리되어야 한다." >&2
+  exit 1
+fi
 assert_contains "${bootstrap}" 'data "aws_iam_openid_connect_provider" "github" {' "기존 GitHub OIDC provider를 조회해야 한다."
 assert_not_contains "${bootstrap}" 'resource "aws_iam_openid_connect_provider"' "기존 OIDC provider를 중복 생성하면 안 된다."
 assert_contains "${bootstrap}" 'values   = ["sts.amazonaws.com"]' "OIDC audience를 고정해야 한다."

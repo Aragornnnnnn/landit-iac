@@ -21,23 +21,25 @@ state bucket이나 backend 정책을 바꿔야 할 때만 bootstrap root를 확�
 ```bash
 terraform fmt -recursive
 terraform -chdir=bootstrap/state-backend init -backend=false
-AWS_PROFILE=landit terraform -chdir=bootstrap/state-backend plan
+AWS_PROFILE=landit-aragorn terraform -chdir=bootstrap/state-backend plan
 ```
 
 bootstrap apply는 사용자 확인을 받은 뒤에만 실행합니다.
 
 ```bash
-AWS_PROFILE=landit terraform -chdir=bootstrap/state-backend apply
-AWS_PROFILE=landit terraform -chdir=bootstrap/state-backend init -migrate-state
+AWS_PROFILE=landit-aragorn terraform -chdir=bootstrap/state-backend apply
+AWS_PROFILE=landit-aragorn terraform -chdir=bootstrap/state-backend init -migrate-state
 ```
 
 dev root는 S3 backend로 초기화하고 plan까지 확인합니다.
 
+기존 계정에서 초기화한 checkout은 `init -reconfigure`로 이미 구축된 신규 계정 state에 연결합니다. 이전 state를 신규 bucket에 복사하지 않습니다.
+
 ```bash
 terraform fmt -recursive
-AWS_PROFILE=landit terraform -chdir=environments/dev init -reconfigure
+AWS_PROFILE=landit-aragorn terraform -chdir=environments/dev init -reconfigure
 terraform -chdir=environments/dev validate
-AWS_PROFILE=landit terraform -chdir=environments/dev plan
+AWS_PROFILE=landit-aragorn terraform -chdir=environments/dev plan
 ```
 
 운영 이미지 고정, 인증 순차 적용, 진행 중 학습 확인은 [배포 중 학습 보존](deployment-safety.md)을 따른다.
@@ -47,7 +49,7 @@ AWS_PROFILE=landit terraform -chdir=environments/dev plan
 개발 BE·AI는 단일 EC2에서 실행한다. ECS·ALB 제거 전에는 saved plan을 만든 뒤 주소별 변경을 감사하고 plan 파일과 JSON은 `/tmp`에만 둔다.
 
 ```bash
-AWS_PROFILE=landit terraform -chdir=environments/dev plan -input=false -out=/tmp/lan284-dev.tfplan
+AWS_PROFILE=landit-aragorn terraform -chdir=environments/dev plan -input=false -out=/tmp/lan284-dev.tfplan
 terraform -chdir=environments/dev show -json /tmp/lan284-dev.tfplan > /tmp/lan284-dev-plan.json
 jq -r '.resource_changes[] | select(.change.actions != ["no-op"]) | [.address, (.change.actions | join(","))] | @tsv' /tmp/lan284-dev-plan.json
 ```
@@ -92,18 +94,18 @@ production root도 같은 흐름을 사용합니다.
 
 ```bash
 terraform fmt -recursive
-AWS_PROFILE=landit terraform -chdir=environments/prod init -reconfigure
+AWS_PROFILE=landit-aragorn terraform -chdir=environments/prod init -reconfigure
 terraform -chdir=environments/prod validate
-AWS_PROFILE=landit terraform -chdir=environments/prod plan
+AWS_PROFILE=landit-aragorn terraform -chdir=environments/prod plan
 ```
 
 공통 콘텐츠 root는 private 콘텐츠 bucket과 CloudFront를 관리합니다.
 
 ```bash
 terraform fmt -recursive
-AWS_PROFILE=landit terraform -chdir=environments/shared init -reconfigure
+AWS_PROFILE=landit-aragorn terraform -chdir=environments/shared init -reconfigure
 terraform -chdir=environments/shared validate
-AWS_PROFILE=landit terraform -chdir=environments/shared plan
+AWS_PROFILE=landit-aragorn terraform -chdir=environments/shared plan
 ```
 
 `terraform apply`와 `terraform destroy`는 plan 결과를 먼저 확인하고, 실제 변경 내용을 사용자에게 보고한 뒤에만 실행합니다.
@@ -135,7 +137,7 @@ workflow 실행 순서입니다.
 5. apply job은 target별 apply environment에서 별도 OIDC role을 받은 뒤 같은 실행의 정확한 S3 key를 내려받습니다.
 6. SHA-256이 일치할 때만 saved plan을 `terraform apply`에 전달합니다.
 
-saved plan에는 민감 값이 평문으로 포함될 수 있으므로 public GitHub Actions artifact에는 올리지 않습니다. `landit-terraform-plan-artifacts-982529430654` bucket은 public access를 차단하고 AES256으로 암호화하며 `plans/` 객체를 1일 후 만료합니다. plan role은 자기 target prefix 업로드만, apply role은 조회만 허용합니다.
+saved plan에는 민감 값이 평문으로 포함될 수 있으므로 public GitHub Actions artifact에는 올리지 않습니다. `landit-terraform-plan-artifacts-944011958218` bucket은 public access를 차단하고 AES256으로 암호화하며 `plans/` 객체를 1일 후 만료합니다. plan role은 자기 target prefix 업로드만, apply role은 조회만 허용합니다.
 
 production apply는 `operation=plan-and-apply`, `target=production`, `confirm_environment=production`, `refs/heads/main`이 모두 충족되어야 실행됩니다. required reviewer는 현재 없으므로 apply environment 진입 자체가 사람 승인을 기다리지는 않습니다.
 
@@ -146,9 +148,9 @@ apply role은 범용 Terraform 관리자 역할이 아닙니다. target별 SSM d
 LAN-754의 worker task 인라인 정책 갱신 권한은 코드 병합만으로 현재 Actions 역할에 반영되지 않습니다. 아래 bootstrap root에서 로컬 관리자 profile로 plan을 검토하고 별도 승인 후 먼저 적용해야 합니다. 그다음 production 환경의 plan/apply를 진행합니다. `OPENAI_API_KEY` 등 새로 참조하는 SSM 값도 환경 apply 전에 준비해야 합니다. 이 bootstrap 변경은 SSM 값을 생성하거나 변경하지 않습니다.
 
 ```bash
-AWS_PROFILE=landit terraform -chdir=bootstrap/terraform-actions init -reconfigure
-AWS_PROFILE=landit terraform -chdir=bootstrap/terraform-actions validate
-AWS_PROFILE=landit terraform -chdir=bootstrap/terraform-actions plan
+AWS_PROFILE=landit-aragorn terraform -chdir=bootstrap/terraform-actions init -reconfigure
+AWS_PROFILE=landit-aragorn terraform -chdir=bootstrap/terraform-actions validate
+AWS_PROFILE=landit-aragorn terraform -chdir=bootstrap/terraform-actions plan
 ```
 
 bootstrap apply와 GitHub environment·variable 생성은 위 plan의 역할 6개, inline policy 6개와 private plan bucket 보안 리소스를 검토하고 별도 승인받은 뒤에만 실행합니다. 승인 뒤에는 GitHub environment 6개, branch policy와 결정 가능한 `AWS_ROLE_ARN`을 먼저 생성·재조회하고, 그 다음 같은 bootstrap saved plan을 적용합니다. 각 role trust policy는 다음 subject 하나만 허용합니다.
@@ -162,7 +164,7 @@ bootstrap apply와 GitHub environment·variable 생성은 위 plan의 역할 6�
 
 Application 배포용 prod OIDC role은 수동으로 관리합니다.
 
-- role ARN은 `arn:aws:iam::982529430654:role/landit-github-actions-prod-deploy`입니다.
+- role ARN은 `arn:aws:iam::944011958218:role/landit-github-actions-prod-deploy`입니다.
 - trust subject는 `repo:Aragornnnnnn/landit-be:environment:prod`, `repo:Aragornnnnnn/landit-ai:ref:refs/heads/main`입니다.
 - 권한은 prod BE/AI ECR push, ECS service update/describe, prod DB SSM parameter read로 제한합니다.
 - `landit-be`는 `prod` GitHub Environment variables로 배포 값을 받습니다.

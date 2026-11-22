@@ -36,7 +36,8 @@ concurrency:
 
 env:
   AWS_REGION: ap-northeast-2
-  PLAN_BUCKET: landit-terraform-plan-artifacts-982529430654
+  AWS_ACCOUNT_ID: "944011958218"
+  PLAN_BUCKET: landit-terraform-plan-artifacts-944011958218
   TF_IN_AUTOMATION: "true"
 
 jobs:
@@ -94,9 +95,9 @@ jobs:
           Target: ${{ inputs.target }}
           Operation: ${{ inputs.operation }}
           Terraform root: ${{ steps.target.outputs.root }}
-          AWS account: 982529430654
+          AWS account: $AWS_ACCOUNT_ID
           AWS region: $AWS_REGION
-          State bucket: landit-terraform-state-982529430654
+          State bucket: landit-terraform-state-944011958218
           State key: ${{ steps.target.outputs.state-key }}
           Apply environment: ${{ steps.target.outputs.apply-environment }}
           EOF
@@ -126,6 +127,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
         with:
           aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
           role-session-name: terraform-plan-${{ inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
 
@@ -216,6 +218,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
         with:
           aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
           role-session-name: terraform-apply-${{ inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
 

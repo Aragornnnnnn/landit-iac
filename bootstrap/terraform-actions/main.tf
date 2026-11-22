@@ -204,7 +204,7 @@ data "aws_iam_policy_document" "terraform" {
     for_each = each.value.target == "shared" ? [1] : []
     content {
       sid       = "ReadSharedContentBucketLogging"
-      actions   = ["s3:GetBucketLogging"]
+      actions   = ["s3:GetBucketLogging", "s3:GetLifecycleConfiguration"]
       resources = local.managed_bucket_arns_by_target.shared
     }
   }

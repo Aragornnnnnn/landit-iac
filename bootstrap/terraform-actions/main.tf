@@ -201,6 +201,24 @@ data "aws_iam_policy_document" "terraform" {
   }
 
   dynamic "statement" {
+    for_each = each.value.target == "shared" ? [1] : []
+    content {
+      sid       = "ReadSharedContentBucketLogging"
+      actions   = ["s3:GetBucketLogging"]
+      resources = local.managed_bucket_arns_by_target.shared
+    }
+  }
+
+  dynamic "statement" {
+    for_each = each.value.target == "shared" ? [1] : []
+    content {
+      sid       = "ReadSharedResponseHeadersPolicy"
+      actions   = ["cloudfront:GetResponseHeadersPolicy"]
+      resources = ["arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:response-headers-policy/*"]
+    }
+  }
+
+  dynamic "statement" {
     for_each = each.value.target == "develop" ? [1] : []
     content {
       sid       = "ReadAmazonLinuxAmiParameter"

@@ -127,9 +127,11 @@ jobs:
         uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
         with:
           aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
           role-session-name: terraform-plan-${{ inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+
+      - name: Verify AWS account
+        run: test "$(aws sts get-caller-identity --query Account --output text)" = "$AWS_ACCOUNT_ID"
 
       - name: Terraform fmt check
         run: terraform fmt -recursive -check
@@ -218,9 +220,11 @@ jobs:
         uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
         with:
           aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
           role-session-name: terraform-apply-${{ inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+
+      - name: Verify AWS account
+        run: test "$(aws sts get-caller-identity --query Account --output text)" = "$AWS_ACCOUNT_ID"
 
       - name: Download and verify saved plan
         env:

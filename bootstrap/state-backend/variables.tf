@@ -14,7 +14,7 @@ variable "project_name" {
 variable "state_bucket_name" {
   description = "S3 bucket name for Landit Terraform state."
   type        = string
-  default     = "landit-terraform-state-982529430654"
+  default     = "landit-terraform-state-944011958218"
 
   validation {
     condition     = can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.state_bucket_name))

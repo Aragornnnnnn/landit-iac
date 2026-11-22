@@ -3,9 +3,10 @@ data "terraform_remote_state" "shared" {
   backend = "s3"
 
   config = {
-    bucket = "landit-terraform-state-982529430654"
-    key    = "shared/landit-iac/terraform.tfstate"
-    region = var.aws_region
+    bucket              = "landit-terraform-state-944011958218"
+    key                 = "shared/landit-iac/terraform.tfstate"
+    region              = var.aws_region
+    allowed_account_ids = ["944011958218"]
   }
 }
 

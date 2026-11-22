@@ -30,8 +30,8 @@
 - `terraform apply`, `terraform destroy`, 실제 AWS 리소스 생성, 변경, 삭제는 사용자 확인 후에만 실행한다.
 - GitHub Actions apply는 `terraform-apply-develop` 또는 `terraform-apply-production` environment required reviewer 승인 뒤에만 실행한다.
 - 일반 Terraform workflow는 `develop`과 `production` target만 노출하고, bootstrap 작업은 일반 workflow에서 실행하지 않는다.
-- AWS profile은 `landit`, 기본 region은 `ap-northeast-2`, AWS account는 `982529430654`를 기준으로 한다.
-- Terraform state bucket은 `landit-terraform-state-982529430654`를 사용한다.
+- AWS profile은 `landit-aragorn`, 기본 region은 `ap-northeast-2`, AWS account는 `944011958218`를 기준으로 한다.
+- Terraform state bucket은 `landit-terraform-state-944011958218`를 사용한다.
 - production state key는 `prod/landit-iac/terraform.tfstate`, development state key는 `dev/landit-iac/terraform.tfstate`를 사용한다.
 - bootstrap state key는 `bootstrap/state-backend/terraform.tfstate`를 사용한다.
 - state bucket은 `bootstrap/state-backend`에서 별도 bootstrap하고, bucket 생성 전 dev/prod 검증은 `terraform init -backend=false`로 제한한다.

@@ -78,6 +78,7 @@ resource "aws_cloudfront_distribution" "content" {
   enabled         = true
   is_ipv6_enabled = true
   comment         = "Shared Landit content images."
+  aliases         = ["cdn.landit.im"]
 
   origin {
     domain_name              = aws_s3_bucket.content.bucket_regional_domain_name
@@ -112,7 +113,9 @@ resource "aws_cloudfront_distribution" "content" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn      = "arn:aws:acm:us-east-1:944011958218:certificate/26ad1984-b8b6-4a04-ad60-360358409564"
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 }
 

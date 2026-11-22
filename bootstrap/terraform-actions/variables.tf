@@ -26,11 +26,11 @@ variable "github_repository" {
 variable "state_bucket_name" {
   description = "S3 bucket that stores Landit Terraform state."
   type        = string
-  default     = "landit-terraform-state-982529430654"
+  default     = "landit-terraform-state-944011958218"
 }
 
 variable "plan_bucket_name" {
   description = "Private S3 bucket that temporarily stores saved Terraform plans."
   type        = string
-  default     = "landit-terraform-plan-artifacts-982529430654"
+  default     = "landit-terraform-plan-artifacts-944011958218"
 }

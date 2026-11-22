@@ -29,7 +29,7 @@ assert_not_contains() {
 
 assert_not_contains "actions/upload-artifact" "saved plan을 GitHub artifact에 올리면 안 된다."
 assert_not_contains "actions/download-artifact" "saved plan을 GitHub artifact에서 받으면 안 된다."
-assert_contains 'PLAN_BUCKET: landit-terraform-plan-artifacts-982529430654' "private plan bucket을 고정해야 한다."
+assert_contains 'PLAN_BUCKET: landit-terraform-plan-artifacts-944011958218' "private plan bucket을 고정해야 한다."
 assert_contains "if: \${{ inputs.operation == 'plan-only' }}" "plan-only를 speculative plan으로 분리해야 한다."
 assert_contains 'plan -input=false' "plan-only는 저장 파일 없이 실행해야 한다."
 assert_contains 'plans/${TARGET}/${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}/${PLAN_FILE}' "plan key에 target과 run 식별자를 포함해야 한다."

@@ -43,7 +43,15 @@
 - 기존 Supabase 푸시 계정으로 직접 조회해 읽기 전용, `public` 테이블 SELECT 132개와 쓰기 권한 0개를 확인했다. `cutover/push-reader.sql`을 시험 RDS의 트랜잭션 안에서 실행하고 푸시 역할로 조회했다. 테스트 스키마의 테이블 133개를 읽을 수 있고 쓰기 권한은 0개이며 132개 테이블에 RLS가 적용됐다. 모든 테스트 권한 변경은 롤백했다. 최종 복원 후 실제 로그인 비밀번호는 별도로 발급한다. BE의 푸시 JDBC 연결은 Java 신뢰 저장소를 사용하므로 RDS CA를 기존 JVM 신뢰 저장소에 추가한 상태에서 `verify-full`과 관리자 대상 조회를 검증한다.
 - 운영 DB의 활성 웹훅은 `mailbox_feedback` INSERT와 `survey_responses` INSERT·UPDATE다. 별도 추천인 등록 트리거와 매분 `landit-referral-risk` 작업이 있다. 편지함·추천인 등록과 위험 알림용 RDS 트랜잭션 큐, EC2 발송기, 매분 타이머는 `landit-alerts` 로컬 커밋 `a17783d`에 준비했다. 기존 Vercel 수신 계약은 유지한다. 로컬 PostgreSQL 회귀 세 가지, Node 169건과 발송기 모의 3건을 통과했다. 실제 전송은 실행 전이다.
 - 최종 복원에는 `landit_alerts.referral_risk_rule`과 `referral_risk_event`의 설정·이력도 포함한다. 소스에서 아직 대기 중인 요청은 쓰기 중지 뒤 마저 처리하거나 결과를 기록하며 대상 큐에 보내기 위해 재생성하지 않는다. 최종 전환 때 기존 Supabase 편지함·추천인 트리거와 추천인 스케줄의 중지 이후 EC2 발송기를 시작한다.
-- FE `main`의 설문 API가 Supabase PostgREST에 `survey_responses`를 직접 저장한다. 이번에 이 테이블을 Supabase에 둘지, FE 저장 경로까지 변경해 RDS로 옮길지 결정해야 한다. 설문 이탈 알림 코드는 `landit-alerts` main에 있으나 운영 Supabase의 활성 cron 목록에는 없다. 일일 지표의 `metrics_records` RPC도 Supabase의 업무 테이블을 읽으므로, 운영 업무 DB 전환 전에 읽기 경로를 RDS에 연결하는 방법을 정한다.
+- 설문 이탈 알림 코드는 `landit-alerts` main에 있으나 운영 Supabase의 활성 cron 목록에는 없다. 현재 운영에서 실행되는 설문 완료 알림만 전환 검증에 포함한다.
+
+### 설문 저장·사용자 연계와 일일 지표
+
+- FE `main` `48160cf`의 `/api/survey`는 BE에서 로그인 토큰을 검증한 뒤 토큰의 사용자 ID를 Supabase `survey_responses.user_id`에 저장한다. 2026-11-26 읽기 전용 검사에서 응답 82건이 모두 `user_profile.id`와 연결됐다. 외래 키는 없고 `(user_id, response_id)` 유니크 제약으로 중간 저장을 갱신한다.
+- 설문과 운영 업무 데이터가 서로 다른 DB에 있으면 사용자 ID 자체는 유지되지만, 관리자 푸시 SQL에서 `user_profile`과 `survey_responses`를 같은 DB에서 조인할 수 없다. 설문 데이터를 기존 사용자 ID와 응답 ID 그대로 RDS에 복원하고 저장 요청도 같은 RDS에 보내는 방식으로 함께 이관한다.
+- FE의 `/api/survey` 요청·응답 계약, 토큰 기반 사용자 확인, 구버전 일괄 제출, `(user_id, response_id)` 기반 중간 저장과 완료 전환을 보존한다. RDS 연결은 인증된 서버 경로에서 처리한다. 처음부터 완료 상태로 제출하거나 임시 응답을 완료할 때 기존 완료 알림을 한 번만 큐에 넣는다. 복원한 응답은 소급 전송하지 않는다. 현재 외래 키가 없으므로 사용자 삭제 정책을 확인한 뒤 추가 여부를 결정한다.
+- `landit-alerts`의 일일 스트릭·시나리오 최다 조회는 Supabase `metrics_records` RPC를 부른다. 이 집계와 응답 형식을 유지해 RDS를 읽는 전용 경로에 붙인다. 푸시 SQL과 일일 지표가 모두 최종 데이터에서 조인·집계되는지 확인한 뒤 원본 Supabase 쓰기와 읽기 경로를 전환한다.
+- 설문 저장을 BE API로 구현하면 기존 BE `v1.10.5` 이미지에 해당 엔드포인트가 없다. 기존 운영 이미지를 먼저 올리는 순서를 유지하려면 설문 API·지표 조회를 별도로 제공하고, BE에서 소유할 경우에는 전환 전에 해당 변경을 배포한다. 구현·배포 묶음은 이 결정에 맞춰 확정한다.
 
 ## 2026-11-25 검증 결과
 

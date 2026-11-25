@@ -46,3 +46,11 @@
 - 준비 EC2의 역할은 현재 ECR pull과 SSM 접속을 제공한다. 운영 컨테이너가 실제 SQS·S3 등에 접근할 최소 권한과 자격 증명 전달 방법을 정하고, IMDSv2 hop limit 1에서 Docker 브리지 컨테이너의 AWS 호출이 성공하는지 실제 역할로 확인한다.
 - 최초 운영 전환과 두 슬롯 배포 전에 운영 수준의 요청을 유지한 채 BE 2개와 AI 1개가 겹치는 동안 가용 메모리와 요청 오류를 측정한다. 앱의 프록시 신뢰 설정, 도메인별 TLS, 기존 WAF 동작의 대체 여부는 운영 전환 검증에서 확인한다.
 - 로컬에서 Caddy 2.8.4 reload 중 기존 요청은 이전 슬롯에서 완료되고 새 요청은 새 슬롯으로 도달했다. 호스트 스크립트의 전환·실패 복구 테스트와 SSM 결과 검증, BE Gradle 검사, Terraform validate를 통과했다. EC2 전환 root의 plan은 기존 EC2·RDS를 보존하면서 SSM 배포 문서와 권한을 추가하고, 호스트의 상시 SSM 관리형 정책을 Parameter Store 조회가 없는 전송 권한으로 교체한다.
+
+## 운영 AI 배포
+
+- AI의 `Deploy prod worker`는 기본 `target=ecs`를 유지한다. EC2 전환 root를 적용한 뒤 결과의 `worker_ec2_deploy_role_arn`과 전환 EC2 인스턴스 ID를 AI 저장소의 `PROD_WORKER_EC2_ROLE_ARN`과 `PROD_WORKER_EC2_INSTANCE_ID` 변수에 설정한다. 전용 역할은 AI `main`의 GitHub OIDC만 신뢰하며, 운영 워커 이미지 조회와 이 EC2의 `prod-landit-ec2-deploy-worker` 실행을 허용한다.
+- 운영 프로세스를 띄우기 전에 `prepare-proxy.sh`로 Caddy를 준비하고, 운영 AI 환경 변수는 root만 읽을 수 있는 `/opt/landit/ai.env`에 둔다. 첫 실행과 전환 리허설 동안 `ROLEPLAY_THUMBNAIL_CONSUMER_ENABLED=false`를 유지한다. ECS의 기존 소비자가 종료되고 SQS·S3 자격 증명과 BE 내부 API 접속을 확인한 뒤 이 값을 활성화해 같은 릴리스를 다시 배포한다.
+- 기존 버전의 EC2 배포는 GitHub Release가 기록한 검증 이미지 다이제스트를 재사용한다. 첫 기동과 재배포 모두 호스트 루프백의 Caddy `/health` 및 실제 컨테이너 이미지로 확인한다. 교체와 롤백 동안 AI 응답은 잠시 중단될 수 있다. AI와 BE는 호스트 잠금을 공유하므로 두 배포를 차례로 실행한다.
+- 새 AI가 기동하거나 헬스체크를 통과하지 못하면 보존한 직전 컨테이너를 기존 이름으로 복구한다. 이미 성공한 배포를 되돌릴 때는 `target=ec2`에서 이전 `ai-v` 버전을 선택한다. 공개 DNS·HTTPS와 운영 큐 소비 검증은 전환 단계에서 수행한다.
+- 호스트 모의 검증에서 최초 기동, 정상 교체, 헬스체크 실패 후 복귀, 최초 기동 실패 시 정리, 중단된 교체 재시도를 확인했다. 전환 root의 Terraform plan에는 기존 BE 변경과 함께 AI의 SSM 문서·배포 역할·권한이 포함되며 EC2와 RDS 변경은 없다.

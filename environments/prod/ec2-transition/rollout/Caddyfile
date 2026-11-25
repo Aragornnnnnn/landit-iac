@@ -11,6 +11,9 @@ ai.landit.im {
 }
 
 :8081 {
+	handle /health {
+		reverse_proxy landit-ai:8000
+	}
 	handle /actuator/health/readiness {
 		import /etc/caddy/routes/api.caddy
 	}

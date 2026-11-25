@@ -38,6 +38,13 @@
 - 최종 `landit`은 TLS 읽기 전용 점검 기준 `public` 테이블·시퀀스·Flyway 이력이 없다. 원본은 시퀀스 82개이며, 활성 Supabase 웹훅 2개와 추천인 트리거·스케줄이 각 1개다. RDS에는 `pg_cron`이 제공되고 `pg_net`은 제공되지 않는다. 시험 RDS에 복원한 56개 푸시 RLS 정책의 `landit_push_reader`는 로그인 불가 상태이므로 운영용 로그인과 권한 검증이 필요하다.
 - 임시 컨테이너와 DB 조회 터널을 종료했다. 기존 시험 스택은 계속 실행 중이다. 운영 ECS의 BE·AI 리비전이 그대로이고 공개 BE·AI 헬스체크는 모두 HTTP 200이었다. 최종 복원, 공개 DNS, 운영 큐 인계는 진행 전이다.
 
+### 푸시와 알림 연동 준비
+
+- 기존 Supabase 푸시 계정으로 직접 조회해 읽기 전용, `public` 테이블 SELECT 132개와 쓰기 권한 0개를 확인했다. `cutover/push-reader.sql`을 시험 RDS의 트랜잭션 안에서 실행하고 푸시 역할로 조회했다. 테스트 스키마의 테이블 133개를 읽을 수 있고 쓰기 권한은 0개이며 132개 테이블에 RLS가 적용됐다. 모든 테스트 권한 변경은 롤백했다. 최종 복원 후 실제 로그인 비밀번호는 별도로 발급한다. BE의 푸시 JDBC 연결은 Java 신뢰 저장소를 사용하므로 RDS CA를 기존 JVM 신뢰 저장소에 추가한 상태에서 `verify-full`과 관리자 대상 조회를 검증한다.
+- 운영 DB의 활성 웹훅은 `mailbox_feedback` INSERT와 `survey_responses` INSERT·UPDATE다. 별도 추천인 등록 트리거와 매분 `landit-referral-risk` 작업이 있다. 편지함·추천인 등록과 위험 알림용 RDS 트랜잭션 큐, EC2 발송기, 매분 타이머는 `landit-alerts` 로컬 커밋 `a17783d`에 준비했다. 기존 Vercel 수신 계약은 유지한다. 로컬 PostgreSQL 회귀 세 가지, Node 169건과 발송기 모의 3건을 통과했다. 실제 전송은 실행 전이다.
+- 최종 복원에는 `landit_alerts.referral_risk_rule`과 `referral_risk_event`의 설정·이력도 포함한다. 소스에서 아직 대기 중인 요청은 쓰기 중지 뒤 마저 처리하거나 결과를 기록하며 대상 큐에 보내기 위해 재생성하지 않는다. 최종 전환 때 기존 Supabase 편지함·추천인 트리거와 추천인 스케줄의 중지 이후 EC2 발송기를 시작한다.
+- FE `main`의 설문 API가 Supabase PostgREST에 `survey_responses`를 직접 저장한다. 이번에 이 테이블을 Supabase에 둘지, FE 저장 경로까지 변경해 RDS로 옮길지 결정해야 한다. 설문 이탈 알림 코드는 `landit-alerts` main에 있으나 운영 Supabase의 활성 cron 목록에는 없다. 일일 지표의 `metrics_records` RPC도 Supabase의 업무 테이블을 읽으므로, 운영 업무 DB 전환 전에 읽기 경로를 RDS에 연결하는 방법을 정한다.
+
 ## 2026-11-25 검증 결과
 
 - 격리 root의 `terraform plan`에 추가 14개, 변경·삭제 0개를 확인했고, 저장한 plan으로 적용했다. 운영 EC2는 SSM Online으로 등록됐고 Docker Compose와 PostgreSQL 클라이언트가 준비됐다. RDS PostgreSQL 17.11은 `available` 상태이며, 백업 보존 7일과 삭제 보호를 확인했다.

@@ -1,0 +1,24 @@
+services:
+  caddy:
+    container_name: landit-caddy
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "127.0.0.1:18080:8081"
+    volumes:
+      - ./caddy:/etc/caddy:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - landit
+
+volumes:
+  caddy-data:
+  caddy-config:
+
+networks:
+  landit:
+    name: landit-prod
+    external: true

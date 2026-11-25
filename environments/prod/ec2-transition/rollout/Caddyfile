@@ -1,0 +1,20 @@
+{
+	admin localhost:2019
+}
+
+api.landit.im {
+	import /etc/caddy/routes/api.caddy
+}
+
+ai.landit.im {
+	reverse_proxy landit-ai:8000
+}
+
+:8081 {
+	handle /actuator/health/readiness {
+		import /etc/caddy/routes/api.caddy
+	}
+	handle {
+		respond 404
+	}
+}

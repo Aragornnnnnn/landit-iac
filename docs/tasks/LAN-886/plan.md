@@ -32,3 +32,14 @@
 - 복원된 Flyway 이력은 버전 189, 성공 210건, 실패 0건이다. 현재 운영 BE 이미지로 Flyway가 211개 마이그레이션을 검증했고 버전 189에서 추가 적용할 항목이 없음을 확인했다.
 - SSM Run Command로 시험 Compose를 실행했고 Caddy 루프백에서 BE `/actuator/health`와 AI `/health`가 모두 응답했다. 기존 운영 ECS의 BE·AI는 각각 실행 1, 목표 1, 배포 완료 상태를 확인했다.
 - 시험 후 한시적 IAM 정책 한 개만 제거했다. 최종 `terraform plan -detailed-exitcode`는 0과 무변경을 반환했다.
+
+## 운영 BE 재배포
+
+- BE 배포 워크플로의 `target=ec2`는 SHA 태그로 ECR 이미지 다이제스트를 조회하고 운영 EC2에만 허용된 `prod-landit-ec2-deploy-api` SSM 문서를 실행한다. GitHub의 `prod` 환경 변수 `EC2_INSTANCE_ID`가 대상이다. 기존 ECS 경로는 기본값으로 계속 사용한다.
+- 호스트에서 `rollout/prepare-proxy.sh`를 root로 실행해 Caddy와 `landit-prod` Docker 네트워크를 준비한다. AI는 같은 네트워크의 `landit-ai:8000`에서 독립적으로 동작한다. Caddy 관리 포트는 컨테이너에만 두고, 활성 라우트 디렉터리를 마운트한다. 최초 DNS·TLS 전환과 기존 ECS 소비자 종료는 운영 전환 절차에 포함한다.
+- 호스트의 `/opt/landit/api.env`와 `migration.env`는 root만 읽을 수 있게 두고 동일한 운영 RDS의 `landit`에 연결한다. `DB_URL`에 `sslmode=verify-full`과 `sslrootcert=/run/landit/rds-ca.pem`을 지정하고, 앱과 마이그레이션의 사용자·비밀번호는 각 역할에 맞춰 설정한다. `/opt/landit/rds-ca.pem`에서 AWS CA를 제공한다. Flyway는 EC2에서 실행하므로 러너에 PostgreSQL 인바운드를 열 필요가 없다.
+- 배포는 호스트 잠금으로 직렬화한다. 호환되는 Flyway 변경을 먼저 적용하고, 빈 슬롯에서 새 BE의 `readinessState`와 DB health를 확인한다. Caddy reload 후 내부·공개 주소의 응답에서 새 이미지 다이제스트를 확인한 다음 활성 슬롯을 바꾸고 이전 BE에 SIGTERM을 보낸다. 검증 실패 시 이전 Caddy 라우트를 복구하고, 복귀를 확인하지 못하면 두 컨테이너를 유지한다.
+- 두 슬롯 모두 RDS에서 Hikari 최대 10개와 최소 유휴 1개를 사용한다. 예약 작업은 공유 활성 슬롯 파일과 파일 잠금으로 인계한다. SQS는 두 소비자가 잠시 공존하므로 기존 메시지 선점과 중복 방지 계약을 유지한다. 최초 운영 전환 전에는 실제 큐 환경에서 전환과 롤백을 각각 검증한다.
+- 준비 EC2의 역할은 현재 ECR pull과 SSM 접속을 제공한다. 운영 컨테이너가 실제 SQS·S3 등에 접근할 최소 권한과 자격 증명 전달 방법을 정하고, IMDSv2 hop limit 1에서 Docker 브리지 컨테이너의 AWS 호출이 성공하는지 실제 역할로 확인한다.
+- 최초 운영 전환과 두 슬롯 배포 전에 운영 수준의 요청을 유지한 채 BE 2개와 AI 1개가 겹치는 동안 가용 메모리와 요청 오류를 측정한다. 앱의 프록시 신뢰 설정, 도메인별 TLS, 기존 WAF 동작의 대체 여부는 운영 전환 검증에서 확인한다.
+- 로컬에서 Caddy 2.8.4 reload 중 기존 요청은 이전 슬롯에서 완료되고 새 요청은 새 슬롯으로 도달했다. 호스트 스크립트의 전환·실패 복구 9개 테스트와 SSM 결과 검증, BE Gradle 검사, Terraform validate를 통과했다. EC2 전환 root의 plan은 SSM 문서와 운영 배포 역할의 권한 2개 추가였으며 기존 리소스 변경과 삭제는 없었다.

@@ -3,7 +3,13 @@
 }
 
 api.landit.im {
-	import /etc/caddy/routes/api.caddy
+	@rds_integration path /internal/rds/survey /internal/rds/metrics
+	handle @rds_integration {
+		reverse_proxy 172.30.86.1:18092
+	}
+	handle {
+		import /etc/caddy/routes/api.caddy
+	}
 }
 
 ai.landit.im {

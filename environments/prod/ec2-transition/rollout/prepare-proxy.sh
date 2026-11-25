@@ -26,10 +26,10 @@ touch "$runtime_dir/scheduler.lock"
 chmod 0644 "$runtime_dir/rollout-state/active-slot" "$runtime_dir/caddy/routes/api.caddy" "$runtime_dir/scheduler.lock"
 
 if ! docker network inspect landit-prod >/dev/null 2>&1; then
-  docker network create --subnet 172.30.86.0/24 --ip-range 172.30.86.128/25 landit-prod
+  docker network create --subnet 172.30.86.0/24 --ip-range 172.30.86.128/25 --gateway 172.30.86.1 landit-prod
 fi
-network_layout=$(docker network inspect --format '{{range .IPAM.Config}}{{.Subnet}} {{.IPRange}}{{end}}' landit-prod)
-if [[ "$network_layout" != "172.30.86.0/24 172.30.86.128/25" ]]; then
+network_layout=$(docker network inspect --format '{{range .IPAM.Config}}{{.Subnet}} {{.IPRange}} {{.Gateway}}{{end}}' landit-prod)
+if [[ "$network_layout" != "172.30.86.0/24 172.30.86.128/25 172.30.86.1" ]]; then
   echo 'landit-prod 네트워크가 Caddy의 고정 주소를 지원하도록 준비하세요.' >&2
   exit 1
 fi

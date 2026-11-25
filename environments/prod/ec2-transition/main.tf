@@ -118,9 +118,41 @@ resource "aws_iam_role" "app" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "session_manager" {
-  role       = aws_iam_role.app.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+resource "aws_iam_role_policy" "session_manager" {
+  name = "landit-ec2-session-manager-transport"
+  role = aws_iam_role.app.name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Resource = "*"
+      Action = [
+        "ssm:DescribeAssociation",
+        "ssm:GetDeployablePatchSnapshotForInstance",
+        "ssm:GetDocument",
+        "ssm:DescribeDocument",
+        "ssm:GetManifest",
+        "ssm:ListAssociations",
+        "ssm:ListInstanceAssociations",
+        "ssm:PutInventory",
+        "ssm:PutComplianceItems",
+        "ssm:PutConfigurePackageResult",
+        "ssm:UpdateAssociationStatus",
+        "ssm:UpdateInstanceAssociationStatus",
+        "ssm:UpdateInstanceInformation",
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel",
+        "ec2messages:AcknowledgeMessage",
+        "ec2messages:DeleteMessage",
+        "ec2messages:FailMessage",
+        "ec2messages:GetEndpoint",
+        "ec2messages:GetMessages",
+        "ec2messages:SendReply",
+      ]
+    }]
+  })
 }
 
 resource "aws_iam_instance_profile" "app" {
@@ -178,7 +210,7 @@ resource "aws_instance" "app" {
     ignore_changes = [ami]
   }
 
-  depends_on = [aws_iam_role_policy_attachment.session_manager, aws_vpc_security_group_egress_rule.app]
+  depends_on = [aws_iam_role_policy.session_manager, aws_vpc_security_group_egress_rule.app]
 }
 
 resource "aws_eip" "app" {

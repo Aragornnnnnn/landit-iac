@@ -12,7 +12,8 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     networks:
-      - landit
+      landit:
+        ipv4_address: 172.30.86.2
 
 volumes:
   caddy-data:

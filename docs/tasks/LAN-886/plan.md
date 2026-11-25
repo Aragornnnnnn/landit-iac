@@ -36,10 +36,13 @@
 ## 운영 BE 재배포
 
 - BE 배포 워크플로의 `target=ec2`는 SHA 태그로 ECR 이미지 다이제스트를 조회하고 운영 EC2에만 허용된 `prod-landit-ec2-deploy-api` SSM 문서를 실행한다. GitHub의 `prod` 환경 변수 `EC2_INSTANCE_ID`가 대상이다. 기존 ECS 경로는 기본값으로 계속 사용한다.
-- 호스트에서 `rollout/prepare-proxy.sh`를 root로 실행해 Caddy와 `landit-prod` Docker 네트워크를 준비한다. AI는 같은 네트워크의 `landit-ai:8000`에서 독립적으로 동작한다. Caddy 관리 포트는 컨테이너에만 두고, 활성 라우트 디렉터리를 마운트한다. 최초 DNS·TLS 전환과 기존 ECS 소비자 종료는 운영 전환 절차에 포함한다.
+- 시험 스택이 남았다면 운영 호스트에서 `docker compose -p landit-rehearsal --env-file /run/landit-rehearsal/compose-cleanup.env -f /run/landit-rehearsal/compose.yml down`으로 종료한다. `compose-cleanup.env`에는 보존된 시험 BE·AI 이미지 참조를 `API_IMAGE`와 `AI_IMAGE`로 넣는다. 이후 `rollout/prepare-proxy.sh`를 root로 실행한다. AI는 `landit-prod` 네트워크의 `landit-ai:8000`에서 독립적으로 동작한다. Caddy 관리 포트는 컨테이너 내부에 두고 라우트 디렉터리를 마운트한다.
+- 최초 전환은 최종 DB 동기화와 기존 ECS의 DB 쓰기·큐 소비 종료 후 호스트에서 `bash rollout/deploy-api.sh sha256:<digest> --bootstrap`으로 시작한다. 이 모드에서는 로컬 프록시로 첫 슬롯을 검증한다. 공개 DNS·TLS를 전환한 뒤 GitHub Actions의 `target=ec2`로 같은 다이제스트 응답을 확인한다. 평상시 GitHub Actions 배포에는 초기 전환 예외를 제공하지 않는다.
 - 호스트의 `/opt/landit/api.env`와 `migration.env`는 root만 읽을 수 있게 두고 동일한 운영 RDS의 `landit`에 연결한다. `DB_URL`에 `sslmode=verify-full`과 `sslrootcert=/run/landit/rds-ca.pem`을 지정하고, 앱과 마이그레이션의 사용자·비밀번호는 각 역할에 맞춰 설정한다. `/opt/landit/rds-ca.pem`에서 AWS CA를 제공한다. Flyway는 EC2에서 실행하므로 러너에 PostgreSQL 인바운드를 열 필요가 없다.
 - 배포는 호스트 잠금으로 직렬화한다. 호환되는 Flyway 변경을 먼저 적용하고, 빈 슬롯에서 새 BE의 `readinessState`와 DB health를 확인한다. Caddy reload 후 내부·공개 주소의 응답에서 새 이미지 다이제스트를 확인한 다음 활성 슬롯을 바꾸고 이전 BE에 SIGTERM을 보낸다. 검증 실패 시 이전 Caddy 라우트를 복구하고, 복귀를 확인하지 못하면 두 컨테이너를 유지한다.
+- 배포 완료 뒤 활성·직전 슬롯이 참조하지 않는 BE 배포 이미지를 정리하고 컨테이너 로그를 순환시킨다. 이전 다이제스트로 복구하려면 승인된 운영 권한으로 `prod-landit-ec2-deploy-api` SSM 문서의 `ImageDigest`에 이전 값을 넘긴다. 후보가 기존 스키마와 호환되는지 먼저 확인한다.
+- Caddy는 `landit-prod` 네트워크의 `172.30.86.2`를 사용하고 나머지 컨테이너는 `172.30.86.128/25`에서 동적으로 주소를 받는다. BE는 재배포 시 Caddy의 단일 주소를 신뢰 프록시로 설정한다. 운영 호스트의 기존 네트워크와 충돌이 없는지 확인한다.
 - 두 슬롯 모두 RDS에서 Hikari 최대 10개와 최소 유휴 1개를 사용한다. 예약 작업은 공유 활성 슬롯 파일과 파일 잠금으로 인계한다. SQS는 두 소비자가 잠시 공존하므로 기존 메시지 선점과 중복 방지 계약을 유지한다. 최초 운영 전환 전에는 실제 큐 환경에서 전환과 롤백을 각각 검증한다.
 - 준비 EC2의 역할은 현재 ECR pull과 SSM 접속을 제공한다. 운영 컨테이너가 실제 SQS·S3 등에 접근할 최소 권한과 자격 증명 전달 방법을 정하고, IMDSv2 hop limit 1에서 Docker 브리지 컨테이너의 AWS 호출이 성공하는지 실제 역할로 확인한다.
 - 최초 운영 전환과 두 슬롯 배포 전에 운영 수준의 요청을 유지한 채 BE 2개와 AI 1개가 겹치는 동안 가용 메모리와 요청 오류를 측정한다. 앱의 프록시 신뢰 설정, 도메인별 TLS, 기존 WAF 동작의 대체 여부는 운영 전환 검증에서 확인한다.
-- 로컬에서 Caddy 2.8.4 reload 중 기존 요청은 이전 슬롯에서 완료되고 새 요청은 새 슬롯으로 도달했다. 호스트 스크립트의 전환·실패 복구 9개 테스트와 SSM 결과 검증, BE Gradle 검사, Terraform validate를 통과했다. EC2 전환 root의 plan은 SSM 문서와 운영 배포 역할의 권한 2개 추가였으며 기존 리소스 변경과 삭제는 없었다.
+- 로컬에서 Caddy 2.8.4 reload 중 기존 요청은 이전 슬롯에서 완료되고 새 요청은 새 슬롯으로 도달했다. 호스트 스크립트의 전환·실패 복구 테스트와 SSM 결과 검증, BE Gradle 검사, Terraform validate를 통과했다. EC2 전환 root의 plan은 기존 EC2·RDS를 보존하면서 SSM 배포 문서와 권한을 추가하고, 호스트의 상시 SSM 관리형 정책을 Parameter Store 조회가 없는 전송 권한으로 교체한다.

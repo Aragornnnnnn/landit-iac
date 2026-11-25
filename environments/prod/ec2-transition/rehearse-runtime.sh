@@ -4,6 +4,13 @@ set -euo pipefail
 umask 077
 
 root=/run/landit-rehearsal
+exec 9>/opt/landit/deploy-api.lock
+flock -n 9 || { echo '이 호스트에서 다른 배포가 실행 중입니다.' >&2; exit 1; }
+if docker inspect landit-caddy >/dev/null 2>&1; then
+  echo '운영 Caddy를 준비한 호스트에서는 시험 스택을 다시 실행할 수 없습니다.' >&2
+  exit 1
+fi
+
 registry=944011958218.dkr.ecr.ap-northeast-2.amazonaws.com
 api_image=${1:?Provide the deployed BE digest}
 ai_image=${2:?Provide the deployed AI digest}

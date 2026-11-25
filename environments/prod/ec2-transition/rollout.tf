@@ -31,15 +31,21 @@ resource "aws_iam_role_policy" "deploy_api_on_ec2" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["ssm:SendCommand"]
-        Resource = [aws_ssm_document.deploy_api.arn, aws_instance.app.arn]
+        Effect    = "Allow"
+        Action    = ["ssm:SendCommand"]
+        Resource  = [aws_ssm_document.deploy_api.arn, aws_instance.app.arn]
+        Condition = { StringEquals = { "token.actions.githubusercontent.com:sub" = "repo:Aragornnnnnn/landit-be:environment:prod" } }
       },
       {
-        Effect    = "Allow"
-        Action    = ["ssm:GetCommandInvocation"]
-        Resource  = "*"
-        Condition = { StringEquals = { "aws:RequestedRegion" = "ap-northeast-2" } }
+        Effect   = "Allow"
+        Action   = ["ssm:GetCommandInvocation"]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:RequestedRegion"                     = "ap-northeast-2"
+            "token.actions.githubusercontent.com:sub" = "repo:Aragornnnnnn/landit-be:environment:prod"
+          }
+        }
       }
     ]
   })

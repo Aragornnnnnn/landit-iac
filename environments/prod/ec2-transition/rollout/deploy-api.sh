@@ -7,6 +7,7 @@ runtime_dir="${LANDIT_RUNTIME_DIR:-/opt/landit}"
 registry=944011958218.dkr.ecr.ap-northeast-2.amazonaws.com
 image_repository="$registry/prod-landit-api"
 digest="${1:-${SSM_ImageDigest:-}}"
+mode="${2:-rollout}"
 if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   echo '배포할 ECR 이미지 다이제스트가 필요합니다.' >&2
   exit 2
@@ -107,9 +108,23 @@ case "$active" in
   green | none) candidate=blue ;;
   *) echo '활성 슬롯 기록이 올바르지 않습니다.' >&2; exit 1 ;;
 esac
+case "$mode:$active" in
+  --bootstrap:none | rollout:blue | rollout:green) ;;
+  rollout:none)
+    echo '최초 전환은 운영 EC2에서 --bootstrap으로 준비한 뒤 공개 주소를 전환해야 합니다.' >&2
+    exit 1
+    ;;
+  *) echo '초기 슬롯에서만 --bootstrap을 사용할 수 있습니다.' >&2; exit 2 ;;
+esac
 previous_digest=''
 if [[ "$active" != none ]]; then
-  previous_digest=$(slot_digest "$active")
+  if ! previous_digest=$(slot_digest "$active"); then
+    # 컨테이너가 사라져도 활성 라우트가 가리키는 다이제스트로 복구 대상을 찾는다.
+    previous_digest=$(awk -v upstream="$(slot_name "$active"):8080" '
+      $1 == "reverse_proxy" && $2 == upstream { matched = 1 }
+      matched && $1 == "header_down" && $2 == "X-Landit-Image-Digest" { print $3 }
+    ' "$route_file")
+  fi
   [[ "$previous_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
 fi
 previous_route=$(route_for "$active" "$previous_digest")
@@ -149,14 +164,17 @@ if [[ "$(cat "$route_file")" != "$previous_route" ]]; then
   replace_file "$route_file" "$previous_route"
   reload_proxy
 fi
+previous_healthy=false
 if [[ "$active" != none ]]; then
-  if ! wait_until_ready "$caddy_health" "$previous_digest" 2; then
-    reload_proxy
-    wait_until_ready "$caddy_health" "$previous_digest" 10
+  if wait_until_ready "$caddy_health" "$previous_digest" 2 ||
+    { reload_proxy && wait_until_ready "$caddy_health" "$previous_digest" 2; }; then
+    previous_healthy=true
+  else
+    echo '현재 슬롯이 응답하지 않아 복구 이미지를 준비합니다.' >&2
   fi
 fi
 
-if [[ "$previous_digest" == "$digest" ]]; then
+if [[ "$previous_healthy" == true && "$previous_digest" == "$digest" ]]; then
   wait_until_ready "$public_health" "$digest" 15
   committed=true
   stop_slot "$candidate"
@@ -187,6 +205,8 @@ docker run --rm --memory 1g --env-file "$runtime_dir/migration.env" \
 }
 
 candidate_name=$(slot_name "$candidate")
+caddy_ip=$(docker inspect --format '{{(index .NetworkSettings.Networks "landit-prod").IPAddress}}' landit-caddy)
+[[ "$caddy_ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]
 stop_slot "$candidate"
 if docker inspect "$candidate_name" >/dev/null 2>&1; then
   docker rm "$candidate_name" >/dev/null
@@ -194,9 +214,11 @@ fi
 candidate_started=true
 docker run -d --name "$candidate_name" --network landit-prod --restart unless-stopped \
   --memory 1g --stop-timeout 120 \
+  --log-driver json-file --log-opt max-size=20m --log-opt max-file=3 \
   --publish "127.0.0.1:$(slot_port "$candidate"):8080" \
   --env-file "$runtime_dir/api.env" \
   --env SPRING_PROFILES_ACTIVE=prod --env "LANDIT_DEPLOYMENT_SLOT=$candidate" \
+  --env "LANDIT_REFERRAL_TRUSTED_PROXY_CIDRS=$caddy_ip/32" \
   --env SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE=10 --env SPRING_DATASOURCE_HIKARI_MINIMUMIDLE=1 \
   --env MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED=true \
   --env MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE=readinessState,db \
@@ -211,12 +233,17 @@ route_changed=true
 replace_file "$route_file" "$(route_for "$candidate" "$digest")"
 reload_proxy
 wait_until_ready "$caddy_health" "$digest" 10
-wait_until_ready "$public_health" "$digest" 15
+if [[ "$mode" == rollout ]]; then
+  wait_until_ready "$public_health" "$digest" 15
+fi
 
 replace_file "$active_file" "$candidate"
 committed=true
 if [[ "$active" != none ]]; then
   sleep 5
   stop_slot "$active"
+fi
+if ! docker image prune --all --force --filter label=im.landit.ec2-rollout=slot-scheduling-v1 >/dev/null; then
+  echo '사용하지 않는 BE 이미지 정리에 실패했습니다.' >&2
 fi
 printf 'active_slot=%s\nimage_digest=%s\nprevious_image_digest=%s\n' "$candidate" "$digest" "$previous_digest"

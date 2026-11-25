@@ -38,9 +38,14 @@ elif operation == "docker":
         sys.stdin.read()
     elif action == "pull":
         pass
-    elif action == "image":
+    elif action == "image" and args[1] == "inspect":
         print("slot-scheduling-v1")
+    elif action == "image" and args[1] == "prune":
+        pass
     elif action == "inspect":
+        if name == "landit-caddy":
+            print("172.18.0.2")
+            sys.exit(0)
         if name not in state["slots"]:
             sys.exit(1)
         if ".Config.Image" in " ".join(args):
@@ -72,6 +77,8 @@ elif operation == "curl":
     via_proxy = ":18080" in url or url.startswith("https://")
     if via_proxy:
         target = state["proxy"]
+        if target == "landit-be-blue" and os.getenv("FAIL_PREVIOUS"):
+            sys.exit(1)
         if url.startswith("https://") and os.getenv("FAIL_PUBLIC"):
             sys.exit(1)
     else:
@@ -118,9 +125,9 @@ class ProductionRolloutTest(unittest.TestCase):
         for command in ("aws", "docker", "curl", "flock", "sleep"):
             (self.root / command).symlink_to(mock)
 
-    def deploy(self, digest=NEW, **flags):
+    def deploy(self, digest=NEW, *args, **flags):
         return subprocess.run(
-            ["bash", str(ROLLOUT), digest],
+            ["bash", str(ROLLOUT), digest, *args],
             env={
                 **os.environ,
                 "PATH": f"{self.root}:{os.environ['PATH']}",
@@ -150,6 +157,19 @@ class ProductionRolloutTest(unittest.TestCase):
         self.assertEqual(self.route.read_text(), self.original_route)
         self.assertEqual(self.active.read_text(), "blue\n")
         self.assert_running("landit-be-blue")
+
+    def test_new_image_can_recover_an_unhealthy_active_slot(self):
+        result = self.deploy(FAIL_PREVIOUS="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("active_slot=green", result.stdout)
+        self.assert_running("landit-be-green")
+
+    def test_rollout_recovers_when_previous_container_is_missing(self):
+        self.state_file.write_text(json.dumps({"slots": {}, "proxy": "landit-be-blue", "running": []}))
+        result = self.deploy()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"previous_image_digest={OLD}", result.stdout)
+        self.assert_running("landit-be-green")
 
     def test_failed_public_probe_restores_previous_route(self):
         self.assertNotEqual(self.deploy(FAIL_PUBLIC="1").returncode, 0)
@@ -183,10 +203,12 @@ class ProductionRolloutTest(unittest.TestCase):
         self.active.write_text("none\n")
         self.route.write_text("respond 503\n")
         self.state_file.write_text(json.dumps({"slots": {}, "proxy": None, "running": []}))
-        result = self.deploy()
+        self.assertNotEqual(self.deploy().returncode, 0)
+        result = self.deploy(NEW, "--bootstrap", FAIL_PUBLIC="1")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("active_slot=blue", result.stdout)
         self.assert_running("landit-be-blue")
+        self.assertNotIn("https://api.landit.im", (self.root / "calls.log").read_text())
 
     def test_different_flyway_database_fails_before_docker(self):
         migration_env = self.root / "migration.env"

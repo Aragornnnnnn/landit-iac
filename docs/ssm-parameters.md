@@ -33,6 +33,7 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT` | `String` | backend가 콘텐츠 제작(LAN-690) AI 호출 한 번을 기다리는 시간. Duration 형식(`300s`). 코드 기본값 300초, landit-ai `CONTENT_GENERATION_TIMEOUT_SECONDS`보다 길어야 한다 |
 | `/landit/{environment}/LANDIT_CONTENT_AUTHORING_ASSETS_ENABLED` | `String` | API 콘텐츠 에셋 생성(LAN-754) 스위치. 코드 기본값 `false`. 담당자 3명만 쓰는 관리자 기능이라 develop·prod 모두 `true`로 등록한다. develop EC2 env와 prod ECS API secrets로 주입 |
 | `/landit/{environment}/LANDIT_CONTENT_AUTHORING_PUBLISH_ENABLED` | `String` | API 콘텐츠 발행(LAN-755)·SQL 업로드 발행(LAN-758) 스위치. 코드 기본값 `false`. develop·prod 모두 `true`로 등록한다. develop EC2 env와 prod ECS API secrets로 주입 |
+| `/landit/{environment}/LANDIT_DICTIONARY_API_KEY` | `SecureString` | LAN-877 국립국어원 한국어기초사전 인증키. 개발 EC2와 운영 ECS의 API에 주입한다. 설정을 배포하기 전에 두 경로에 값을 등록한다. |
 | `/landit/{environment}/LANDIT_REVENUECAT_PROJECT_ID` | `String` | backend RevenueCat 프로젝트 ID |
 | `/landit/{environment}/LANDIT_REVENUECAT_API_SECRET_KEY` | `SecureString` | backend RevenueCat v2 조회 키. |
 | `/landit/{environment}/LANDIT_REVENUECAT_ENTITLEMENT_SECRET_KEY` | `SecureString` | LAN-659의 premium 부여·회수용 v1 Secret 키. 개발 EC2·운영 ECS API에만 주입하며 AI에는 전달하지 않는다. |

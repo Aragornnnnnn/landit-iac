@@ -197,7 +197,7 @@ values.update(JEV_ENABLED="false", JEV_ENABLED_WORKFLOWS='["E1","E2","E3","E4","
               JEV_TIMEOUT_SECONDS="5", JEV_REQUEST_BUDGET_SECONDS="30",
               JEV_FALLBACK_MODEL="openai/gpt-5.4-mini", JEV_ADJUDICATOR_MODEL="openai/gpt-5.4",
               CODE_SESSION_SUMMARY_ENABLED="false")
-values.update(LANDIT_AI_INTERNAL_TOKEN="lan474-token$secret")
+values.update(LANDIT_AI_INTERNAL_TOKEN="lan474-token$secret", LANDIT_DICTIONARY_API_KEY="test-dictionary-key")
 values.update(LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION="Bearer lan477-test$secret",
               LANDIT_REVENUECAT_PROJECT_ID="test-project",
               LANDIT_REVENUECAT_API_SECRET_KEY="test-api$secret",
@@ -238,6 +238,7 @@ expected = {
     'LANDIT_SUBSCRIPTION_LAUNCHED_AT="2026-09-11T14:44:00+09:00"',
     'LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE="2026-10-21T00:00:00+09:00"',
     'LANDIT_AI_INTERNAL_TOKEN="lan474-token$$secret"',
+    'LANDIT_DICTIONARY_API_KEY="test-dictionary-key"',
     'LANDIT_REVENUECAT_APPLY_SANDBOX_EVENTS=true',
     'LANDIT_TRIAL_REMINDER_ANNUAL_PRODUCT_IDS="com.saynow.app.premium.yearly,com.saynow.app.premium.yearly:yearly"',
     'LANDIT_REWARD_ENABLED="true"',
@@ -254,7 +255,7 @@ assert "LANDIT_EMAIL_ENABLED=" not in api.read_text()
 assert "LANDIT_TRIAL_REMINDER_SCHEDULING_ENABLED=" not in api.read_text()
 assert stat.S_IMODE(api.stat().st_mode) == 0o600, "API secrets must remain owner-only"
 assert not any("LANDIT_REVENUECAT" in line or "LANDIT_SUBSCRIPTION" in line or "LANDIT_FREE_TALK" in line
-               or "LANDIT_CONTENT_AUTHORING" in line
+               or "LANDIT_CONTENT_AUTHORING" in line or "LANDIT_DICTIONARY_API_KEY" in line
                for line in (directory / "runtime/ai.env").read_text().splitlines())
 assert 'LANDIT_AI_INTERNAL_TOKEN="lan474-token$$secret"' in (directory / "runtime/ai.env").read_text()
 # 에셋 생성(LAN-754)은 AI가 콘텐츠 버킷에 직접 올리므로 AI env에도 버킷·CDN과 OpenAI 키가 있어야 한다.

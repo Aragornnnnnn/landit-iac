@@ -1,0 +1,91 @@
+# LAN-886 운영 EC2·RDS 준비와 시험 이관
+
+운영 BE·AI는 서울 리전 `t3.medium` 한 대와 Caddy로 이전할 예정이다. 운영 PostgreSQL은 `db.t4g.micro` Single-AZ와 암호화된 gp3 20 GiB로 준비한다. 이 단계는 별도 운영 EC2와 RDS 생성, 운영 이미지 검증, 원본 DB 스냅샷 시험 복원을 포함한다.
+
+## 인프라
+
+- 기존 운영 VPC의 퍼블릭 서브넷 두 곳을 사용한다. 운영 EC2와 Single-AZ RDS는 같은 AZ의 서브넷을 사용한다.
+- 기존 ECS를 관리하는 Terraform plan에서 준비 리소스의 삭제가 나타나지 않도록 `environments/prod/ec2-transition`과 별도 S3 상태를 사용한다. 이 root에 대한 변경은 승인된 plan을 로컬에서 적용하며 기존 Actions workflow의 대상은 유지한다.
+- RDS는 공개 엔드포인트를 발급한다. PostgreSQL 인바운드는 EC2 보안 그룹에서 허용하고, 사용자가 승인한 외부 조회 IP는 별도 `database_client_ipv4` 입력에 IPv4 /32만 허용한다. 허용할 IP가 미정이므로 외부 규칙은 빈 목록으로 적용한다.
+- EC2의 HTTP·HTTPS 인바운드는 트래픽 전환 때 연다. 시험은 SSM을 통해 EC2에서 Caddy의 루프백 주소와 호스트별 헬스체크를 확인한다.
+- DB 관리자 비밀번호는 RDS가 Secrets Manager에서 관리한다. 이관을 실행할 때만 원본 연결에 필요한 SSM 파라미터 세 개와 대상 RDS 관리자 secret을 EC2에 한시적으로 허용한다. 시험이 끝나면 이 IAM 정책을 제거한다.
+
+## 시험 복원
+
+1. Supabase PostgreSQL 17.11에서 읽기 전용 스냅샷을 열고 `public` 스키마의 덤프와 테이블별 행 수를 같은 스냅샷에서 읽는다.
+2. RDS의 별도 `landit_rehearsal` DB에서 `vector`, `pgcrypto`, `uuid-ossp` 확장을 만들고 복원한다. 원본 소유권과 ACL은 서비스 계정에 맞게 별도로 설계하며, RLS 정책이 참조하는 `landit_push_reader` 역할은 로그인 권한 없이 만들어 둔다. Supabase 전용 함수에 직접 연결된 트리거는 시험 복원 목록에서 제외한다.
+3. 복원 직후 테이블별 행 수를 비교하고, 현재 운영 BE의 ECR 다이제스트로 Flyway를 실행한다. 이후 조회용 계정으로 연결한 BE, 썸네일 소비를 끈 AI, Caddy의 헬스체크를 검증한다.
+
+재실행 시 `migration_access_until`에 짧은 UTC 만료 시각을 주고 plan을 확인한다. 운영 EC2의 SSM Run Command에서 `rehearse-database.py`에 대상 RDS DNS와 관리자 secret ARN을 전달한다. `rehearse-runtime.sh`에는 현재 운영 BE·AI의 ECR 다이제스트 URL을 전달한다. 두 스크립트는 root 권한으로 실행하며, DB 비밀번호를 명령 인자나 Run Command 출력에 넣지 않는다. `--resume-empty`는 복원 트랜잭션이 실패한 빈 시험 DB에서만 사용한다.
+
+## 운영 전환 전 결정할 항목
+
+- 원본에는 `landit_alerts`를 호출하는 활성 `pg_cron` 작업 하나, `pg_net`을 참조하는 `public.notify_landit_referral` 트리거, `supabase_functions`의 함수에 연결된 별도 웹훅 트리거가 있다. 시험 DB에서는 알림을 비활성화하며, 운영 이전 시 웹훅, 추천인 위험 알림 및 스케줄의 실행 위치를 결정한다.
+- 원본의 푸시 조회 계정은 56개 RLS 정책과 연동된다. 이 계정의 실제 로그인과 `SELECT` 권한, 운영 애플리케이션의 DB 역할·권한은 전환 전 운영 계약과 대조한다.
+- 서비스 공개 IP와 TLS 인증서, AWS WAF의 차단·요청 제한 대체, Caddy 뒤 클라이언트 IP 판별, 기존 운영 SSM 환경 변수의 매핑, 애플리케이션 CI 배포 대상 변경은 트래픽 전환 계획에서 검증한다.
+
+## 현재 운영 이미지로 먼저 전환
+
+- BE `v1.10.5`와 AI `v1.9.10`의 운영 ECS 이미지 다이제스트로 EC2 최초 기동을 준비한다. BE·AI 릴리스 PR은 전환과 안정화 이후 병합한다. 첫 BE 업그레이드에서는 기존 `v1.10.5`에 슬롯별 예약 작업 제어가 없으므로 구버전 예약 작업 종료 후 새 슬롯이 활성화되도록 검증한다.
+- 운영 Supabase의 `public` 테이블은 132개이고 인덱스를 포함해 약 725 MiB다. Flyway는 V189다. 성공한 시험 복원의 SSM 실행은 2분 55초였고 테이블별 행 수가 일치했다. 실제 작업창에는 이 시간에 더해 쓰기 중지, 애플리케이션 검증 및 DNS 전환을 포함한다.
+- 한 번의 전환에는 작업창에서 쓰기를 중지하고 새 스냅샷을 검증한 빈 운영 RDS `landit` DB에 복원하는 방식을 사용한다. ECS·예약 작업·웹훅 등 원본에 쓰는 경로를 모두 중지한 뒤 덤프한다. 복원 직후 테이블별 행 수, Flyway 이력, 시퀀스 값, 앱·푸시 조회 계정 권한을 대조한다. 기존 `landit_rehearsal`은 V190·V191 검증에 사용한 시험본으로 유지한다.
+- 작업창을 더 줄여야 하면 Supabase에서 RDS로 단방향 논리 복제를 별도 리허설한다. 읽기 전용 조회 기준 `wal_level=logical`, 사용 중인 슬롯 0개, 슬롯 상한 5개, 복제 식별자가 없는 `public` 테이블 0개다. 실제 복제 계정·네트워크·지연은 별도로 확인한다. PostgreSQL 17의 논리 복제는 DDL과 시퀀스를 옮기지 않으므로 별도로 맞추고, 원본 쓰기 중지 후 남은 변경이 모두 반영됐는지 확인한다. Supabase 전용 웹훅·위험 알림·스케줄도 별도 이관 항목이다.
+- 운영 앱의 쓰기를 허용하기 전까지 실패하면 기존 ECS·Supabase 경로를 복구한다. RDS에 운영 쓰기가 들어간 이후에 원본으로 복귀하려면 새로운 쓰기의 역방향 반영과 데이터 검증을 먼저 수행한다.
+
+### SSM·IAM 적용 후 운영 이미지 리허설
+
+- 현재 ECS BE `:6`과 AI `:5`의 이미지 다이제스트로 전환 EC2를 확인했다. 격리 Caddy의 BE DB readiness와 AI `/health`가 통과했다. 확인 시 가용 메모리는 1,936 MiB였다. BE는 `landit_rehearsal`에 TLS로 연결했고, 테스트 계정에는 `public` 테이블 쓰기 권한이 없었다. 알림·썸네일 큐 소비를 끄고 관리 DB의 Flyway는 실행하지 않았다. 해당 시험 DB는 V191이며 실패한 이력은 0건이다.
+- 최종 `landit`은 TLS 읽기 전용 점검 기준 `public` 테이블·시퀀스·Flyway 이력이 없다. 원본은 시퀀스 82개이며, 활성 Supabase 웹훅 2개와 추천인 트리거·스케줄이 각 1개다. RDS에는 `pg_cron`이 제공되고 `pg_net`은 제공되지 않는다. 시험 RDS에 복원한 56개 푸시 RLS 정책의 `landit_push_reader`는 로그인 불가 상태이므로 운영용 로그인과 권한 검증이 필요하다.
+- 임시 컨테이너와 DB 조회 터널을 종료했다. 기존 시험 스택은 계속 실행 중이다. 운영 ECS의 BE·AI 리비전이 그대로이고 공개 BE·AI 헬스체크는 모두 HTTP 200이었다. 최종 복원, 공개 DNS, 운영 큐 인계는 진행 전이다.
+
+### 푸시와 알림 연동 준비
+
+- 기존 Supabase 푸시 계정으로 직접 조회해 읽기 전용, `public` 테이블 SELECT 132개와 쓰기 권한 0개를 확인했다. `cutover/push-reader.sql`을 시험 RDS의 트랜잭션 안에서 실행하고 푸시 역할로 조회했다. 테스트 스키마의 테이블 133개를 읽을 수 있고 쓰기 권한은 0개이며 132개 테이블에 RLS가 적용됐다. 모든 테스트 권한 변경은 롤백했다. 최종 복원 후 실제 로그인 비밀번호는 별도로 발급한다. BE의 푸시 JDBC 연결은 Java 신뢰 저장소를 사용하므로 RDS CA를 기존 JVM 신뢰 저장소에 추가한 상태에서 `verify-full`과 관리자 대상 조회를 검증한다.
+- 운영 DB의 활성 웹훅은 `mailbox_feedback` INSERT와 `survey_responses` INSERT·UPDATE다. 별도 추천인 등록 트리거와 매분 `landit-referral-risk` 작업이 있다. 편지함·추천인 등록과 위험 알림용 RDS 트랜잭션 큐, EC2 발송기, 매분 타이머는 `landit-alerts` 로컬 커밋 `a17783d`에 준비했다. 기존 Vercel 수신 계약은 유지한다. 로컬 PostgreSQL 회귀 세 가지, Node 169건과 발송기 모의 3건을 통과했다. 실제 전송은 실행 전이다.
+- 최종 복원에는 `landit_alerts.referral_risk_rule`과 `referral_risk_event`의 설정·이력도 포함한다. 소스에서 아직 대기 중인 요청은 쓰기 중지 뒤 마저 처리하거나 결과를 기록하며 대상 큐에 보내기 위해 재생성하지 않는다. 최종 전환 때 기존 Supabase 편지함·추천인 트리거와 추천인 스케줄의 중지 이후 EC2 발송기를 시작한다.
+- 설문 이탈 알림 코드는 `landit-alerts` main에 있으나 운영 Supabase의 활성 cron 목록에는 없다. 현재 운영에서 실행되는 설문 완료 알림만 전환 검증에 포함한다.
+
+### 설문 저장·사용자 연계와 일일 지표
+
+- FE `main` `48160cf`의 `/api/survey`는 BE에서 로그인 토큰을 검증한 뒤 토큰의 사용자 ID를 Supabase `survey_responses.user_id`에 저장한다. 2026-11-26 읽기 전용 검사에서 응답 82건이 모두 `user_profile.id`와 연결됐다. 외래 키는 없고 `(user_id, response_id)` 유니크 제약으로 중간 저장을 갱신한다.
+- 설문과 운영 업무 데이터가 서로 다른 DB에 있으면 사용자 ID 자체는 유지되지만, 관리자 푸시 SQL에서 `user_profile`과 `survey_responses`를 같은 DB에서 조인할 수 없다. 설문 데이터를 기존 사용자 ID와 응답 ID 그대로 RDS에 복원하고 저장 요청도 같은 RDS에 보내는 방식으로 함께 이관한다.
+- FE의 `/api/survey` 요청·응답 계약, 토큰 기반 사용자 확인, 구버전 일괄 제출, `(user_id, response_id)` 기반 중간 저장과 완료 전환을 보존한다. RDS 연결은 인증된 서버 경로에서 처리한다. 처음부터 완료 상태로 제출하거나 임시 응답을 완료할 때 기존 완료 알림을 한 번만 큐에 넣는다. 복원한 응답은 소급 전송하지 않는다. 현재 외래 키가 없으므로 사용자 삭제 정책을 확인한 뒤 추가 여부를 결정한다.
+- `landit-alerts`의 일일 스트릭·시나리오 최다 조회는 Supabase `metrics_records` RPC를 부른다. 이 집계와 응답 형식을 유지해 RDS를 읽는 전용 경로에 붙인다. 푸시 SQL과 일일 지표가 모두 최종 데이터에서 조인·집계되는지 확인한 뒤 원본 Supabase 쓰기와 읽기 경로를 전환한다.
+- 현재 운영 BE `v1.10.5`부터 전환하는 순서를 유지하기 위해 설문 저장과 지표 조회를 EC2의 별도 연동 서비스에 구현했다. Caddy의 `/internal/rds/survey`와 `/internal/rds/metrics`만 Docker 브리지의 서비스로 보낸다. 각각 별도 서버 토큰과 RDS 역할을 사용하며 PostgreSQL 인바운드 규칙은 유지한다.
+- 운영 데이터에서 일반 설문 76건과 결제자 설문 6건을 확인했다. 일반 설문 75건은 구버전 일괄 제출이라 `response_id`가 없다. 최신 응답은 사용자별 응답 ID와 유형을 보존한다. 동일 응답 ID의 유형 변경과 다른 사용자 덮어쓰기를 막고, 완료 이후 늦게 도착한 임시 저장은 기존 완료 상태를 유지한다.
+- FE의 로컬 커밋 `c01c7e3`은 설문 API의 요청·응답과 인증을 유지하며 RDS 연동 주소와 토큰을 함께 설정하면 쓰기 경로를 바꾼다. 최종 스냅샷 전에 FE를 `LANDIT_SURVEY_WRITES_PAUSED=true`로 배포해 설문 쓰기를 포함해서 원본 변경을 중지한다. EC2 연동 서비스의 HTTPS와 RDS 응답을 검증한 뒤 RDS 설정을 적용하고 중지 플래그를 해제한다.
+- `landit-alerts` 커밋 `1cc5187`까지 설문 완료 큐, RDS 연동 서비스와 일일·주간 지표 읽기를 구현했다. 슈퍼베이스 원본 자료를 복원한 뒤 설문 쓰기 함수와 지표 집계의 전용 권한을 설치한다. FE 설문 84건 및 타입 검사, 알림 Node 테스트 171건, 모의 HTTP·발송 7건, 로컬 PostgreSQL과 실제 인증된 HTTP→DB 연동 테스트, Caddy 설정 변환을 통과했다. 운영에 적용하거나 발송 설정을 활성화하기 전이다.
+- 2026-11-26 FE 서버가 EC2 HTTPS API를 호출하는 경로를 선택했다. RDS PostgreSQL 17.11의 합성 데이터 전용 DB에서 TLS `verify-full`로 설문·지표 전용 계정을 연결했다. 다른 경로의 토큰 거부, 일반·결제자 응답과 사용자 조인, 중간·최종 저장, 중복 완료 금지, 응답 ID 충돌 방지, 완료 알림 각 1건, 읽기 전용 지표 결과를 확인했다. 임시 DB와 역할을 제거했다. 별도 루프백 Caddy HTTPS 검증에서 두 연동 경로의 Authorization 전달과 기존 BE 라우트 보존을 확인했다. 운영 데이터 연결과 트래픽 전환은 진행 전이다.
+- FE 동작은 Supabase 저장을 유지한다. [알림 #30](https://github.com/Aragornnnnnn/landit-alerts/pull/30)의 `rds/` 실행 파일을 전환 EC2에 설치했다. 설치본 `2f2174a`와 PR의 `rds/` 트리는 같으며, Python 3.11.18, `pip check`, 두 Python 파일의 해시를 확인했다. 연동 서비스와 알림 타이머는 `inactive/disabled`이고 단발 알림 서비스는 `inactive/static`이다. 포트 18092와 운영 환경 파일은 아직 사용하지 않는다.
+
+## 2026-11-25 검증 결과
+
+- 격리 root의 `terraform plan`에 추가 14개, 변경·삭제 0개를 확인했고, 저장한 plan으로 적용했다. 운영 EC2는 SSM Online으로 등록됐고 Docker Compose와 PostgreSQL 클라이언트가 준비됐다. RDS PostgreSQL 17.11은 `available` 상태이며, 백업 보존 7일과 삭제 보호를 확인했다.
+- RDS는 공인 엔드포인트를 발급받았다. 보안 그룹에는 운영 EC2 보안 그룹을 출발지로 하는 `5432` 규칙 한 개가 있다. 외부 CIDR 규칙은 0개다.
+- 운영 Supabase CA와 AWS RDS CA로 확인한 TLS 경로로 시험 복원했다. 원본 스냅샷과 `public` 테이블 132개의 행 수가 모두 일치했다. Supabase 관리 트리거 2개를 시험에서 제외했고, 추천인 위험 알림 트리거는 시험 DB에서 비활성화했다. 최종 이관 대상 `landit` DB와 별도로 `landit_rehearsal` DB를 유지한다.
+- 복원된 Flyway 이력은 버전 189, 성공 210건, 실패 0건이다. 현재 운영 BE 이미지로 Flyway가 211개 마이그레이션을 검증했고 버전 189에서 추가 적용할 항목이 없음을 확인했다.
+- SSM Run Command로 시험 Compose를 실행했고 Caddy 루프백에서 BE `/actuator/health`와 AI `/health`가 모두 응답했다. 기존 운영 ECS의 BE·AI는 각각 실행 1, 목표 1, 배포 완료 상태를 확인했다.
+- 시험 후 한시적 IAM 정책 한 개만 제거했다. 최종 `terraform plan -detailed-exitcode`는 0과 무변경을 반환했다.
+
+## 운영 BE 재배포
+
+- BE 배포 워크플로의 `target=ec2`는 SHA 태그로 ECR 이미지 다이제스트를 조회하고 운영 EC2에만 허용된 `prod-landit-ec2-deploy-api` SSM 문서를 실행한다. GitHub의 `prod` 환경 변수 `EC2_INSTANCE_ID`가 대상이다. 기존 ECS 경로는 기본값으로 계속 사용한다.
+- 시험 스택이 남았다면 운영 호스트에서 `docker compose -p landit-rehearsal --env-file /run/landit-rehearsal/compose-cleanup.env -f /run/landit-rehearsal/compose.yml down`으로 종료한다. `compose-cleanup.env`에는 보존된 시험 BE·AI 이미지 참조를 `API_IMAGE`와 `AI_IMAGE`로 넣는다. 이후 `rollout/prepare-proxy.sh`를 root로 실행한다. AI는 `landit-prod` 네트워크의 `landit-ai:8000`에서 독립적으로 동작한다. Caddy 관리 포트는 컨테이너 내부에 두고 라우트 디렉터리를 마운트한다.
+- 최초 전환은 최종 DB 동기화와 기존 ECS의 DB 쓰기·큐 소비 종료 후 호스트에서 `bash rollout/deploy-api.sh sha256:<digest> --bootstrap`으로 시작한다. 이 모드에서는 로컬 프록시로 첫 슬롯을 검증한다. 공개 DNS·TLS를 전환한 뒤 GitHub Actions의 `target=ec2`로 같은 다이제스트 응답을 확인한다. 평상시 GitHub Actions 배포에는 초기 전환 예외를 제공하지 않는다.
+- 호스트의 `/opt/landit/api.env`와 `migration.env`는 root만 읽을 수 있게 두고 동일한 운영 RDS의 `landit`에 연결한다. `DB_URL`에 `sslmode=verify-full`과 `sslrootcert=/run/landit/rds-ca.pem`을 지정하고, 앱과 마이그레이션의 사용자·비밀번호는 각 역할에 맞춰 설정한다. `/opt/landit/rds-ca.pem`에서 AWS CA를 제공한다. Flyway는 EC2에서 실행하므로 러너에 PostgreSQL 인바운드를 열 필요가 없다.
+- 배포는 호스트 잠금으로 직렬화한다. 호환되는 Flyway 변경을 먼저 적용하고, 빈 슬롯에서 새 BE의 `readinessState`와 DB health를 확인한다. Caddy reload 후 내부·공개 주소의 응답에서 새 이미지 다이제스트를 확인한 다음 활성 슬롯을 바꾸고 이전 BE에 SIGTERM을 보낸다. 검증 실패 시 이전 Caddy 라우트를 복구하고, 복귀를 확인하지 못하면 두 컨테이너를 유지한다.
+- 배포 완료 뒤 활성·직전 슬롯이 참조하지 않는 BE 배포 이미지를 정리하고 컨테이너 로그를 순환시킨다. 이전 다이제스트로 복구하려면 승인된 운영 권한으로 `prod-landit-ec2-deploy-api` SSM 문서의 `ImageDigest`에 이전 값을 넘긴다. 후보가 기존 스키마와 호환되는지 먼저 확인한다.
+- Caddy는 `landit-prod` 네트워크의 `172.30.86.2`를 사용하고 나머지 컨테이너는 `172.30.86.128/25`에서 동적으로 주소를 받는다. BE는 재배포 시 Caddy의 단일 주소를 신뢰 프록시로 설정한다. 운영 호스트의 기존 네트워크와 충돌이 없는지 확인한다.
+- 두 슬롯 모두 RDS에서 Hikari 최대 10개와 최소 유휴 1개를 사용한다. 예약 작업은 공유 활성 슬롯 파일과 파일 잠금으로 인계한다. SQS는 두 소비자가 잠시 공존하므로 기존 메시지 선점과 중복 방지 계약을 유지한다. 최초 운영 전환 전에는 실제 큐 환경에서 전환과 롤백을 각각 검증한다.
+- 준비 EC2의 역할은 현재 ECR pull과 SSM 접속을 제공한다. 운영 컨테이너가 실제 SQS·S3 등에 접근할 최소 권한과 자격 증명 전달 방법을 정하고, IMDSv2 hop limit 1에서 Docker 브리지 컨테이너의 AWS 호출이 성공하는지 실제 역할로 확인한다.
+- 최초 운영 전환과 두 슬롯 배포 전에 운영 수준의 요청을 유지한 채 BE 2개와 AI 1개가 겹치는 동안 가용 메모리와 요청 오류를 측정한다. 앱의 프록시 신뢰 설정, 도메인별 TLS, 기존 WAF 동작의 대체 여부는 운영 전환 검증에서 확인한다.
+- 로컬에서 Caddy 2.8.4 reload 중 기존 요청은 이전 슬롯에서 완료되고 새 요청은 새 슬롯으로 도달했다. 호스트 스크립트의 전환·실패 복구 테스트와 SSM 결과 검증, BE Gradle 검사, Terraform validate를 통과했다. EC2 전환 root의 plan은 기존 EC2·RDS를 보존하면서 SSM 배포 문서와 권한을 추가하고, 호스트의 상시 SSM 관리형 정책을 Parameter Store 조회가 없는 전송 권한으로 교체한다.
+
+## 운영 AI 배포
+
+- AI의 `Deploy prod worker`는 기본 `target=ecs`를 유지한다. EC2 전환 root를 적용한 뒤 결과의 `worker_ec2_deploy_role_arn`과 전환 EC2 인스턴스 ID를 AI 저장소의 `PROD_WORKER_EC2_ROLE_ARN`과 `PROD_WORKER_EC2_INSTANCE_ID` 변수에 설정한다. 전용 역할은 AI `main`의 GitHub OIDC만 신뢰하며, 운영 워커 이미지 조회와 이 EC2의 `prod-landit-ec2-deploy-worker` 실행을 허용한다.
+- 운영 프로세스를 띄우기 전에 `prepare-proxy.sh`로 Caddy를 준비하고, 운영 AI 환경 변수는 root만 읽을 수 있는 `/opt/landit/ai.env`에 둔다. 첫 실행과 전환 리허설 동안 `ROLEPLAY_THUMBNAIL_CONSUMER_ENABLED=false`를 유지한다. ECS의 기존 소비자가 종료되고 SQS·S3 자격 증명과 BE 내부 API 접속을 확인한 뒤 이 값을 활성화해 같은 릴리스를 다시 배포한다.
+- 기존 버전의 EC2 배포는 GitHub Release가 기록한 검증 이미지 다이제스트를 재사용한다. 첫 기동과 재배포 모두 호스트 루프백의 Caddy `/health` 및 실제 컨테이너 이미지로 확인한다. 교체와 롤백 동안 AI 응답은 잠시 중단될 수 있다. AI와 BE는 호스트 잠금을 공유하므로 두 배포를 차례로 실행한다.
+- 새 AI가 기동하거나 헬스체크를 통과하지 못하면 보존한 직전 컨테이너를 기존 이름으로 복구한다. 이미 성공한 배포를 되돌릴 때는 `target=ec2`에서 이전 `ai-v` 버전을 선택한다. 공개 DNS·HTTPS와 운영 큐 소비 검증은 전환 단계에서 수행한다.
+- 호스트 모의 검증에서 최초 기동, 정상 교체, 헬스체크 실패 후 복귀, 최초 기동 실패 시 정리, 중단된 교체 재시도를 확인했다. 전환 root의 Terraform plan에는 기존 BE 변경과 함께 AI의 SSM 문서·배포 역할·권한이 포함되며 EC2와 RDS 변경은 없다.
+- 2026-11-25 승인한 저장 plan을 적용했다. SSM 문서와 IAM 리소스 6개를 추가하고 기존 SSM 관리 정책 연결 1개를 전송 전용 정책으로 교체했다. 적용 후 Terraform plan은 무변경이고, BE와 AI의 SSM 문서는 모두 `Active`, 전환 EC2 에이전트는 `Online`이다. 기존 운영 ECS의 BE와 AI는 각각 기존 리비전으로 실행 중이며 RDS는 `available`이다.

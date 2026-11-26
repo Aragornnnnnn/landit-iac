@@ -1,8 +1,12 @@
-# ECS API의 체험 알림 이메일 설정과 최소 발송·예약 권한을 정의한다.
+# API의 체험 알림 이메일 설정과 ECS 전용 발송·예약 권한을 정의한다.
 resource "aws_sesv2_configuration_set" "transactional" {
-  count = var.ecs_platform_enabled ? 1 : 0
+  count = var.ecs_platform_enabled || var.transactional_email_enabled ? 1 : 0
 
   configuration_set_name = "${local.name_prefix}-transactional"
+
+  # AWS가 반환하는 기본 전송 옵션을 보존한다.
+  delivery_options {}
+
   reputation_options {
     reputation_metrics_enabled = true
   }
@@ -12,7 +16,7 @@ resource "aws_sesv2_configuration_set" "transactional" {
 }
 
 resource "aws_sesv2_configuration_set_event_destination" "email_metrics" {
-  count = var.ecs_platform_enabled ? 1 : 0
+  count = var.ecs_platform_enabled || var.transactional_email_enabled ? 1 : 0
 
   configuration_set_name = aws_sesv2_configuration_set.transactional[0].configuration_set_name
   event_destination_name = "delivery-metrics"

@@ -9,6 +9,7 @@ locals {
   name_prefix     = "${var.environment}-${var.project_name}"
   ssm_path        = trimsuffix(var.parameter_store_path, "/")
   app_bucket_name = "${local.name_prefix}-app-${data.aws_caller_identity.current.account_id}"
+  waf_acl_name    = "${local.name_prefix}-alb-count"
   enable_https    = var.ecs_platform_enabled && var.alb_certificate_arn != null
   enable_api_host_rule = (
     local.enable_https &&
@@ -554,7 +555,7 @@ resource "aws_glue_catalog_table" "waf_logs" {
     "projection.log_time.format"        = "yyyy/MM/dd/HH/mm"
     "projection.log_time.interval"      = "1"
     "projection.log_time.interval.unit" = "MINUTES"
-    "storage.location.template"         = "s3://${aws_s3_bucket.waf_logs[0].bucket}/AWSLogs/${data.aws_caller_identity.current.account_id}/WAFLogs/${var.aws_region}/${aws_wafv2_web_acl.alb[0].name}/$${log_time}"
+    "storage.location.template"         = "s3://${aws_s3_bucket.waf_logs[0].bucket}/AWSLogs/${data.aws_caller_identity.current.account_id}/WAFLogs/${var.aws_region}/${local.waf_acl_name}/$${log_time}"
   }
 
   partition_keys {
@@ -563,7 +564,7 @@ resource "aws_glue_catalog_table" "waf_logs" {
   }
 
   storage_descriptor {
-    location      = "s3://${aws_s3_bucket.waf_logs[0].bucket}/AWSLogs/${data.aws_caller_identity.current.account_id}/WAFLogs/${var.aws_region}/${aws_wafv2_web_acl.alb[0].name}/"
+    location      = "s3://${aws_s3_bucket.waf_logs[0].bucket}/AWSLogs/${data.aws_caller_identity.current.account_id}/WAFLogs/${var.aws_region}/${local.waf_acl_name}/"
     input_format  = "org.apache.hadoop.mapred.TextInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
 
@@ -752,9 +753,9 @@ resource "aws_lb" "api" {
 }
 
 resource "aws_wafv2_web_acl" "alb" {
-  count = var.waf_count_enabled ? 1 : 0
+  count = var.ecs_platform_enabled && var.waf_count_enabled ? 1 : 0
 
-  name  = "${local.name_prefix}-alb-count"
+  name  = local.waf_acl_name
   scope = "REGIONAL"
 
   default_action {
@@ -883,7 +884,7 @@ resource "aws_wafv2_web_acl_association" "alb" {
 }
 
 resource "aws_wafv2_web_acl_logging_configuration" "alb" {
-  count = var.waf_count_enabled ? 1 : 0
+  count = var.ecs_platform_enabled && var.waf_count_enabled ? 1 : 0
 
   resource_arn            = aws_wafv2_web_acl.alb[0].arn
   log_destination_configs = [aws_s3_bucket.waf_logs[0].arn]

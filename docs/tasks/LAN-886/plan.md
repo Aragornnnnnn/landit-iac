@@ -69,23 +69,31 @@
 
 ## 운영 BE 재배포
 
-- BE 배포 워크플로의 `target=ec2`는 SHA 태그로 ECR 이미지 다이제스트를 조회하고 운영 EC2에만 허용된 `prod-landit-ec2-deploy-api` SSM 문서를 실행한다. GitHub의 `prod` 환경 변수 `EC2_INSTANCE_ID`가 대상이다. 기존 ECS 경로는 기본값으로 계속 사용한다.
-- 시험 스택이 남았다면 운영 호스트에서 `docker compose -p landit-rehearsal --env-file /run/landit-rehearsal/compose-cleanup.env -f /run/landit-rehearsal/compose.yml down`으로 종료한다. `compose-cleanup.env`에는 보존된 시험 BE·AI 이미지 참조를 `API_IMAGE`와 `AI_IMAGE`로 넣는다. 이후 `rollout/prepare-proxy.sh`를 root로 실행한다. AI는 `landit-prod` 네트워크의 `landit-ai:8000`에서 독립적으로 동작한다. Caddy 관리 포트는 컨테이너 내부에 두고 라우트 디렉터리를 마운트한다.
-- 최초 전환은 최종 DB 동기화와 기존 ECS의 DB 쓰기·큐 소비 종료 후 호스트에서 `bash rollout/deploy-api.sh sha256:<digest> --bootstrap`으로 시작한다. 이 모드에서는 로컬 프록시로 첫 슬롯을 검증한다. 공개 DNS·TLS를 전환한 뒤 GitHub Actions의 `target=ec2`로 같은 다이제스트 응답을 확인한다. 평상시 GitHub Actions 배포에는 초기 전환 예외를 제공하지 않는다.
-- 호스트의 `/opt/landit/api.env`와 `migration.env`는 root만 읽을 수 있게 두고 동일한 운영 RDS의 `landit`에 연결한다. `DB_URL`에 `sslmode=verify-full`과 `sslrootcert=/run/landit/rds-ca.pem`을 지정하고, 앱과 마이그레이션의 사용자·비밀번호는 각 역할에 맞춰 설정한다. `/opt/landit/rds-ca.pem`에서 AWS CA를 제공한다. Flyway는 EC2에서 실행하므로 러너에 PostgreSQL 인바운드를 열 필요가 없다.
-- 배포는 호스트 잠금으로 직렬화한다. 호환되는 Flyway 변경을 먼저 적용하고, 빈 슬롯에서 새 BE의 `readinessState`와 DB health를 확인한다. Caddy reload 후 내부·공개 주소의 응답에서 새 이미지 다이제스트를 확인한 다음 활성 슬롯을 바꾸고 이전 BE에 SIGTERM을 보낸다. 검증 실패 시 이전 Caddy 라우트를 복구하고, 복귀를 확인하지 못하면 두 컨테이너를 유지한다.
-- 배포 완료 뒤 활성·직전 슬롯이 참조하지 않는 BE 배포 이미지를 정리하고 컨테이너 로그를 순환시킨다. 이전 다이제스트로 복구하려면 승인된 운영 권한으로 `prod-landit-ec2-deploy-api` SSM 문서의 `ImageDigest`에 이전 값을 넘긴다. 후보가 기존 스키마와 호환되는지 먼저 확인한다.
-- Caddy는 `landit-prod` 네트워크의 `172.30.86.2`를 사용하고 나머지 컨테이너는 `172.30.86.128/25`에서 동적으로 주소를 받는다. BE는 재배포 시 Caddy의 단일 주소를 신뢰 프록시로 설정한다. 운영 호스트의 기존 네트워크와 충돌이 없는지 확인한다.
-- 두 슬롯 모두 RDS에서 Hikari 최대 10개와 최소 유휴 1개를 사용한다. 예약 작업은 공유 활성 슬롯 파일과 파일 잠금으로 인계한다. SQS는 두 소비자가 잠시 공존하므로 기존 메시지 선점과 중복 방지 계약을 유지한다. 최초 운영 전환 전에는 실제 큐 환경에서 전환과 롤백을 각각 검증한다.
-- 준비 EC2의 역할은 현재 ECR pull과 SSM 접속을 제공한다. 운영 컨테이너가 실제 SQS·S3 등에 접근할 최소 권한과 자격 증명 전달 방법을 정하고, IMDSv2 hop limit 1에서 Docker 브리지 컨테이너의 AWS 호출이 성공하는지 실제 역할로 확인한다.
-- 최초 운영 전환과 두 슬롯 배포 전에 운영 수준의 요청을 유지한 채 BE 2개와 AI 1개가 겹치는 동안 가용 메모리와 요청 오류를 측정한다. 앱의 프록시 신뢰 설정, 도메인별 TLS, 기존 WAF 동작의 대체 여부는 운영 전환 검증에서 확인한다.
+- 이 변경은 기존 운영 호스트에 설치할 SSM 문서 두 개만 다룬다. 이 브랜치에서 전환 root 전체를 적용하면 별도로 반영한 Caddy 공개 인바운드와 런타임 역할이 삭제될 수 있다. `environments/prod/ec2-transition`에서 `terraform plan -target=aws_ssm_document.deploy_api -target=aws_ssm_document.deploy_worker -out=<보호된-plan-경로>`로 두 문서의 제자리 갱신만 있는지 확인한 뒤 승인한 저장 plan을 적용한다. 전체 root 적용에는 실제 운영 IaC 변경을 먼저 합친다.
+- 운영 BE·AI는 Caddy 직결 EC2에 있고 업무 DB는 RDS다. 정기 재배포에서는 이미 설치된 공개 Caddy와 TLS 볼륨을 사용한다. 최초 설치용 `prepare-proxy.sh`를 다시 실행하면 기본 설정으로 바뀔 수 있다.
+- BE 워크플로는 `main`에서 버전을 받아 SHA 태그의 ECR 다이제스트를 `prod-landit-ec2-deploy-api`에 전달한다. 운영 실행 전 GitHub `prod` 환경에 `EC2_INSTANCE_ID`를 등록하고 갱신된 SSM 문서를 적용한다. BE와 AI는 EC2 배포 잠금을 공유하므로 앞선 작업이 끝나면 다음 작업을 실행한다.
+- 첫 릴리스 전에 root 전용 `/opt/landit/migration.env`의 DB_URL을 `api.env`와 같은 운영 RDS `landit` 및 TLS verify-full로 설정한다. 별도 Flyway 계정으로 V190의 기존 테이블 ALTER와 V191의 새 테이블·시퀀스 생성을 시험한다. 생성 역할의 기본 권한 또는 객체 권한으로 앱 계정의 읽기·쓰기·시퀀스 접근이 되는지도 시험 DB에서 확인한다. DB readiness는 신규 기능의 권한까지 검사하지 않는다.
+- 앱 슬롯은 API 전용 순환 AWS 자격 증명과 RDS PEM·JVM 신뢰 저장소를 읽기 전용 마운트한다. Flyway는 배포당 마이그레이션 프로세스 한 개에서 실행한다. 새 슬롯의 DB readiness, Caddy 내부 및 공개 응답 다이제스트를 확인한 뒤 기존 프로세스를 완전히 종료하고 예약 작업을 넘긴다. 새 스케줄러는 인계까지 대기한다.
+- 전환 검증 실패 시 이전 라우트로 복귀한다. 인계 파일 쓰기가 실패하면 기존 프로세스를 다시 시작하고 readiness를 확인한 뒤 복귀한다. 이미 완료된 배포를 슬롯 계약이 있는 이미지로 되돌릴 때에는 DB 호환성을 확인한 후 직전 다이제스트로 SSM 문서를 실행한다.
+- 첫 릴리스에서 이전 v1.10.5는 슬롯 계약이 없어 다이제스트 재배포가 거부된다. 작업창에 호스트 배포 잠금을 잡고 직전 슬롯의 보존된 컨테이너와 다이제스트를 대조한다. 현재 BE를 완전히 정지한 뒤 직전 컨테이너를 시작하고 로컬 DB readiness를 확인한다. Caddy 라우트와 활성 슬롯을 그 컨테이너로 복원하고 공개 readiness·다이제스트 및 큐 소비를 확인한다. 이 수동 복구 동안 API가 중단될 수 있으며 DB 스키마는 유지된다.
+- 최초 릴리스에서 두 BE와 AI가 공존할 때 가용 메모리와 오류율을 관측한다. 구·신 BE의 SQS 메시지 선점과 중복 방지 및 푸시 대상 조회도 확인한다.
+
 - 로컬에서 Caddy 2.8.4 reload 중 기존 요청은 이전 슬롯에서 완료되고 새 요청은 새 슬롯으로 도달했다. 호스트 스크립트의 전환·실패 복구 테스트와 SSM 결과 검증, BE Gradle 검사, Terraform validate를 통과했다. EC2 전환 root의 plan은 기존 EC2·RDS를 보존하면서 SSM 배포 문서와 권한을 추가하고, 호스트의 상시 SSM 관리형 정책을 Parameter Store 조회가 없는 전송 권한으로 교체한다.
 
 ## 운영 AI 배포
 
-- AI의 `Deploy prod worker`는 기본 `target=ecs`를 유지한다. EC2 전환 root를 적용한 뒤 결과의 `worker_ec2_deploy_role_arn`과 전환 EC2 인스턴스 ID를 AI 저장소의 `PROD_WORKER_EC2_ROLE_ARN`과 `PROD_WORKER_EC2_INSTANCE_ID` 변수에 설정한다. 전용 역할은 AI `main`의 GitHub OIDC만 신뢰하며, 운영 워커 이미지 조회와 이 EC2의 `prod-landit-ec2-deploy-worker` 실행을 허용한다.
-- 운영 프로세스를 띄우기 전에 `prepare-proxy.sh`로 Caddy를 준비하고, 운영 AI 환경 변수는 root만 읽을 수 있는 `/opt/landit/ai.env`에 둔다. 첫 실행과 전환 리허설 동안 `ROLEPLAY_THUMBNAIL_CONSUMER_ENABLED=false`를 유지한다. ECS의 기존 소비자가 종료되고 SQS·S3 자격 증명과 BE 내부 API 접속을 확인한 뒤 이 값을 활성화해 같은 릴리스를 다시 배포한다.
-- 기존 버전의 EC2 배포는 GitHub Release가 기록한 검증 이미지 다이제스트를 재사용한다. 첫 기동과 재배포 모두 호스트 루프백의 Caddy `/health` 및 실제 컨테이너 이미지로 확인한다. 교체와 롤백 동안 AI 응답은 잠시 중단될 수 있다. AI와 BE는 호스트 잠금을 공유하므로 두 배포를 차례로 실행한다.
-- 새 AI가 기동하거나 헬스체크를 통과하지 못하면 보존한 직전 컨테이너를 기존 이름으로 복구한다. 이미 성공한 배포를 되돌릴 때는 `target=ec2`에서 이전 `ai-v` 버전을 선택한다. 공개 DNS·HTTPS와 운영 큐 소비 검증은 전환 단계에서 수행한다.
-- 호스트 모의 검증에서 최초 기동, 정상 교체, 헬스체크 실패 후 복귀, 최초 기동 실패 시 정리, 중단된 교체 재시도를 확인했다. 전환 root의 Terraform plan에는 기존 BE 변경과 함께 AI의 SSM 문서·배포 역할·권한이 포함되며 EC2와 RDS 변경은 없다.
+- AI의 `Deploy prod worker`는 `main`에서 버전만 입력해 EC2로 배포한다. 위의 SSM 문서 갱신 후 기존 역할의 `worker_ec2_deploy_role_arn`과 전환 EC2 인스턴스 ID를 AI 저장소의 `PROD_WORKER_EC2_ROLE_ARN`과 `PROD_WORKER_EC2_INSTANCE_ID` 변수에 설정한다. 전용 역할은 AI `main`의 GitHub OIDC만 신뢰하며, 운영 워커 이미지 조회와 이 EC2의 `prod-landit-ec2-deploy-worker` 실행을 허용한다.
+
+- 배포 호스트는 BE와 AI에 같은 잠금을 사용한다. 새 AI 이미지는 `im.landit.ai-rollout=slot-consumer-v1` 라벨이 필요하다. 후보 메모리 상한은 기동 직전 가용량에서 384MiB를 뺀 값이다. 가용량이 기존 AI 사용량과 768MiB 중 큰 값에 384MiB를 더한 수준에 못 미치면 후보를 시작하지 않는다. 기존 슬롯 종료 후에는 해제된 메모리만큼 새 슬롯 상한을 늘린다. 운영 부하에서 두 슬롯의 OOM·재시작·가용량을 확인한다.
+- 후보가 모델을 워밍업하고 HTTP 및 활성화된 썸네일 연동 검사를 통과하면 Caddy의 두 AI upstream을 전환한다. 호스트 루프백과 공개 HTTPS에서 해당 다이제스트를 확인한다. TLS·WAF·BE 설정은 기존 운영 Caddyfile에서 계속 읽는다. 검증 실패 시 이전 라우트를 복원하고 후보가 받은 요청도 드레인한다.
+- HTTP 라우트와 SQS 소비자는 따로 인계한다. 슬롯마다 수신부터 처리·ack까지 같은 잠금을 유지한다. 호스트가 기존 소비자의 잠금을 획득한 뒤 소유자를 바꾸고, 이전 컨테이너의 8000번 연결이 닫힌 후 종료한다. 드레인이 12분을 넘으면 두 슬롯을 보존한다. 같은 버전으로 재실행해 마지막으로 확인된 HTTP 슬롯에서 인계를 이어간다. 호환되는 이전 버전으로 복구할 때는 GitHub Actions에 그 릴리스 버전을 입력한다.
+
 - 2026-11-25 승인한 저장 plan을 적용했다. SSM 문서와 IAM 리소스 6개를 추가하고 기존 SSM 관리 정책 연결 1개를 전송 전용 정책으로 교체했다. 적용 후 Terraform plan은 무변경이고, BE와 AI의 SSM 문서는 모두 `Active`, 전환 EC2 에이전트는 `Online`이다. 기존 운영 ECS의 BE와 AI는 각각 기존 리비전으로 실행 중이며 RDS는 `available`이다.
+
+### 단일 AI에서 처음 전환하는 작업창
+
+1. 위의 두 SSM 문서만 대상으로 저장한 plan을 적용하고 AI PR의 슬롯 지원 버전을 준비한다. 실행 전 기존 `landit-ai`가 사용할 이미지 다이제스트와 현재 BE·AI 버전을 기록한다.
+2. 기존 AI에서 썸네일 소비가 켜져 있으면 운영 BE의 썸네일 신규 요청과 예약 재발행을 일시 중단한다. 기존 작업의 claim·complete·fail 콜백은 열어 둔다. 모든 발행 원천을 멈출 수 있는 작업창을 사용한다. SQS의 visible·in-flight·delayed가 연속해서 0이고 DB에서 `SELECT count(*) FROM roleplay_thumbnail WHERE status = 'GENERATING'`가 0인지 확인한다. BE에 보류된 미발행 작업은 발행 재개 후 확인한다.
+3. 운영 호스트의 root 셸에서 `install -d -m 0755 /opt/landit/ai-rollout` 후 `docker inspect --format '{{.Id}}' landit-ai > /opt/landit/ai-rollout/legacy-consumer-drained`를 실행한다. 승인은 해당 컨테이너 ID에 대해 30분간 유효하다. 발행 중지를 유지하면서 AI 운영 Actions를 실행한다. 현재 서비스가 없는 빈 호스트는 최초 기동에 `ai.env`의 큐 소비를 끈다. 기존 소비자 종료를 확인한 뒤 설정을 켜고 같은 버전을 다시 배포한다.
+4. Actions가 성공하면 배포 기록의 슬롯과 이미지, 공개 health 및 진행 중이던 HTTP 응답을 확인한다. 썸네일 발행을 재개하고 첫 작업이 BE에서 완료되며 큐 적체가 해소되는지 확인한다.
+5. 첫 전환에서 기존 `v1.9.10`으로 복귀해야 하면 별도 작업창에 발행을 중지하고 큐·DB를 위와 같이 비운다. 호스트 배포 잠금을 잡고 `consumer` 파일을 원자적으로 `none`으로 교체한 뒤 기존 소비 슬롯의 잠금을 획득해 처리 종료를 확인한다. 보존한 `landit-ai`의 다이제스트를 대조하고 시작한다. 운영 Caddy의 `routes/ai.caddy`를 해당 컨테이너와 이전 다이제스트로 바꿔 reload하고 루프백·공개 응답을 확인한다. 새 슬롯의 기존 연결을 비운 후 정지한다. `http.json`을 `["legacy", "<이전 다이제스트>", ""]`, `consumer`를 `legacy`로 원자적으로 기록하고 발행을 재개한다. 다음 블루/그린 배포에서는 2~3단계를 다시 수행한다.

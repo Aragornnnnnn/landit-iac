@@ -30,6 +30,11 @@ test -f "$lock_file"
 test -s "$runtime_dir/api.env"
 test -s "$runtime_dir/migration.env"
 test -s "$runtime_dir/rds-ca.pem"
+test -s "$runtime_dir/rds-cacerts"
+credentials="$runtime_dir/aws/api"
+test -s "$credentials/config"
+jq -e '.Expiration | sub("\\+00:00$";"Z") | sub("[.][0-9]+Z$";"Z") |
+  fromdateiso8601 > (now + 300)' "$credentials/credentials.json" >/dev/null
 
 api_url=$(sed -n 's/^DB_URL=//p' "$runtime_dir/api.env")
 migration_url=$(sed -n 's/^DB_URL=//p' "$runtime_dir/migration.env")
@@ -68,7 +73,7 @@ route_for() {
   if [[ "$slot" == none ]]; then
     printf 'respond 503\n'
   else
-    printf 'reverse_proxy %s:8080 {\n  header_down X-Landit-Image-Digest %s\n  stream_close_delay 2m\n}\n' \
+    printf 'reverse_proxy %s:8080 {\n  header_up X-Forwarded-For {client_ip}\n  header_down X-Landit-Image-Digest %s\n  stream_close_delay 2m\n}\n' \
       "$(slot_name "$slot")" "$image_digest"
   fi
 }
@@ -131,6 +136,7 @@ previous_route=$(route_for "$active" "$previous_digest")
 scratch=$(mktemp -d)
 candidate_started=false
 route_changed=false
+restart_previous=false
 committed=false
 
 finish() {
@@ -141,7 +147,10 @@ finish() {
   fi
   if [[ "$committed" == false ]]; then
     if [[ "$route_changed" == true ]]; then
-      if ! replace_file "$route_file" "$previous_route" || ! reload_proxy ||
+      if { [[ "$restart_previous" == true ]] &&
+          ! { docker start "$(slot_name "$active")" >/dev/null &&
+            wait_until_ready "http://127.0.0.1:$(slot_port "$active")/actuator/health/readiness" '' 60; }; } ||
+        ! replace_file "$route_file" "$previous_route" || ! reload_proxy ||
         { [[ "$active" != none ]] && ! wait_until_ready "$caddy_health" "$previous_digest" 10; }; then
         echo '이전 라우트의 복귀를 확인하지 못했습니다. 두 슬롯을 유지합니다.' >&2
         candidate_started=false
@@ -158,6 +167,11 @@ finish() {
 trap finish EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+# 구 슬롯을 종료한 직후 호스트가 중단되면 활성 기록을 기준으로 재시작한다.
+if [[ "$active" != none && "$(docker inspect --format '{{.State.Running}}' "$(slot_name "$active")" 2>/dev/null || true)" == false ]]; then
+  docker start "$(slot_name "$active")" >/dev/null
+fi
 
 # 중단된 이전 배포가 남긴 라우트를 확인하고 후보 슬롯을 건드리기 전에 복원한다.
 if [[ "$(cat "$route_file")" != "$previous_route" ]]; then
@@ -217,6 +231,11 @@ docker run -d --name "$candidate_name" --network landit-prod --restart unless-st
   --log-driver json-file --log-opt max-size=20m --log-opt max-file=3 \
   --publish "127.0.0.1:$(slot_port "$candidate"):8080" \
   --env-file "$runtime_dir/api.env" \
+  --env AWS_CONFIG_FILE=/run/landit-aws/config --env AWS_SHARED_CREDENTIALS_FILE=/dev/null \
+  --env AWS_PROFILE=default --env AWS_EC2_METADATA_DISABLED=true \
+  --env SPRING_FLYWAY_ENABLED=false --env SPRING_DATASOURCE_HIKARI_READONLY=false \
+  --mount "type=bind,src=$credentials,dst=/run/landit-aws,readonly" \
+  --mount "type=bind,src=$runtime_dir/rds-cacerts,dst=/run/landit/rds-cacerts,readonly" \
   --env SPRING_PROFILES_ACTIVE=prod --env "LANDIT_DEPLOYMENT_SLOT=$candidate" \
   --env "LANDIT_REFERRAL_TRUSTED_PROXY_CIDRS=$caddy_ip/32" \
   --env SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE=10 --env SPRING_DATASOURCE_HIKARI_MINIMUMIDLE=1 \
@@ -237,12 +256,20 @@ if [[ "$mode" == rollout ]]; then
   wait_until_ready "$public_health" "$digest" 15
 fi
 
+# v1.10.5는 슬롯 파일을 읽지 않는다. HTTP 검증 후 구 프로세스가 끝나야 새 스케줄러를 연다.
+if [[ "$active" != none ]]; then
+  previous_name=$(slot_name "$active")
+  # 조회 실패와 컨테이너 부재를 구분해야 구버전이 살아 있는 채 인계되지 않는다.
+  listed=$(docker ps --all --filter "name=^/${previous_name}$" --format '{{.Names}}')
+  if [[ -n "$listed" ]]; then
+    [[ "$listed" == "$previous_name" ]]
+    restart_previous=true
+    docker stop --time 120 "$previous_name" >/dev/null
+    [[ "$(docker inspect --format '{{.State.Running}}' "$previous_name")" == false ]]
+  fi
+fi
 replace_file "$active_file" "$candidate"
 committed=true
-if [[ "$active" != none ]]; then
-  sleep 5
-  stop_slot "$active"
-fi
 if ! docker image prune --all --force --filter label=im.landit.ec2-rollout=slot-scheduling-v1 >/dev/null; then
   echo '사용하지 않는 BE 이미지 정리에 실패했습니다.' >&2
 fi

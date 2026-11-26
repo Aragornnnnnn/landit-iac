@@ -21,8 +21,8 @@ resource "aws_ssm_document" "deploy_worker" {
       action = "aws:runShellScript"
       name   = "deployWorker"
       inputs = {
-        timeoutSeconds = "900"
-        runCommand     = [file("${path.module}/rollout/deploy-worker.sh")]
+        timeoutSeconds = "2400"
+        runCommand     = [join("\n", ["#!/bin/sh", "exec python3 - <<'LANDIT_AI_ROLLOUT'", file("${path.module}/rollout/deploy-worker.py"), "LANDIT_AI_ROLLOUT"])]
       }
     }]
   })

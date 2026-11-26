@@ -21,6 +21,13 @@ health_url=http://127.0.0.1:18080/health
 exec 9>"$runtime_dir/deploy-api.lock"
 flock -n 9 || { echo '다른 운영 배포가 실행 중입니다.' >&2; exit 1; }
 test -s "$runtime_dir/ai.env"
+credentials="$runtime_dir/aws/ai"
+for file in "$credentials/config" "$credentials/credentials.json"; do
+  test -s "$file"
+  test "$(stat -c '%u:%a' "$file")" = 0:600
+done
+jq -e '.Expiration | sub("\\+00:00$";"Z") | sub("[.][0-9]+Z$";"Z") |
+  fromdateiso8601 > (now + 300)' "$credentials/credentials.json" >/dev/null
 docker network inspect landit-prod >/dev/null
 
 container_image() {
@@ -30,7 +37,7 @@ container_image() {
 wait_until_healthy() {
   local attempt
   for ((attempt = 0; attempt < 20; attempt++)); do
-    if curl -fsS --connect-timeout 2 --max-time 3 "$health_url" 2>/dev/null |
+    if curl -fsS --connect-timeout 2 --max-time 3 "${1:-$health_url}" 2>/dev/null |
       jq -e '.status == "ok"' >/dev/null; then
       return 0
     fi
@@ -103,10 +110,13 @@ fi
 
 docker create --name "$active" --network landit-prod --restart unless-stopped \
   --env-file "$runtime_dir/ai.env" ${env_override[@]+"${env_override[@]}"} \
+  --env AWS_CONFIG_FILE=/run/landit-aws/config --env AWS_SHARED_CREDENTIALS_FILE=/dev/null \
+  --env AWS_PROFILE=default --env AWS_EC2_METADATA_DISABLED=true \
+  --mount "type=bind,src=$credentials,dst=/run/landit-aws,readonly" \
   --log-opt max-size=10m --log-opt max-file=3 "$repository@$digest" >/dev/null
 created=true
 docker start "$active" >/dev/null
-if ! wait_until_healthy || [[ "$(container_image "$active")" != "$repository@$digest" ]]; then
+if ! wait_until_healthy || { [[ -n "$active_image" ]] && ! wait_until_healthy https://ai.landit.im/health; } || [[ "$(container_image "$active")" != "$repository@$digest" ]]; then
   echo '새 AI 헬스체크 또는 이미지 확인에 실패했습니다.' >&2
   exit 1
 fi

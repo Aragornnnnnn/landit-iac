@@ -1605,7 +1605,6 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LANDIT_FREE_TALK_CONTEXT_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_FREE_TALK_CONTEXT_ENABLED" },
         { name = "LANDIT_ROLEPLAY_ENABLED", valueFrom = "${local.ssm_path}/LANDIT_ROLEPLAY_ENABLED" },
         { name = "LANDIT_FREE_TALK_TRIAL_LAUNCHED_AT", valueFrom = "${local.ssm_path}/LANDIT_FREE_TALK_TRIAL_LAUNCHED_AT" },
-        { name = "LANDIT_DICTIONARY_API_KEY", valueFrom = "${local.ssm_path}/LANDIT_DICTIONARY_API_KEY" },
         { name = "LANDIT_REVENUECAT_PROJECT_ID", valueFrom = "${local.ssm_path}/LANDIT_REVENUECAT_PROJECT_ID" },
         { name = "LANDIT_REVENUECAT_API_SECRET_KEY", valueFrom = "${local.ssm_path}/LANDIT_REVENUECAT_API_SECRET_KEY" },
         { name = "LANDIT_REVENUECAT_ENTITLEMENT_SECRET_KEY", valueFrom = "${local.ssm_path}/LANDIT_REVENUECAT_ENTITLEMENT_SECRET_KEY" },

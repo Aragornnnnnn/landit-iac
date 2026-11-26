@@ -33,6 +33,7 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_AI_CONTENT_GENERATION_REQUEST_TIMEOUT` | `String` | backend가 콘텐츠 제작(LAN-690) AI 호출 한 번을 기다리는 시간. Duration 형식(`300s`). 코드 기본값 300초, landit-ai `CONTENT_GENERATION_TIMEOUT_SECONDS`보다 길어야 한다 |
 | `/landit/{environment}/LANDIT_CONTENT_AUTHORING_ASSETS_ENABLED` | `String` | API 콘텐츠 에셋 생성(LAN-754) 스위치. 코드 기본값 `false`. 담당자 3명만 쓰는 관리자 기능이라 develop·prod 모두 `true`로 등록한다. develop EC2 env와 prod ECS API secrets로 주입 |
 | `/landit/{environment}/LANDIT_CONTENT_AUTHORING_PUBLISH_ENABLED` | `String` | API 콘텐츠 발행(LAN-755)·SQL 업로드 발행(LAN-758) 스위치. 코드 기본값 `false`. develop·prod 모두 `true`로 등록한다. develop EC2 env와 prod ECS API secrets로 주입 |
+| `/landit/{environment}/LANDIT_DICTIONARY_API_KEY` | `SecureString` | LAN-877 국립국어원 한국어기초사전 인증키. 개발·운영 EC2의 BE 컨테이너에만 주입한다. [사전 검색 배포 절차](#사전-검색-배포-lan-877)를 따른다. |
 | `/landit/{environment}/LANDIT_REVENUECAT_PROJECT_ID` | `String` | backend RevenueCat 프로젝트 ID |
 | `/landit/{environment}/LANDIT_REVENUECAT_API_SECRET_KEY` | `SecureString` | backend RevenueCat v2 조회 키. |
 | `/landit/{environment}/LANDIT_REVENUECAT_ENTITLEMENT_SECRET_KEY` | `SecureString` | LAN-659의 premium 부여·회수용 v1 Secret 키. 개발 EC2·운영 ECS API에만 주입하며 AI에는 전달하지 않는다. |
@@ -72,6 +73,7 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/ANTHROPIC_API_KEY` | `SecureString` | Claude 직접 호출용 Anthropic API 키(LAN-808). landit-ai에만 주입한다. 스위치가 켜졌는데 비어 있으면 Claude 호출이 실패하고 OpenRouter로 되돌아가지 않는다 |
 | `/landit/{environment}/DEEPGRAM_API_KEY` | `SecureString` | 발음 평가의 정답 없는 받아쓰기(LAN-829)용 Deepgram API 키. landit-ai에만 주입한다. 비어 있으면 받아쓰기 신호 없이 점수를 내고 요청마다 `event=heard_check_failed` 경고를 남긴다 |
 | `/landit/{environment}/MESSAGE_FEEDBACK_REVIEW_ENABLED` | `String` | 메시지 피드백 문구 검수 사용 여부, `true` 또는 `false` |
+| `/landit/{environment}/ROLEPLAY_THUMBNAIL_REVIEW_ENABLED` | `String` | LAN-885 롤플레이 썸네일 얼굴 검토 관찰 모드. 개발·운영 모두 `true`로 등록하며 [AI 배포 절차](#롤플레이-썸네일-검토-lan-885)를 따른다. |
 | `/landit/{environment}/JEV_ENABLED` | `String` | Jev 사용 여부. develop·prod 모두 `false`. |
 | `/landit/{environment}/JEV_ENABLED_WORKFLOWS` | `String` | JSON 배열 문자열. 양쪽 `["E1","E2","E3","E4","E7","E10","E13"]`. |
 | `/landit/{environment}/JEV_MODEL` | `String` | `typesafe/jev-1.13`. |
@@ -89,6 +91,26 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 `LANDIT_SUBSCRIPTION_LAUNCHED_AT`은 SSM에 먼저 등록한 뒤 API에 연결합니다. 운영은 ECS task definition 반영 후 해당 리비전으로 API를 배포해야 하며, 이후 SSM 값만 변경해도 새 API task가 시작되어야 반영됩니다.
 
 `LANDIT_SUBSCRIPTION_FREE_EXPRESSION_TRIAL_SINCE`(LAN-707)도 같은 순서를 따릅니다. ECS task definition `secrets`가 참조하는 parameter가 없으면 새 task가 시작하지 못하므로, **이 변경을 apply하기 전에 develop·prod 두 환경에 값을 먼저 `put-parameter`합니다.** 값은 BE(LAN-704)와 FE 게이트 수정이 모두 올라간 날의 0시(`+09:00`)로 정하며, 그 전에는 빈 문자열이 아니라 아직 오지 않은 미래 시각을 넣어 체험을 닫아 둘 수 있습니다. API는 서버 시작 때 한 번 읽고 기동 로그에 활성 여부를 남깁니다.
+
+## 사전 검색 배포 (LAN-877).
+
+1. 개발·운영 SSM에 각 환경의 `LANDIT_DICTIONARY_API_KEY`를 `SecureString`으로 준비합니다. 개발은 EC2 배포 문서 적용 후 API를 재배포하면 런타임이 SSM에서 `/run/landit/api.env`로 읽습니다.
+2. 사전 API가 포함된 BE 릴리스 전에, [스크립트](../scripts/configure-prod-ec2-dictionary-key.py)를 승인된 경로로 운영 EC2에 전달하고 해당 디렉터리에서 root 권한으로 실행합니다. SSM 조회 권한이 있는 운영자가 `/landit/prod/LANDIT_DICTIONARY_API_KEY`의 값을 숨겨진 프롬프트에 입력합니다. 키를 명령 인자나 Run Command 본문에 넣지 않습니다.
+
+   ```bash
+   sudo python3 configure-prod-ec2-dictionary-key.py
+   ```
+
+3. 반영 성공 메시지를 확인하고 [운영 EC2 배포 절차](tasks/LAN-886/plan.md#운영-be-재배포)로 BE를 배포합니다. 새 슬롯이 `/opt/landit/api.env`를 읽습니다. 배포 후 인증된 `GET /api/v1/dictionary/search?q=먹다`가 `200`과 영어 대역을 반환하는지 확인합니다.
+
+키를 교체할 때도 같은 절차를 따릅니다. 스크립트가 EC2의 파일을 갱신하면 다음 BE 컨테이너 생성 때 적용됩니다.
+
+## 롤플레이 썸네일 검토 (LAN-885).
+
+- [AI #214](https://github.com/Aragornnnnnn/landit-ai/pull/214)가 포함된 버전에서 신규 썸네일의 얼굴 검토 판정과 권고를 기록합니다.
+- 개발은 EC2 배포 문서 적용 전에 SSM 값을 등록합니다. 이후 AI를 배포하면 `/run/landit/ai.env`로 읽습니다.
+- 운영은 SSM의 값을 root 전용 `/opt/landit/ai.env`의 `ROLEPLAY_THUMBNAIL_REVIEW_ENABLED` 항목에 반영하고 [운영 AI 배포 절차](tasks/LAN-886/plan.md#운영-ai-배포)로 새 슬롯을 시작합니다.
+- 배포 후 새 썸네일 작업에서 `event=roleplay_thumbnail_review` 로그와 기존 게시 흐름을 확인합니다. 검토를 끌 때는 SSM 값을 `false`로 바꾸며 운영에서는 `ai.env`에도 같은 값을 반영한 뒤 AI를 재배포합니다.
 
 ## 스몰톡 정책 예약 적용(LAN-802).
 

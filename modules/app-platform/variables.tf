@@ -44,6 +44,12 @@ variable "public_subnet_cidrs" {
   }
 }
 
+variable "transactional_email_enabled" {
+  description = "Retain the SES configuration set and delivery metrics when the API uses EC2."
+  type        = bool
+  default     = false
+}
+
 variable "ecs_platform_enabled" {
   description = "Whether to provision the ECS services and their ALB routing layer."
   type        = bool

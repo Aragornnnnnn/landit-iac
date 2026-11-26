@@ -1,4 +1,4 @@
-# 운영 환경의 ECS 기반 application platform module을 호출한다.
+# 운영 EC2에서 사용하는 공용 인프라와 보존 로그를 관리한다.
 data "terraform_remote_state" "shared" {
   backend = "s3"
 
@@ -13,13 +13,15 @@ data "terraform_remote_state" "shared" {
 module "app_platform" {
   source = "../../modules/app-platform"
 
-  roleplay_thumbnail_enabled = true
-  project_name               = var.project_name
-  environment                = var.environment
-  aws_region                 = var.aws_region
-  parameter_store_path       = var.parameter_store_path
-  content_bucket_name        = data.terraform_remote_state.shared.outputs.content_bucket_name
-  content_cloudfront_url     = data.terraform_remote_state.shared.outputs.cloudfront_url
+  ecs_platform_enabled        = false
+  transactional_email_enabled = true
+  roleplay_thumbnail_enabled  = true
+  project_name                = var.project_name
+  environment                 = var.environment
+  aws_region                  = var.aws_region
+  parameter_store_path        = var.parameter_store_path
+  content_bucket_name         = data.terraform_remote_state.shared.outputs.content_bucket_name
+  content_cloudfront_url      = data.terraform_remote_state.shared.outputs.cloudfront_url
 
   vpc_cidr            = var.vpc_cidr
   public_subnet_cidrs = var.public_subnet_cidrs

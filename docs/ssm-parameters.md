@@ -73,6 +73,7 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/ANTHROPIC_API_KEY` | `SecureString` | Claude 직접 호출용 Anthropic API 키(LAN-808). landit-ai에만 주입한다. 스위치가 켜졌는데 비어 있으면 Claude 호출이 실패하고 OpenRouter로 되돌아가지 않는다 |
 | `/landit/{environment}/DEEPGRAM_API_KEY` | `SecureString` | 발음 평가의 정답 없는 받아쓰기(LAN-829)용 Deepgram API 키. landit-ai에만 주입한다. 비어 있으면 받아쓰기 신호 없이 점수를 내고 요청마다 `event=heard_check_failed` 경고를 남긴다 |
 | `/landit/{environment}/MESSAGE_FEEDBACK_REVIEW_ENABLED` | `String` | 메시지 피드백 문구 검수 사용 여부, `true` 또는 `false` |
+| `/landit/{environment}/ROLEPLAY_THUMBNAIL_REVIEW_ENABLED` | `String` | LAN-885 롤플레이 썸네일 얼굴 검토 관찰 모드. 개발·운영 모두 `true`로 등록하며 [AI 배포 절차](#롤플레이-썸네일-검토-lan-885)를 따른다. |
 | `/landit/{environment}/JEV_ENABLED` | `String` | Jev 사용 여부. develop·prod 모두 `false`. |
 | `/landit/{environment}/JEV_ENABLED_WORKFLOWS` | `String` | JSON 배열 문자열. 양쪽 `["E1","E2","E3","E4","E7","E10","E13"]`. |
 | `/landit/{environment}/JEV_MODEL` | `String` | `typesafe/jev-1.13`. |
@@ -103,6 +104,13 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 3. 반영 성공 메시지를 확인하고 [운영 EC2 배포 절차](tasks/LAN-886/plan.md#운영-be-재배포)로 BE를 배포합니다. 새 슬롯이 `/opt/landit/api.env`를 읽습니다. 배포 후 인증된 `GET /api/v1/dictionary/search?q=먹다`가 `200`과 영어 대역을 반환하는지 확인합니다.
 
 키를 교체할 때도 같은 절차를 따릅니다. 스크립트가 EC2의 파일을 갱신하면 다음 BE 컨테이너 생성 때 적용됩니다.
+
+## 롤플레이 썸네일 검토 (LAN-885).
+
+- [AI #214](https://github.com/Aragornnnnnn/landit-ai/pull/214)가 포함된 버전에서 신규 썸네일의 얼굴 검토 판정과 권고를 기록합니다.
+- 개발은 EC2 배포 문서 적용 전에 SSM 값을 등록합니다. 이후 AI를 배포하면 `/run/landit/ai.env`로 읽습니다.
+- 운영은 SSM의 값을 root 전용 `/opt/landit/ai.env`의 `ROLEPLAY_THUMBNAIL_REVIEW_ENABLED` 항목에 반영하고 [운영 AI 배포 절차](tasks/LAN-886/plan.md#운영-ai-배포)로 새 슬롯을 시작합니다.
+- 배포 후 새 썸네일 작업에서 `event=roleplay_thumbnail_review` 로그와 기존 게시 흐름을 확인합니다. 검토를 끌 때는 SSM 값을 `false`로 바꾸며 운영에서는 `ai.env`에도 같은 값을 반영한 뒤 AI를 재배포합니다.
 
 ## 스몰톡 정책 예약 적용(LAN-802).
 

@@ -198,6 +198,7 @@ values.update(JEV_ENABLED="false", JEV_ENABLED_WORKFLOWS='["E1","E2","E3","E4","
               JEV_FALLBACK_MODEL="openai/gpt-5.4-mini", JEV_ADJUDICATOR_MODEL="openai/gpt-5.4",
               CODE_SESSION_SUMMARY_ENABLED="false")
 values.update(LANDIT_AI_INTERNAL_TOKEN="lan474-token$secret", LANDIT_DICTIONARY_API_KEY="test-dictionary-key")
+values.update(ROLEPLAY_THUMBNAIL_REVIEW_ENABLED="true")
 values.update(LANDIT_REVENUECAT_WEBHOOK_AUTHORIZATION="Bearer lan477-test$secret",
               LANDIT_REVENUECAT_PROJECT_ID="test-project",
               LANDIT_REVENUECAT_API_SECRET_KEY="test-api$secret",
@@ -265,6 +266,8 @@ assert 'OPENAI_API_KEY="test-direct-key"' in (directory / "runtime/ai.env").read
 assert 'OPENROUTER_API_KEY="test-router-key"' in (directory / "runtime/ai.env").read_text()
 assert 'LLM_PROVIDER="openai"' in (directory / "runtime/ai.env").read_text()
 ai_env = (directory / "runtime/ai.env").read_text().splitlines()
+assert 'ROLEPLAY_THUMBNAIL_REVIEW_ENABLED="true"' in ai_env
+assert "ROLEPLAY_THUMBNAIL_REVIEW_ENABLED=" not in api.read_text()
 for name, value in json.loads((directory / "model-profiles.json").read_text()).items():
     assert f'{name}={json.dumps(value)}' in ai_env, f"missing model setting: {name}"
     assert not any(line.startswith(name + "=") for line in api.read_text().splitlines())

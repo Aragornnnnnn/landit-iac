@@ -83,8 +83,17 @@
 ## 운영 AI 배포
 
 - AI의 `Deploy prod worker`는 `main`에서 버전만 입력해 EC2로 배포한다. 위의 SSM 문서 갱신 후 기존 역할의 `worker_ec2_deploy_role_arn`과 전환 EC2 인스턴스 ID를 AI 저장소의 `PROD_WORKER_EC2_ROLE_ARN`과 `PROD_WORKER_EC2_INSTANCE_ID` 변수에 설정한다. 전용 역할은 AI `main`의 GitHub OIDC만 신뢰하며, 운영 워커 이미지 조회와 이 EC2의 `prod-landit-ec2-deploy-worker` 실행을 허용한다.
-- 현재 공개 Caddy 구성을 사용하고, 운영 AI 환경 변수는 root만 읽을 수 있는 `/opt/landit/ai.env`에 둔다. 첫 실행과 전환 리허설 동안 `ROLEPLAY_THUMBNAIL_CONSUMER_ENABLED=false`를 유지한다. ECS의 기존 소비자가 종료되고 SQS·S3 자격 증명과 BE 내부 API 접속을 확인한 뒤 이 값을 활성화해 같은 릴리스를 다시 배포한다.
-- 기존 버전의 EC2 배포는 GitHub Release가 기록한 검증 이미지 다이제스트를 재사용한다. 첫 기동과 재배포 모두 호스트 루프백의 Caddy `/health` 및 실제 컨테이너 이미지로 확인한다. 교체와 롤백 동안 AI 응답은 잠시 중단될 수 있다. AI와 BE는 호스트 잠금을 공유하므로 두 배포를 차례로 실행한다.
-- 새 AI가 기동하거나 헬스체크를 통과하지 못하면 보존한 직전 컨테이너를 기존 이름으로 복구한다. 이미 성공한 배포를 되돌릴 때는 같은 워크플로에 이전 릴리스의 숫자 버전을 입력한다. 공개 DNS·HTTPS와 운영 큐 소비 검증은 전환 단계에서 수행한다.
-- 호스트 모의 검증에서 최초 기동, 정상 교체, 헬스체크 실패 후 복귀, 최초 기동 실패 시 정리, 중단된 교체 재시도를 확인했다. 전환 root의 Terraform plan에는 기존 BE 변경과 함께 AI의 SSM 문서·배포 역할·권한이 포함되며 EC2와 RDS 변경은 없다.
+
+- 배포 호스트는 BE와 AI에 같은 잠금을 사용한다. 새 AI 이미지는 `im.landit.ai-rollout=slot-consumer-v1` 라벨이 필요하다. 후보 메모리 상한은 기동 직전 가용량에서 384MiB를 뺀 값이다. 가용량이 기존 AI 사용량과 768MiB 중 큰 값에 384MiB를 더한 수준에 못 미치면 후보를 시작하지 않는다. 기존 슬롯 종료 후에는 해제된 메모리만큼 새 슬롯 상한을 늘린다. 운영 부하에서 두 슬롯의 OOM·재시작·가용량을 확인한다.
+- 후보가 모델을 워밍업하고 HTTP 및 활성화된 썸네일 연동 검사를 통과하면 Caddy의 두 AI upstream을 전환한다. 호스트 루프백과 공개 HTTPS에서 해당 다이제스트를 확인한다. TLS·WAF·BE 설정은 기존 운영 Caddyfile에서 계속 읽는다. 검증 실패 시 이전 라우트를 복원하고 후보가 받은 요청도 드레인한다.
+- HTTP 라우트와 SQS 소비자는 따로 인계한다. 슬롯마다 수신부터 처리·ack까지 같은 잠금을 유지한다. 호스트가 기존 소비자의 잠금을 획득한 뒤 소유자를 바꾸고, 이전 컨테이너의 8000번 연결이 닫힌 후 종료한다. 드레인이 12분을 넘으면 두 슬롯을 보존한다. 같은 버전으로 재실행해 마지막으로 확인된 HTTP 슬롯에서 인계를 이어간다. 호환되는 이전 버전으로 복구할 때는 GitHub Actions에 그 릴리스 버전을 입력한다.
+
 - 2026-11-25 승인한 저장 plan을 적용했다. SSM 문서와 IAM 리소스 6개를 추가하고 기존 SSM 관리 정책 연결 1개를 전송 전용 정책으로 교체했다. 적용 후 Terraform plan은 무변경이고, BE와 AI의 SSM 문서는 모두 `Active`, 전환 EC2 에이전트는 `Online`이다. 기존 운영 ECS의 BE와 AI는 각각 기존 리비전으로 실행 중이며 RDS는 `available`이다.
+
+### 단일 AI에서 처음 전환하는 작업창
+
+1. 위의 두 SSM 문서만 대상으로 저장한 plan을 적용하고 AI PR의 슬롯 지원 버전을 준비한다. 실행 전 기존 `landit-ai`가 사용할 이미지 다이제스트와 현재 BE·AI 버전을 기록한다.
+2. 기존 AI에서 썸네일 소비가 켜져 있으면 운영 BE의 썸네일 신규 요청과 예약 재발행을 일시 중단한다. 기존 작업의 claim·complete·fail 콜백은 열어 둔다. 모든 발행 원천을 멈출 수 있는 작업창을 사용한다. SQS의 visible·in-flight·delayed가 연속해서 0이고 DB에서 `SELECT count(*) FROM roleplay_thumbnail WHERE status = 'GENERATING'`가 0인지 확인한다. BE에 보류된 미발행 작업은 발행 재개 후 확인한다.
+3. 운영 호스트의 root 셸에서 `install -d -m 0755 /opt/landit/ai-rollout` 후 `docker inspect --format '{{.Id}}' landit-ai > /opt/landit/ai-rollout/legacy-consumer-drained`를 실행한다. 승인은 해당 컨테이너 ID에 대해 30분간 유효하다. 발행 중지를 유지하면서 AI 운영 Actions를 실행한다. 현재 서비스가 없는 빈 호스트는 최초 기동에 `ai.env`의 큐 소비를 끈다. 기존 소비자 종료를 확인한 뒤 설정을 켜고 같은 버전을 다시 배포한다.
+4. Actions가 성공하면 배포 기록의 슬롯과 이미지, 공개 health 및 진행 중이던 HTTP 응답을 확인한다. 썸네일 발행을 재개하고 첫 작업이 BE에서 완료되며 큐 적체가 해소되는지 확인한다.
+5. 첫 전환에서 기존 `v1.9.10`으로 복귀해야 하면 별도 작업창에 발행을 중지하고 큐·DB를 위와 같이 비운다. 호스트 배포 잠금을 잡고 `consumer` 파일을 원자적으로 `none`으로 교체한 뒤 기존 소비 슬롯의 잠금을 획득해 처리 종료를 확인한다. 보존한 `landit-ai`의 다이제스트를 대조하고 시작한다. 운영 Caddy의 `routes/ai.caddy`를 해당 컨테이너와 이전 다이제스트로 바꿔 reload하고 루프백·공개 응답을 확인한다. 새 슬롯의 기존 연결을 비운 후 정지한다. `http.json`을 `["legacy", "<이전 다이제스트>", ""]`, `consumer`를 `legacy`로 원자적으로 기록하고 발행을 재개한다. 다음 블루/그린 배포에서는 2~3단계를 다시 수행한다.

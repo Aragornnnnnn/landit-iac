@@ -25,7 +25,7 @@ Landit runtime parameter 이름과 운영 규칙을 기록합니다. 실제 secr
 | `/landit/{environment}/LANDIT_PUSH_AUDIENCE_DB_URL` | `SecureString` | 관리자 대상 SQL용 JDBC URL, 인증정보 없이 session pooler 5432와 `sslmode=require` 사용 |
 | `/landit/{environment}/LANDIT_PUSH_AUDIENCE_DB_USERNAME` | `SecureString` | 읽기 역할 `landit_push_reader.<project-ref>` |
 | `/landit/{environment}/LANDIT_PUSH_AUDIENCE_DB_PASSWORD` | `SecureString` | 해당 환경 읽기 역할의 비밀번호 |
-| `/landit/{environment}/LANDIT_CORS_ALLOWED_ORIGINS` | `String` | backend CORS allowed origins, comma-separated |
+| `/landit/{environment}/LANDIT_CORS_ALLOWED_ORIGINS` | `String` | 백엔드 CORS 허용 오리진의 쉼표 구분 목록. 운영 웹은 `https://landit.im`과 `https://www.landit.im`을 모두 포함 |
 | `/landit/{environment}/LANDIT_AUTH_TOKEN_SECRET` | `SecureString` | backend 자체 token signing secret |
 | `/landit/{environment}/LANDIT_AI_CLIENT_MODE` | `String` | backend AI client mode |
 | `/landit/{environment}/LANDIT_ROLEPLAY_ENABLED` | `String` | BE의 롤플레이 신규 대화 시작 스위치. 개발·운영 모두 `true`로 설정한다. 운영 사전 설정은 롤플레이 요청이 유입되지 않는 조건이며, BE·AI와 DB 마이그레이션 및 BE 전체 교체 완료 후 FE를 배포한다. 값 변경 후 API 컨테이너를 재생성한다. `false`여도 기존 대화 종료·이력 조회는 유지한다. |
@@ -200,6 +200,12 @@ SSM parameter를 생성해도 ECS container environment에 자동으로 들어�
 기존 parameter의 값만 바꾸는 경우도 running task에는 자동 반영되지 않습니다. ECS secret은 container 시작 시점에 주입되므로, 값 변경 후에는 ECS service 새 deployment가 필요합니다.
 
 재배포를 사용자가 별도로 수행할 때는 SSM 참조를 추가한 ECS revision만 먼저 등록할 수 있습니다. 이 경우 배포 시 해당 revision을 명시해야 합니다. 현재 서비스 revision을 복사하는 배포 스크립트나 force deployment는 미적용 revision의 새 참조를 자동으로 가져오지 않습니다. develop EC2는 `/opt/landit/bin/runtime-env`의 API 목록에 이름을 추가하고 다음 배포 시 환경 파일을 다시 생성합니다.
+
+## 운영 웹 CORS 허용 목록 갱신
+
+운영 웹이 브라우저에서 API를 직접 호출합니다. `/landit/prod/LANDIT_CORS_ALLOWED_ORIGINS`를 수정할 때는 기존 목록을 보존하고 필요한 웹 오리진을 추가합니다. API 태스크는 시작할 때 SSM 값을 읽으므로 변경 후 같은 이미지 다이제스트로 `prod-landit-api`를 재시작합니다.
+
+새 배포가 완료되면 `https://api.landit.im/api/v1/auth/me`에 각 운영 웹 오리진의 `OPTIONS` 요청을 보내 HTTP 200과 요청 오리진에 일치하는 `Access-Control-Allow-Origin` 헤더를 확인합니다. 요청에는 `Access-Control-Request-Method: GET`과 `Access-Control-Request-Headers: authorization`을 포함합니다.
 
 ## 운영 장기기억 USE 활성화와 복구
 

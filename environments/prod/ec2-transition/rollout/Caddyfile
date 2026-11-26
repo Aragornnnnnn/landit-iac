@@ -1,0 +1,29 @@
+{
+	admin localhost:2019
+}
+
+api.landit.im {
+	@rds_integration path /internal/rds/survey /internal/rds/metrics
+	handle @rds_integration {
+		reverse_proxy 172.30.86.1:18092
+	}
+	handle {
+		import /etc/caddy/routes/api.caddy
+	}
+}
+
+ai.landit.im {
+	reverse_proxy landit-ai:8000
+}
+
+:8081 {
+	handle /health {
+		reverse_proxy landit-ai:8000
+	}
+	handle /actuator/health/readiness {
+		import /etc/caddy/routes/api.caddy
+	}
+	handle {
+		respond 404
+	}
+}
